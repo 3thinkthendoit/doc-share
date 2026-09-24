@@ -81,9 +81,9 @@
           <div><span class="l-tok-h"># </span>{{$.T "发布说明 v2.4"}}</div>
           <div><span class="l-tok-h">## </span>{{$.T "新增"}}</div>
           <div><span class="l-tok-mut">-</span> {{$.T "支持 项目 / 分类 双维度归档"}}</div>
-          <div><span class="l-tok-mut">-</span> {{$.T "开放平台 HMAC-SHA256 签名鉴权"}}</div>
-          <div><span class="l-tok-mut">-</span> {{$.T "界面支持 5 种语言"}}</div>
-          <div class="l-caret"><span class="l-tok-mut">-</span> {{$.T "分享链接支持密码与有效期"}}</div>
+          <div><span class="l-tok-mut">-</span> {{$.T "AI 客户端经 MCP 直接读写"}}</div>
+          <div><span class="l-tok-mut">-</span> {{$.T "PDF / Word 一键导入转 Markdown"}}</div>
+          <div class="l-caret"><span class="l-tok-mut">-</span> {{$.T "成员协作，按角色查看与编辑"}}</div>
         </div>
         <div class="l-pane">
           <div class="l-pane-h">PREVIEW</div>
@@ -91,10 +91,10 @@
           <div style="margin-top:10px">{{$.T "新增"}}</div>
           <ul style="margin:6px 0 0;padding-left:18px;color:var(--l-muted);font-size:12px">
             <li>{{$.T "支持 项目 / 分类 双维度归档"}}</li>
-            <li>{{$.T "开放平台 HMAC-SHA256 签名鉴权"}}</li>
-            <li>{{$.T "界面支持 5 种语言"}}</li>
+            <li>{{$.T "AI 客户端经 MCP 直接读写"}}</li>
+            <li>{{$.T "PDF / Word 一键导入转 Markdown"}}</li>
           </ul>
-          <span class="l-chip">🔒 {{$.T "分享已加密"}} · /s/8fj2KdQ1</span>
+          <span class="l-chip">👥 {{$.T "成员协作已开启 · 3 位成员"}}</span>
         </div>
       </div>
       <div class="l-term">
@@ -150,6 +150,24 @@
         <h3>{{$.T "五语界面"}}</h3>
         <p>{{$.T "简体中文、繁体中文、日文、英语、法语，右上角一键切换并记忆。"}}</p>
         <ul><li>{{$.T "按 Accept-Language 自动协商"}}</li><li>{{$.T "接口提示文案同步翻译"}}</li></ul>
+      </div>
+      <div class="l-card" data-reveal>
+        <div class="l-card-no">07<span class="l-card-tag">  --mcp</span></div>
+        <h3>{{$.T "AI 客户端一键接入"}}</h3>
+        <p>{{$.T "内置零依赖 MCP 服务器，CodeBuddy、Claude、Cursor 等 AI 客户端直接读写文档、项目与分类。"}}</p>
+        <ul><li>{{$.T "13 个工具覆盖文档 / 项目 / 分类"}}</li><li>{{$.T "stdio 传输，一段 JSON 配置即用"}}</li><li>{{$.T "复用开放平台密钥与权限模型"}}</li></ul>
+      </div>
+      <div class="l-card" data-reveal>
+        <div class="l-card-no">08<span class="l-card-tag">  --import</span></div>
+        <h3>{{$.T "PDF / Word 一键导入"}}</h3>
+        <p>{{$.T "PDF、doc、docx 纯内存转换为 Markdown，转换结果直接进入编辑器继续写作。"}}</p>
+        <ul><li>{{$.T "全程内存转换，不落盘"}}</li><li>{{$.T "docx 保留标题、列表、表格与链接"}}</li></ul>
+      </div>
+      <div class="l-card" data-reveal>
+        <div class="l-card-no">09<span class="l-card-tag">  --members</span></div>
+        <h3>{{$.T "项目成员与角色"}}</h3>
+        <p>{{$.T "把项目共享给团队成员，按角色控制查看与编辑。"}}</p>
+        <ul><li>{{$.T "成员仅能看到所在项目的文档"}}</li><li>{{$.T "成员管理仅属主可用，防止越权"}}</li></ul>
       </div>
     </div>
   </div>
@@ -240,7 +258,7 @@ sign = <span class="l-tok-h">HMAC-SHA256</span>(Secret, base)
       <div class="l-stat" data-reveal><b data-count="5">0</b><span>{{$.T "界面语言"}}</span></div>
       <div class="l-stat" data-reveal><b data-count="13">0</b><span>{{$.T "开放接口"}}</span></div>
       <div class="l-stat" data-reveal><b data-count="1">0</b><span>{{$.T "单文件二进制"}}</span></div>
-      <div class="l-stat" data-reveal><b data-count="371">0</b><span>{{$.T "条词典文案"}}</span></div>
+      <div class="l-stat" data-reveal><b data-count="643">0</b><span>{{$.T "条词典文案"}}</span></div>
     </div>
   </div>
 </section>
