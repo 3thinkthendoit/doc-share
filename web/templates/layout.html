@@ -2,6 +2,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{if .title}}{{.title}} · {{end}}{{.SiteName}}</title>
+<link rel="icon" type="image/svg+xml" href="/static/logo-mark.svg">
 <link rel="stylesheet" href="/static/style.css">
 {{/* “中文原文→译文”映射先于 ui.js 注入：脚本里的文案统一走 UI.t() */}}
 <script>window.__LANG={{.Lang}};window.__L10N={{.Dict}};</script>
@@ -19,7 +20,7 @@
 
 {{define "nav"}}
 <nav class="topnav">
-  <div class="nav-brand"><a href="/admin">{{if .SiteLogo}}<img class="nav-logo" src="{{.SiteLogo}}" alt="">{{else}}<b>D</b>{{end}}{{.SiteName}}</a></div>
+  <div class="nav-brand"><a href="/admin">{{if .SiteLogo}}<img class="nav-logo" src="{{.SiteLogo}}" alt="">{{else}}<img class="nav-logo" src="/static/logo-mark.svg" alt="">{{end}}{{.SiteName}}</a></div>
   <div class="nav-links">
     <a href="/admin">{{$.T "nav.dashboard"}}</a>
     <a href="/admin/docs">{{$.T "nav.docs"}}</a>
@@ -70,6 +71,12 @@
         </label>
         <label>{{$.T "prof.nickname"}}
           <input type="text" name="nickname" required maxlength="64" value="{{.user.Nickname}}">
+        </label>
+        <label>{{$.T "prof.email"}}
+          <input type="email" name="email" maxlength="255" value="{{.user.Email}}" placeholder="name@example.com">
+        </label>
+        <label>{{$.T "prof.phone"}}
+          <input type="tel" name="phone" maxlength="11" value="{{.user.Phone}}" placeholder="13800138000">
         </label>
       </div>
       <div class="modal-foot">

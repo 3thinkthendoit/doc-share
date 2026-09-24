@@ -22,6 +22,8 @@ func Init(cfg *config.Config) (*gorm.DB, error) {
 
 	db, err := gorm.Open(mysql.Open(cfg.Database.DSN), &gorm.Config{
 		Logger: logger.Default.LogMode(level),
+		// 翻译驱动错误（如唯一键冲突 → gorm.ErrDuplicatedKey），供业务层精确归因
+		TranslateError: true,
 		// 不建数据库外键：project_id/category_id 用 0 表示未分组，与 FK 冲突；
 		// 引用完整性由应用层 validProjectRef/validCategoryRef 校验保证
 		DisableForeignKeyConstraintWhenMigrating: true,
@@ -37,7 +39,8 @@ func Init(cfg *config.Config) (*gorm.DB, error) {
 	sqlDB.SetMaxOpenConns(cfg.Database.MaxOpenConn)
 	sqlDB.SetMaxIdleConns(cfg.Database.MaxIdleConn)
 
-	if err := db.AutoMigrate(&model.User{}, &model.Project{}, &model.Category{}, &model.ApiKey{}, &model.Document{}, &model.Share{}, &model.SystemSetting{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Project{}, &model.Category{}, &model.ApiKey{}, &model.Document{}, &model.Share{}, &model.SystemSetting{},
+		&model.DocumentRevision{}, &model.Comment{}, &model.DocumentVisitor{}, &model.ProjectMember{}); err != nil {
 		return nil, fmt.Errorf("auto migrate: %w", err)
 	}
 

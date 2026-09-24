@@ -26,13 +26,13 @@ func (a *App) ShareView(c *gin.Context) {
 
 	// 无密码直接渲染
 	if !share.HasPassword() {
-		a.serveDoc(c, doc)
+		a.serveDoc(c, doc, share, token)
 		return
 	}
 
 	// 有密码：校验已签发的免密凭证
 	if cred, err := c.Cookie(CookieShare); err == nil && a.Signer.VerifyShareToken(cred, token) {
-		a.serveDoc(c, doc)
+		a.serveDoc(c, doc, share, token)
 		return
 	}
 	a.render(c, "share_password.html", gin.H{
@@ -51,7 +51,7 @@ func (a *App) ShareSubmit(c *gin.Context) {
 		return
 	}
 	if !share.HasPassword() {
-		a.serveDoc(c, doc)
+		a.serveDoc(c, doc, share, token)
 		return
 	}
 
@@ -81,7 +81,7 @@ func (a *App) ShareSubmit(c *gin.Context) {
 	a.Limiter.Reset(ip, token)
 	cred := a.Signer.MakeShareToken(token, shareVerifyTTL*time.Second)
 	setCookie(c, CookieShare, cred, shareVerifyTTL)
-	a.serveDoc(c, doc)
+	a.serveDoc(c, doc, share, token)
 }
 
 // loadShare 加载分享与文档，处理不存在/过期等情况并写响应
@@ -104,14 +104,21 @@ func (a *App) loadShare(c *gin.Context, token string) (*model.Document, *model.S
 	return &doc, &share
 }
 
-// serveDoc 渲染文档阅读页并累加浏览量
-func (a *App) serveDoc(c *gin.Context, doc *model.Document) {
+// serveDoc 渲染文档阅读页并累加浏览量；share 可为 nil（如管理端预览）
+func (a *App) serveDoc(c *gin.Context, doc *model.Document, share *model.Share, token string) {
 	a.DB.Model(&model.Document{}).Where("id = ?", doc.ID).
 		UpdateColumn("view_count", gorm.Expr("view_count + 1"))
 	doc.ViewCount++
+	user := a.sessionUser(c)
 	a.render(c, "share_view.html", gin.H{
 		"title":    doc.Title,
 		"rawTitle": true, // 用户文档标题，跳过词典反查避免误译
 		"doc":      doc,
+		"share":       share,
+		"token":       token,
+		"user":        user,
+		"canEdit":     user != nil && share != nil && share.CanEdit,
+		"canModerate": user != nil && (user.ID == doc.OwnerID || user.IsAdmin()),
+		"visitors":    a.recordVisitor(c, doc),
 	})
 }

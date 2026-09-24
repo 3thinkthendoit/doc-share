@@ -9,56 +9,206 @@
     <p class="auth-sub">{{$.T "reg.sub"}}</p>
     {{if .error}}<div class="alert alert-error">{{.error}}</div>{{end}}
     <form method="post" action="/register" id="registerForm" novalidate>
-      <label>{{$.T "login.username"}}
-        <input type="text" name="username" value="{{.username}}" required maxlength="50" autocomplete="username" autofocus>
+      {{/* 注册方式由系统设置唯一决定，服务端注入 METHOD；邮箱方式有邮箱+验证码，手机方式有手机号，用户名方式仅账号 */}}
+      <label>{{$.T "reg.account"}}
+        <input type="text" name="username" value="{{.username}}" required maxlength="50" autocomplete="username">
       </label>
+
+      {{if ne .method "username"}}
+      <label id="identifierLabel">
+        <span id="identifierLabelText">{{if eq .method "email"}}{{$.T "reg.email"}}{{else}}{{$.T "reg.phone"}}{{end}}</span>
+        <input type="{{if eq .method "email"}}email{{else}}tel{{end}}" name="identifier" value="{{.identifier}}" required maxlength="255" autocomplete="off">
+      </label>
+      {{end}}
+
+      {{if eq .method "email"}}
+      <label>{{$.T "reg.code"}}
+        <div class="captcha-row">
+          <input type="text" name="code" id="codeInput" maxlength="6" autocomplete="one-time-code" placeholder="{{$.T "reg.codePh"}}">
+          <button type="button" class="btn btn-sm" id="sendCodeBtn">{{$.T "reg.sendCode"}}</button>
+        </div>
+      </label>
+      {{end}}
+
       <label>{{$.T "login.password"}}
         <input type="password" name="password" required minlength="6" autocomplete="new-password">
       </label>
-      <label>{{$.T "reg.confirmPwd"}}
-        <input type="password" name="confirm" required minlength="6" autocomplete="new-password">
-      </label>
+
+      {{if ne .method "email"}}
       <label>{{$.T "login.captcha"}}
         <div class="captcha-row">
-          <input type="text" name="captcha" required maxlength="4" autocomplete="off" placeholder="{{$.T "login.captchaPh"}}">
+          <input type="text" name="captcha" maxlength="4" autocomplete="off" placeholder="{{$.T "login.captchaPh"}}">
           <img id="captchaImg" class="captcha-img" alt="{{$.T "login.captchaAlt"}}" title="{{$.T "login.captchaTip"}}">
         </div>
       </label>
       <input type="hidden" name="captcha_id" id="captchaId">
+      {{end}}
+
       <button type="submit" class="btn btn-primary btn-block">{{$.T "reg.submit"}}</button>
     </form>
     <p class="auth-alt">{{$.T "reg.hasAccount"}}<a href="/login">{{$.T "reg.toLogin"}}</a></p>
   </div>
-<script>
-async function refreshCaptcha() {
-  try {
-    const res = await fetch('/captcha');
-    const data = await res.json();
-    document.getElementById('captchaId').value = data.id;
-    document.getElementById('captchaImg').src = data.b64;
-  } catch (e) { /* 忽略网络抖动，点击可重试 */ }
-}
-document.getElementById('captchaImg').addEventListener('click', refreshCaptcha);
-refreshCaptcha();
 
-document.getElementById('registerForm').addEventListener('submit', function (e) {
-  if (!UI.validateForm(this)) { e.preventDefault(); return; }
-  const pwd = this.querySelector('input[name=password]');
-  const confirm = this.querySelector('input[name=confirm]');
-  if (pwd.value.length < 6) {
-    e.preventDefault();
-    pwd.classList.add('field-error');
-    UI.toast('密码至少 6 位', 'error');
-    pwd.focus();
-    return;
+  {{if eq .method "email"}}
+  {{/* 发送验证码前的图形验证码弹窗（一次性，错误自动刷新） */}}
+  <div class="modal-overlay" id="mailCaptchaModal" hidden>
+    <div class="modal modal-sm">
+      <div class="modal-head">
+        <h2>{{$.T "login.captcha"}}</h2>
+        <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+      </div>
+      <div class="modal-body share-body">
+        <label>{{$.T "login.captcha"}}
+          <div class="captcha-row">
+            <input type="text" id="mailCaptchaInput" maxlength="4" autocomplete="off" placeholder="{{$.T "login.captchaPh"}}">
+            <img id="mailCaptchaImg" class="captcha-img" alt="{{$.T "login.captchaAlt"}}" title="{{$.T "login.captchaTip"}}">
+          </div>
+        </label>
+        <input type="hidden" id="mailCaptchaId">
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" data-close-modal>{{$.T "common.cancel"}}</button>
+        <button type="button" class="btn btn-primary" id="mailCaptchaOk">{{$.T "common.confirm"}}</button>
+      </div>
+    </div>
+  </div>
+  {{end}}
+<script>
+(function () {
+  var METHOD = "{{.method}}";
+  var form = document.getElementById('registerForm');
+  var idInput = document.getElementById('identifierInput');
+  var codeInput = document.getElementById('codeInput');
+
+  async function refreshCaptcha() {
+    var img = document.getElementById('captchaImg');
+    if (!img) return;
+    try {
+      const res = await fetch('/captcha');
+      const data = await res.json();
+      document.getElementById('captchaId').value = data.id;
+      img.src = data.b64;
+    } catch (e) { /* 忽略网络抖动，点击可重试 */ }
   }
-  if (confirm.value !== pwd.value) {
-    e.preventDefault();
-    confirm.classList.add('field-error');
-    UI.toast('两次输入的密码不一致', 'error');
-    confirm.focus();
+  var captchaImg = document.getElementById('captchaImg');
+  if (captchaImg) {
+    captchaImg.addEventListener('click', refreshCaptcha);
+    refreshCaptcha();
   }
-});
+
+  // 发送邮箱验证码：点击后先弹图形验证码，验证通过才真正发送（60 秒倒计时）
+  var sendBtn = document.getElementById('sendCodeBtn');
+  var captchaModal = document.getElementById('mailCaptchaModal');
+  if (sendBtn && captchaModal) {
+    var mailCaptchaImg = document.getElementById('mailCaptchaImg');
+    var mailCaptchaId = document.getElementById('mailCaptchaId');
+    var mailCaptchaInput = document.getElementById('mailCaptchaInput');
+    var mailCaptchaOk = document.getElementById('mailCaptchaOk');
+  UI.bindModal(captchaModal); // ✕/取消按钮关闭
+
+    async function refreshMailCaptcha() {
+      try {
+        var res = await fetch('/captcha');
+        var data = await res.json();
+        mailCaptchaId.value = data.id;
+        mailCaptchaImg.src = data.b64;
+        mailCaptchaInput.value = '';
+      } catch (e) { /* 点击可重试 */ }
+    }
+
+    function startCountdown() {
+      var left = 60;
+      var origin = sendBtn.textContent;
+      sendBtn.disabled = true;
+      var timer = setInterval(function () {
+        left--;
+        sendBtn.textContent = left + 's';
+        if (left <= 0) {
+          clearInterval(timer);
+          sendBtn.textContent = origin;
+          sendBtn.disabled = false;
+        }
+      }, 1000);
+    }
+
+    sendBtn.addEventListener('click', function () {
+      if (!idInput.value.trim()) { idInput.focus(); return; }
+      refreshMailCaptcha();
+      UI.openModal(captchaModal);
+      setTimeout(function () { mailCaptchaInput.focus(); }, 100);
+    });
+
+    async function submitCaptcha() {
+      var captcha = mailCaptchaInput.value.trim();
+      if (!captcha) { mailCaptchaInput.focus(); return; }
+      mailCaptchaOk.disabled = true;
+      try {
+        var res = await fetch('/register/email-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+          body: JSON.stringify({
+            email: idInput.value.trim(),
+            captcha_id: mailCaptchaId.value,
+            captcha: captcha
+          })
+        });
+        var data = await res.json();
+        if (!res.ok) {
+          UI.alert((data && data.error) || '发送失败');
+          refreshMailCaptcha(); // 验证码已消耗，失败自动换图
+          return;
+        }
+        UI.closeModal(captchaModal);
+        UI.toast(UI.t('验证码已发送，请查收邮箱'), 'success');
+        codeInput.focus();
+        startCountdown();
+      } catch (e) {
+        UI.alert('发送失败：网络错误');
+        refreshMailCaptcha();
+      } finally {
+        mailCaptchaOk.disabled = false;
+      }
+    }
+    mailCaptchaOk.addEventListener('click', submitCaptcha);
+    mailCaptchaInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); submitCaptcha(); }
+    });
+  }
+
+  form.addEventListener('submit', function (e) {
+    if (!UI.validateForm(form)) { e.preventDefault(); return; }
+    if (METHOD === 'email') {
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(idInput.value.trim())) {
+        e.preventDefault();
+        idInput.classList.add('field-error');
+        UI.toast(UI.t('邮箱格式不正确'), 'error');
+        idInput.focus();
+        return;
+      }
+      if (codeInput.value.trim().length !== 6) {
+        e.preventDefault();
+        codeInput.classList.add('field-error');
+        UI.toast(UI.t('请输入 6 位邮箱验证码'), 'error');
+        codeInput.focus();
+        return;
+      }
+    }
+    if (METHOD === 'phone' && !/^1[3-9]\d{9}$/.test(idInput.value.trim())) {
+      e.preventDefault();
+      idInput.classList.add('field-error');
+      UI.toast(UI.t('手机号格式不正确'), 'error');
+      idInput.focus();
+      return;
+    }
+    var pwd = form.querySelector('input[name=password]');
+    if (pwd.value.length < 6) {
+      e.preventDefault();
+      pwd.classList.add('field-error');
+      UI.toast('密码至少 6 位', 'error');
+      pwd.focus();
+    }
+  });
+})();
 </script>
 </body>
 </html>

@@ -7,6 +7,7 @@ import (
 
 	"doc-share/internal/middleware"
 	"doc-share/internal/model"
+	"doc-share/internal/util"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -164,6 +165,8 @@ func (a *App) UpdateProfile(c *gin.Context) {
 	var req struct {
 		Nickname string `json:"nickname"`
 		Avatar   string `json:"avatar"`
+		Email    string `json:"email"`
+		Phone    string `json:"phone"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -171,6 +174,8 @@ func (a *App) UpdateProfile(c *gin.Context) {
 	}
 	nickname := strings.TrimSpace(req.Nickname)
 	avatar := strings.TrimSpace(req.Avatar)
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	phone := strings.TrimSpace(req.Phone)
 	if nickname == "" || len([]rune(nickname)) > 64 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "昵称不能为空且不超过 64 字"})
 		return
@@ -179,14 +184,41 @@ func (a *App) UpdateProfile(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "头像地址过长"})
 		return
 	}
+	if email != "" && !util.ValidEmail(email) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "邮箱格式不正确"})
+		return
+	}
+	if phone != "" && !util.ValidPhone(phone) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "手机号格式不正确"})
+		return
+	}
 	user := middleware.CurrentUser(c)
 	if user == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "未登录"})
 		return
 	}
+	// 唯一性校验（排除自己）
+	if email != "" {
+		var n int64
+		a.DB.Model(&model.User{}).Where("email = ? AND id <> ?", email, user.ID).Count(&n)
+		if n > 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "该邮箱已被其他账号使用"})
+			return
+		}
+	}
+	if phone != "" {
+		var n int64
+		a.DB.Model(&model.User{}).Where("phone = ? AND id <> ?", phone, user.ID).Count(&n)
+		if n > 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "该手机号已被其他账号使用"})
+			return
+		}
+	}
 	if err := a.DB.Model(user).UpdateColumns(map[string]interface{}{
 		"nickname": nickname,
 		"avatar":   avatar,
+		"email":    email,
+		"phone":    phone,
 	}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
 		return

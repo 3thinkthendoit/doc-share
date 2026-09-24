@@ -12,6 +12,8 @@
 }
 *{box-sizing:border-box}
 body{margin:0;font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","HarmonyOS Sans SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}
+/* hidden 属性兜底：防止组件级 display 规则覆盖 UA 的 display:none（如 auth-card label） */
+[hidden]{display:none!important}
 a{color:var(--primary);text-decoration:none;transition:color .15s}
 a:hover{color:var(--primary-dark)}
 h1,h2{letter-spacing:-.02em;font-weight:650}
@@ -23,7 +25,7 @@ h1,h2{letter-spacing:-.02em;font-weight:650}
 /* 品牌 logo 与首页 .l-logo 同款：渐变方块 D + 文字（或自定义 Logo 图） */
 .nav-brand a{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:16px;letter-spacing:-.4px;color:var(--text)}
 .nav-brand a b{display:grid;place-items:center;width:24px;height:24px;border-radius:6px;background:var(--grad);color:#fff;font-size:13px;letter-spacing:0}
-.nav-brand a img.nav-logo{width:24px;height:24px;border-radius:6px;object-fit:cover;display:block}
+.nav-brand a img.nav-logo{width:34px;height:34px;border-radius:8px;object-fit:cover;display:block}
 .nav-links{display:flex;gap:6px;flex:1;justify-content:center}
 .nav-links a{color:var(--muted);font-weight:500;font-size:14px;padding:7px 16px;border-radius:999px;transition:all .15s}
 .nav-links a:hover{color:var(--text);background:var(--bg-soft);text-decoration:none}
@@ -149,6 +151,9 @@ h1,h2{letter-spacing:-.02em;font-weight:650}
 .btn-primary:hover{background:var(--grad);color:#fff;filter:brightness(1.06);box-shadow:0 6px 18px rgba(97,92,237,.34)}
 .btn-danger{background:#fff;border-color:#f3c9cb;color:var(--danger);box-shadow:none}
 .btn-danger:hover{background:var(--danger);border-color:var(--danger);color:#fff}
+/* 危险确认按钮：破坏性操作（删除/重置）二次确认弹窗的红色实心主按钮 */
+.btn-danger-solid{background:var(--danger)!important;border-color:transparent!important;color:#fff!important;box-shadow:0 4px 14px rgba(229,72,77,.28)}
+.btn-danger-solid:hover{background:#ef5f64!important;filter:none;box-shadow:0 6px 18px rgba(229,72,77,.34)}
 .btn-sm{padding:4px 12px;font-size:13px;border-radius:6px}
 .btn-block{width:100%;justify-content:center}
 
@@ -224,6 +229,9 @@ h1,h2{letter-spacing:-.02em;font-weight:650}
 .auth-card label{display:block;margin-bottom:16px;font-weight:500;color:var(--text);font-size:13px}
 .auth-card input{width:100%;margin-top:6px;padding:11px 14px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-size:15px;font-family:inherit;transition:all .15s}
 .auth-card input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+/* 注册方式单选 */
+.reg-method{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--text);margin-bottom:10px;cursor:pointer}
+.reg-method input[type=radio]{width:15px;height:15px;margin:0;accent-color:var(--primary);cursor:pointer}
 .auth-card .btn-block{margin-top:8px;padding:11px}
 .toolbar-hint{font-size:12px;color:var(--muted);margin-left:auto;padding-right:4px}
 .md-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:2px;padding:5px 8px;border:1px solid var(--border-strong);border-bottom:none;border-radius:var(--radius-sm) var(--radius-sm) 0 0;background:var(--bg-soft);margin-top:12px}
@@ -264,12 +272,15 @@ h1,h2{letter-spacing:-.02em;font-weight:650}
 /* share panel (弹窗内复用) */
 .share-body{padding:22px}
 .share-body label{display:block;margin-bottom:14px;font-weight:500;color:var(--text);font-size:13px}
+.share-body .pwd-row{display:flex;gap:8px;margin-top:6px;align-items:center}
+.share-body .pwd-row input{flex:1;min-width:0;margin-top:0;height:40px;box-sizing:border-box}
+.share-body .pwd-row .btn{flex:none;height:40px;padding-top:0;padding-bottom:0}
 /* 只作用于表单控件，避免误伤 checkbox；number/textarea 同样要覆盖（项目描述、分类排序字段） */
 .share-body input[type=text],.share-body input[type=password],.share-body input[type=number],.share-body textarea,.share-body select{display:block;margin-top:6px;padding:8px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);width:100%;font-family:inherit;font-size:14px;transition:all .15s;background:var(--panel);color:var(--text)}
 .share-body textarea{resize:vertical;min-height:64px;line-height:1.6}
 .share-body input[type=text]:focus,.share-body input[type=password]:focus,.share-body input[type=number]:focus,.share-body textarea:focus,.share-body select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
 .share-body input::placeholder,.share-body textarea::placeholder{color:var(--muted)}
-.check{display:flex;align-items:center;gap:8px;font-size:14px}
+label.check{display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}
 .check input[type=checkbox]{width:16px;height:16px;margin:0;padding:0;border:initial;box-shadow:none;accent-color:var(--primary);cursor:pointer}
 .share-config{margin-top:18px;padding-top:18px;border-top:1px solid var(--border)}
 .share-link{margin:14px 0;display:flex;flex-wrap:wrap;align-items:center;gap:10px}
@@ -317,8 +328,49 @@ body.modal-open{overflow:hidden}
 /* 阅读页品牌与首页/控制台同款：渐变方块 D（或自定义 Logo 图）+ 站点名 */
 .reader-brand a{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:15px;letter-spacing:-.4px;color:var(--text);text-decoration:none}
 .reader-brand a b{display:grid;place-items:center;width:22px;height:22px;border-radius:5px;background:var(--grad);color:#fff;font-size:12px;letter-spacing:0}
-.reader-brand a img.reader-logo{width:22px;height:22px;border-radius:5px;object-fit:cover;display:block}
+.reader-brand a img.reader-logo{width:32px;height:32px;border-radius:7px;object-fit:cover;display:block}
 .reader-head-inner .lang-switch{margin-left:auto}
+
+/* 阅读页：访客头像行 */
+.doc-visitors{display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin:0 0 18px;padding:8px 0;border-top:1px solid var(--border);font-size:12.5px;color:var(--muted)}
+.doc-visitors-label{margin-right:6px}
+.visitor-avatars{display:inline-flex;align-items:center;flex-wrap:wrap;gap:2px}
+.visitor-avatar{width:26px;height:26px;padding:0;border:1px solid var(--border);border-radius:50%;background:var(--panel);cursor:pointer;overflow:hidden;display:grid;place-items:center;font-size:12px;color:var(--muted)}
+.visitor-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.visitor-fallback{line-height:1}
+.visitor-tip{flex:1 1 100%;margin-top:6px;padding:6px 10px;background:var(--bg-soft);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12.5px;color:var(--text)}
+/* 阅读页：分享编辑条与编辑器 */
+.doc-editbar{display:flex;align-items:center;gap:8px;margin-bottom:16px}
+.reader-editor{width:100%;min-height:420px;resize:vertical;padding:16px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;font-size:13.5px;line-height:1.7;background:#fff;margin-bottom:12px}
+.reader-editor:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+/* 阅读页：评论区 */
+.comments{max-width:840px;margin:0 auto;padding:0 24px 80px;border-top:1px solid var(--border)}
+.comments-title{font-size:18px;margin:28px 0 16px}
+.comment-item{display:flex;flex-direction:column;gap:4px;padding:12px 0;border-bottom:1px solid var(--border)}
+.comment-item.is-reply{border-bottom:none;padding:8px 0}
+.comment-head{display:flex;align-items:center;gap:8px;font-size:13px}
+.comment-avatar{width:24px;height:24px;border-radius:50%;overflow:hidden;background:var(--primary-soft);color:var(--primary-dark);display:grid;place-items:center;font-size:12px;font-weight:600;flex:none}
+.comment-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.comment-name{font-weight:600;color:var(--text)}
+.comment-guest-tag{font-size:11px;color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:0 4px}
+.comment-time{color:var(--faint);font-size:12px}
+.comment-actions{margin-left:auto;display:flex;gap:10px}
+.comment-content{font-size:14px;line-height:1.65;white-space:pre-wrap;word-break:break-word;padding-left:32px}
+.comment-reply-to{color:var(--primary);font-weight:600;margin-right:2px}
+/* 回复区：浅色内嵌卡片，与父评论内容对齐（头像 24 + 间距 8 = 36） */
+.comment-replies{margin:4px 0 6px 32px;padding:2px 12px;background:var(--bg-soft);border-radius:10px}
+.comment-replies .comment-item{border-bottom:none;padding:7px 0}
+.comment-replies .comment-item:last-child{padding-bottom:2px}
+.comment-replies .comment-actions .btn-link{font-size:12px}
+.comment-form{margin-top:16px}
+.comment-form textarea{width:100%;padding:10px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:inherit;font-size:14px;resize:vertical}
+.comment-form textarea:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+.comment-form-foot{display:flex;align-items:center;gap:10px;justify-content:flex-end;margin-top:8px}
+.comment-replying{margin-right:auto;font-size:12.5px;cursor:pointer}
+/* 历史版本列表 */
+.revision-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}
+.revision-row:last-child{border-bottom:none}
+.revision-info{color:var(--text)}
 .reader{max-width:840px;margin:0 auto;padding:44px 24px 96px}
 .doc-title{font-size:34px;font-weight:700;letter-spacing:-.03em;margin:0 0 12px;padding:0;border:none}
 /* 阅读页作者信息：头像 + 昵称 + 更新时间 */

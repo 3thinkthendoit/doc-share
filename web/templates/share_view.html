@@ -8,7 +8,7 @@
 <body class="reader-body">
   <header class="reader-header">
     <div class="reader-head-inner">
-      <div class="reader-brand"><a href="/">{{if .SiteLogo}}<img class="reader-logo" src="{{.SiteLogo}}" alt="">{{else}}<b>D</b>{{end}}{{.SiteName}}</a></div>
+      <div class="reader-brand"><a href="/">{{if .SiteLogo}}<img class="reader-logo" src="{{.SiteLogo}}" alt="">{{else}}<img class="reader-logo" src="/static/logo-mark.svg" alt="">{{end}}{{.SiteName}}</a></div>
       {{template "langSwitch" .}}
     </div>
   </header>
@@ -21,16 +21,63 @@
       <span class="doc-author-dot">·</span>
       {{end}}
       <span>{{.doc.UpdatedAt.Format "2006-01-02 15:04"}}</span>
-      {{if .doc}}<span class="doc-author-dot">·</span>
-      <span>{{$.T "share.views" .doc.ViewCount}}</span>{{end}}
+      <span class="doc-author-dot">·</span>
+      <span>{{$.T "share.views" .doc.ViewCount}}</span>
     </div>
+
+    {{if .visitors}}
+    <div class="doc-visitors">
+      <span class="doc-visitors-label">{{$.T "visitors.count" (len .visitors)}}</span>
+      <span class="visitor-avatars">
+        {{range .visitors}}<button type="button" class="visitor-avatar" data-name="{{.Name}}" data-last="{{.LastSeenAt.Format "2006-01-02 15:04"}}" data-visits="{{.Visits}}">
+          {{if .Avatar}}<img src="{{.Avatar}}" alt="">{{else}}<span class="visitor-fallback">{{avatar .Name}}</span>{{end}}
+        </button>{{end}}
+      </span>
+      <div id="visitorTip" class="visitor-tip" hidden></div>
+    </div>
+    {{end}}
+
+    {{if .canEdit}}
+    <div class="doc-editbar">
+      <button type="button" id="editDocBtn" class="btn btn-sm btn-primary">{{$.T "share.editDoc"}}</button>
+      <button type="button" id="cancelEdit" class="btn btn-sm" hidden>{{$.T "common.cancel"}}</button>
+      <button type="button" id="saveEdit" class="btn btn-sm btn-primary" hidden>{{$.T "common.save"}}</button>
+      <span class="muted" style="font-size:12px">{{$.T "share.editHint"}}</span>
+    </div>
+    {{end}}
+
     <div id="preview" class="markdown-body"></div>
+    {{if .canEdit}}<textarea id="editContent" class="reader-editor" spellcheck="false" hidden></textarea>{{end}}
   </article>
+
+  <section class="comments">
+    <h2 class="comments-title">{{$.T "comments.title"}}</h2>
+    <div id="commentList" class="comment-list"><div class="muted">{{$.T "comments.loading"}}</div></div>
+    <form id="commentForm" class="comment-form">
+      <textarea id="commentContent" maxlength="1000" rows="3" placeholder="{{$.T "comments.placeholder"}}"></textarea>
+      <div class="comment-form-foot">
+        <span class="muted" id="replyingTo" hidden></span>
+        <button type="submit" class="btn btn-primary btn-sm">{{$.T "comments.submit"}}</button>
+      </div>
+    </form>
+  </section>
+
   <textarea id="raw-markdown" hidden>{{.doc.Content}}</textarea>
+  <script>
+    window.READER = {
+      docId: {{.doc.ID}},
+      token: "{{.token}}",
+      canEdit: {{.canEdit}},
+      canModerate: {{.canModerate}},
+      loggedIn: {{if .user}}true{{else}}false{{end}},
+      userId: {{if .user}}{{.user.ID}}{{else}}0{{end}}
+    };
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/core.min.js"></script>
   <script src="/static/render.js"></script>
+  <script src="/static/reader.js"></script>
 </body>
 </html>
 {{end}}

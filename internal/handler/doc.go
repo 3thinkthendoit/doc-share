@@ -13,19 +13,43 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// DocsPage 文档列表页（搜索 + 分页）
+// DocsPage 文档列表页（搜索 + 分页 + 来源筛选）
+// 可见范围：自己的文档 ∪ 所参与项目内的他人文档（未挂项目的他人文档不可见）
 func (a *App) DocsPage(c *gin.Context) {
 	q := c.Query("q")
+	origin := c.Query("origin") // ""=全部 mine=我创建的 shared=项目共享
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	if page < 1 {
 		page = 1
 	}
 	const size = 15
 
-	tx := a.DB.Model(&model.Document{})
-	// 非管理员仅可见自己的文档
 	user := middleware.CurrentUser(c)
+	// 当前用户参与的项目（成员路径的可见范围依据）
+	var memberPids []uint
 	if user != nil && !user.IsAdmin() {
+		a.DB.Model(&model.ProjectMember{}).Where("user_id = ?", user.ID).Pluck("project_id", &memberPids)
+	}
+
+	tx := a.DB.Model(&model.Document{})
+	if user != nil && !user.IsAdmin() {
+		switch origin {
+		case "mine":
+			tx = tx.Where("owner_id = ?", user.ID)
+		case "shared":
+			if len(memberPids) == 0 {
+				tx = tx.Where("1 = 0") // 未参与任何项目，直接返回空列表
+			} else {
+				tx = tx.Where("owner_id <> ? AND project_id IN ?", user.ID, memberPids)
+			}
+		default:
+			if len(memberPids) > 0 {
+				tx = tx.Where("owner_id = ? OR project_id IN ?", user.ID, memberPids)
+			} else {
+				tx = tx.Where("owner_id = ?", user.ID)
+			}
+		}
+	} else if origin == "mine" && user != nil {
 		tx = tx.Where("owner_id = ?", user.ID)
 	}
 	// 项目/分类筛选
@@ -56,11 +80,39 @@ func (a *App) DocsPage(c *gin.Context) {
 
 	totalPages := int((total + int64(size) - 1) / int64(size))
 
+	// 逐行编辑权限（批量取成员角色，避免逐条查询）：
+	// 属主/管理员可编辑；edit 角色成员可编辑所参与项目内的他人文档
+	canEdit := make(map[uint]bool, len(docs))
+	if user != nil {
+		roleByPid := make(map[uint]string)
+		if !user.IsAdmin() {
+			var ms []model.ProjectMember
+			a.DB.Where("user_id = ?", user.ID).Find(&ms)
+			for _, m := range ms {
+				roleByPid[m.ProjectID] = m.Role
+			}
+		}
+		for _, d := range docs {
+			if user.IsAdmin() || d.OwnerID == user.ID {
+				canEdit[d.ID] = true
+			} else if roleByPid[d.ProjectID] == model.MemberRoleEdit {
+				canEdit[d.ID] = true
+			}
+		}
+	}
+
 	projects, categories := a.filterOptions(c)
+	// 项目筛选下拉补上参与的项目（他人项目仅用于筛选，不进入新建/导入的归属下拉）
+	if user != nil && !user.IsAdmin() && len(memberPids) > 0 {
+		var extra []model.Project
+		a.DB.Where("id IN ? AND owner_id <> ?", memberPids, user.ID).Order("name asc").Find(&extra)
+		projects = append(projects, extra...)
+	}
 	a.render(c, "docs.html", gin.H{
 		"title":      "文档管理",
 		"docs":       docs,
 		"q":          q,
+		"origin":     origin,
 		"page":       page,
 		"total":      total,
 		"totalPages": totalPages,
@@ -68,6 +120,7 @@ func (a *App) DocsPage(c *gin.Context) {
 		"category":   c.Query("category"),
 		"projects":   projects,
 		"categories": categories,
+		"canEdit":    canEdit,
 	})
 }
 
@@ -95,6 +148,7 @@ func (a *App) NewDocPage(c *gin.Context) {
 		"title":      "新建文档",
 		"doc":        nil,
 		"share":      nil,
+		"canEditDoc": true, // 新建页无权限问题，保存按钮始终可见
 		"projects":   projects,
 		"categories": categories,
 	})
@@ -109,6 +163,10 @@ func (a *App) EditDocPage(c *gin.Context) {
 	var share model.Share
 	hasShare := a.DB.Where("document_id = ?", doc.ID).First(&share).Error == nil
 	projects, categories := a.filterOptions(c)
+	// 只读成员进入编辑页时仅可浏览：分享设置属主专属，前端据此隐藏入口
+	user := middleware.CurrentUser(c)
+	canEditDoc := user == nil || user.IsAdmin() || doc.OwnerID == user.ID ||
+		a.projectRole(doc, user.ID) == model.MemberRoleEdit
 	// M-1：若文档当前挂在可选列表之外的项目/分类（如 admin 分配的），补进下拉，避免 viewer 保存时丢归属
 	if doc.ProjectID != 0 {
 		found := false
@@ -145,6 +203,7 @@ func (a *App) EditDocPage(c *gin.Context) {
 		"doc":        doc,
 		"share":      shareOrNil(hasShare, &share),
 		"shareURL":   shareURL(c, &share, hasShare),
+		"canEditDoc": canEditDoc,
 		"projects":   projects,
 		"categories": categories,
 	})
@@ -172,7 +231,7 @@ func scheme(c *gin.Context) string {
 }
 
 // loadDoc 按 id 加载文档，找不到时写响应并返回 nil；
-// 非管理员只能访问自己拥有的文档（覆盖编辑/删除/分享接口）
+// 可见范围：属主 / 管理员 / 挂项目文档的项目成员（写操作再由 requireDocEdit 细分角色）
 func (a *App) loadDoc(c *gin.Context) *model.Document {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var doc model.Document
@@ -186,14 +245,56 @@ func (a *App) loadDoc(c *gin.Context) *model.Document {
 		return nil
 	}
 	if user := middleware.CurrentUser(c); user != nil && !user.IsAdmin() && doc.OwnerID != user.ID {
-		if isAjax(c) {
-			c.JSON(http.StatusForbidden, gin.H{"error": errDocForbidden})
-		} else {
-			c.String(http.StatusForbidden, errDocForbidden)
+		if a.projectRole(&doc, user.ID) == "" {
+			if isAjax(c) {
+				c.JSON(http.StatusForbidden, gin.H{"error": errDocForbidden})
+			} else {
+				c.String(http.StatusForbidden, errDocForbidden)
+			}
+			return nil
 		}
-		return nil
 	}
 	return &doc
+}
+
+// projectRole 用户在文档所属项目中的成员角色；""=非成员或文档未挂项目
+func (a *App) projectRole(doc *model.Document, userID uint) string {
+	if doc == nil || doc.ProjectID == 0 || userID == 0 {
+		return ""
+	}
+	var m model.ProjectMember
+	if err := a.DB.Where("project_id = ? AND user_id = ?", doc.ProjectID, userID).First(&m).Error; err != nil {
+		return ""
+	}
+	return m.Role
+}
+
+// requireDocEdit 文档写操作权限（改/删/回滚/评论）：属主 / 管理员 / edit 角色项目成员；不通过时写 403
+func (a *App) requireDocEdit(c *gin.Context, doc *model.Document) bool {
+	user := middleware.CurrentUser(c)
+	if user != nil && (user.IsAdmin() || doc.OwnerID == user.ID || a.projectRole(doc, user.ID) == model.MemberRoleEdit) {
+		return true
+	}
+	if isAjax(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": errDocForbidden})
+	} else {
+		c.String(http.StatusForbidden, errDocForbidden)
+	}
+	return false
+}
+
+// requireDocOwner 文档属主级操作（分享设置、评论管理）：仅属主 / 管理员；不通过时写 403
+func (a *App) requireDocOwner(c *gin.Context, doc *model.Document) bool {
+	user := middleware.CurrentUser(c)
+	if user != nil && (user.IsAdmin() || doc.OwnerID == user.ID) {
+		return true
+	}
+	if isAjax(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": errDocForbidden})
+	} else {
+		c.String(http.StatusForbidden, errDocForbidden)
+	}
+	return false
 }
 
 func isAjax(c *gin.Context) bool {
@@ -285,6 +386,9 @@ func (a *App) UpdateDoc(c *gin.Context) {
 	if doc == nil {
 		return
 	}
+	if !a.requireDocEdit(c, doc) {
+		return
+	}
 	var req docReq
 	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": errParam})
@@ -322,6 +426,9 @@ func (a *App) DeleteDoc(c *gin.Context) {
 	if doc == nil {
 		return
 	}
+	if !a.requireDocEdit(c, doc) {
+		return
+	}
 	if err := a.DB.Where("document_id = ?", doc.ID).Delete(&model.Share{}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
 		return
@@ -335,6 +442,7 @@ func (a *App) DeleteDoc(c *gin.Context) {
 
 type shareReq struct {
 	Enabled    bool   `json:"enabled" form:"enabled"`
+	CanEdit    bool   `json:"can_edit" form:"can_edit"` // 登录用户可编辑
 	Password   string `json:"password" form:"password"`
 	ExpireDays int    `json:"expire_days" form:"expire_days"` // 0 表示永不过期
 }
@@ -350,17 +458,28 @@ func (a *App) PreviewDoc(c *gin.Context) {
 	if doc.OwnerID != 0 {
 		a.DB.First(&doc.Owner, doc.OwnerID)
 	}
+	user := middleware.CurrentUser(c)
 	a.render(c, "share_view.html", gin.H{
-		"title":    doc.Title,
-		"rawTitle": true, // 用户文档标题，跳过词典反查避免误译
-		"doc":      doc,
+		"title":       doc.Title,
+		"rawTitle":    true, // 用户文档标题，跳过词典反查避免误译
+		"doc":         doc,
+		"share":       nil,
+		"token":       "",
+		"user":        user,
+		"canEdit":     false, // 编辑走后台编辑器，预览页只读
+		"canModerate": user != nil && (user.ID == doc.OwnerID || user.IsAdmin()),
+		// 预览承诺“不计浏览数”，只读展示最近访客，不写访客记录
+		"visitors": a.recentVisitors(doc.ID),
 	})
 }
 
-// UpsertShare 开启/更新文档分享
+// UpsertShare 开启/更新文档分享（属主级操作：分享一经开启即对公网可见）
 func (a *App) UpsertShare(c *gin.Context) {
 	doc := a.loadDoc(c)
 	if doc == nil {
+		return
+	}
+	if !a.requireDocOwner(c, doc) {
 		return
 	}
 	var req shareReq
@@ -386,6 +505,7 @@ func (a *App) UpsertShare(c *gin.Context) {
 	if !found {
 		share = model.Share{DocumentID: doc.ID, ShareToken: util.RandomHex(16)}
 	}
+	share.CanEdit = req.CanEdit // 编辑权限每次按当前设置覆盖
 	// 密码：留空表示不修改（已存在时）/ 无密码（新建时）
 	if req.Password != "" {
 		hash, _ := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
@@ -416,10 +536,13 @@ func (a *App) UpsertShare(c *gin.Context) {
 	})
 }
 
-// DeleteShare 关闭分享
+// DeleteShare 关闭分享（属主级操作）
 func (a *App) DeleteShare(c *gin.Context) {
 	doc := a.loadDoc(c)
 	if doc == nil {
+		return
+	}
+	if !a.requireDocOwner(c, doc) {
 		return
 	}
 	a.DB.Where("document_id = ?", doc.ID).Delete(&model.Share{})

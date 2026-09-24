@@ -25,8 +25,13 @@
       <option value="0" {{if eq .category "0"}}selected{{end}}>{{$.T "未分类"}}</option>
       {{range .categories}}<option value="{{.ID}}" {{if eq $.category (print .ID)}}selected{{end}}>{{.Name}}</option>{{end}}
     </select>
+    <select name="origin">
+      <option value="">{{$.T "docs.originAll"}}</option>
+      <option value="mine" {{if eq .origin "mine"}}selected{{end}}>{{$.T "docs.originMine"}}</option>
+      {{if and $.user (not $.user.IsAdmin)}}<option value="shared" {{if eq .origin "shared"}}selected{{end}}>{{$.T "docs.originShared"}}</option>{{end}}
+    </select>
     <button type="submit" class="btn">{{$.T "筛选"}}</button>
-    {{if or .project .category}}<a href="/admin/docs{{if .q}}?q={{.q}}{{end}}" class="btn">{{$.T "重置"}}</a>{{end}}
+    {{if or .project .category .origin}}<a href="/admin/docs{{if .q}}?q={{.q}}{{end}}" class="btn">{{$.T "重置"}}</a>{{end}}
   </form>
 
   <div class="panel">
@@ -44,8 +49,10 @@
           <td>{{.UpdatedAt.Format "2006-01-02 15:04"}}</td>
           <td class="col-actions">
             <a href="/admin/docs/{{.ID}}/preview" target="_blank" class="btn btn-sm" title="{{$.T "以读者视图查看（不计浏览数）"}}">{{$.T "查看"}}</a>
+            {{if and $.canEdit (index $.canEdit .ID)}}
             <a href="/admin/docs/{{.ID}}/edit" class="btn btn-sm">{{$.T "编辑"}}</a>
             <button class="btn btn-sm btn-danger" onclick="delDoc({{.ID}}, this)">{{$.T "删除"}}</button>
+            {{end}}
           </td>
         </tr>
       {{else}}
@@ -58,9 +65,9 @@
   {{if gt .totalPages 1}}
   {{/* 翻页保留当前筛选条件 */}}
   <div class="pager">
-    {{if gt .page 1}}<a class="btn" href="/admin/docs?page={{sub .page 1}}&q={{.q}}&project={{.project}}&category={{.category}}">{{$.T "上一页"}}</a>{{end}}
+    {{if gt .page 1}}<a class="btn" href="/admin/docs?page={{sub .page 1}}&q={{.q}}&project={{.project}}&category={{.category}}&origin={{.origin}}">{{$.T "上一页"}}</a>{{end}}
     <span class="muted">{{$.T "docs.pageInfo" .page .totalPages .total}}</span>
-    {{if lt .page .totalPages}}<a class="btn" href="/admin/docs?page={{add .page 1}}&q={{.q}}&project={{.project}}&category={{.category}}">{{$.T "下一页"}}</a>{{end}}
+    {{if lt .page .totalPages}}<a class="btn" href="/admin/docs?page={{add .page 1}}&q={{.q}}&project={{.project}}&category={{.category}}&origin={{.origin}}">{{$.T "下一页"}}</a>{{end}}
   </div>
   {{end}}
 </main>
@@ -118,7 +125,7 @@
 </style>
 <script>
 async function delDoc(id, btn){
-  if(!await UI.confirm('确认删除该文档？删除后不可恢复。')) return;
+  if(!await UI.confirm('确认删除该文档？删除后不可恢复。', { danger: true })) return;
   const res = await fetch('/admin/api/docs/'+id, {method:'DELETE', headers:{'X-Requested-With':'XMLHttpRequest'}});
   if(res.ok){ btn.closest('tr').remove(); UI.toast('已删除', 'success'); }
   else { const d = await res.json().catch(function(){return {};}); UI.alert((d && d.error) || '删除失败'); }

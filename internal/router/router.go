@@ -47,12 +47,20 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		// 系统设置仅 admin
 		admin.GET("/settings", middleware.RequireAdmin(), app.SettingsPage)
 		admin.PUT("/api/settings", middleware.RequireAdmin(), app.UpdateSettings)
+		admin.POST("/api/settings/test-mail", middleware.RequireAdmin(), app.TestMail)
 
-		// 项目管理（个人归属，viewer 管自己的）
+		// 项目管理（个人归属，viewer 管自己的）；成员管理仅属主
 		admin.GET("/projects", app.ProjectsPage)
 		admin.POST("/api/projects", app.CreateProject)
 		admin.PUT("/api/projects/:id", app.UpdateProject)
 		admin.DELETE("/api/projects/:id", app.DeleteProject)
+		admin.GET("/api/projects/:id/members", app.ListProjectMembers)
+		admin.POST("/api/projects/:id/members", app.AddProjectMember)
+		admin.PUT("/api/projects/:id/members/:mid", app.UpdateProjectMember)
+		admin.DELETE("/api/projects/:id/members/:mid", app.RemoveProjectMember)
+
+		// 成员选择器（任意登录用户，仅暴露 id/用户名/昵称）
+		admin.GET("/api/users/options", app.UserOptions)
 
 		// 分类管理（个人归属，viewer 管自己的）
 		admin.GET("/categories", app.CategoriesPage)
@@ -75,6 +83,15 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.POST("/api/docs/:id/share", app.UpsertShare)
 		admin.DELETE("/api/docs/:id/share", app.DeleteShare)
 
+		// 文档评论（作者/管理员，登录身份）
+		admin.GET("/api/docs/:id/comments", app.DocListComments)
+		admin.POST("/api/docs/:id/comments", app.DocAddComment)
+		admin.DELETE("/api/docs/:id/comments/:cid", app.DocDeleteComment)
+
+		// 版本修订（分享编辑覆盖前自动快照，可回滚）
+		admin.GET("/api/docs/:id/revisions", app.ListRevisions)
+		admin.POST("/api/docs/:id/revisions/:rid/rollback", app.RollbackRevision)
+
 		// 图片上传
 		admin.POST("/api/upload", app.Upload)
 
@@ -92,6 +109,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 	r.POST("/login", app.Login)
 	r.GET("/register", app.RegisterPage)
 	r.POST("/register", app.Register)
+	r.POST("/register/email-code", app.SendRegisterCode)
 	r.GET("/logout", app.Logout)
 	r.POST("/logout", app.Logout)
 
@@ -118,6 +136,10 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 	// 分享
 	r.GET("/s/:token", app.ShareView)
 	r.POST("/s/:token", app.ShareSubmit)
+	// 分享页公开协作接口：评论（游客可发，限流）与登录用户的编辑保存
+	r.GET("/s/:token/comments", app.ShareListComments)
+	r.POST("/s/:token/comments", app.ShareAddComment)
+	r.PUT("/s/:token/content", app.ShareSaveContent)
 
 	// 官网首页（公开）；可选认证注入登录态，供首页按用户状态切换 CTA
 	r.GET("/", middleware.OptionalAuth(app.DB, app.Signer), app.Home)

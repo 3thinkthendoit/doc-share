@@ -228,6 +228,7 @@
     saveShareBtn.addEventListener('click', async function () {
       var payload = {
         enabled: enabledEl.checked,
+        can_edit: document.getElementById('shareCanEdit').checked,
         password: document.getElementById('sharePassword').value,
         expire_days: parseInt(document.getElementById('shareExpire').value, 10) || 0,
       };
@@ -250,7 +251,43 @@
       } else if (!enabledEl.checked) {
         document.getElementById('shareLink').style.display = 'none';
       }
+      // 密码明文本机记忆（供复制用），关闭分享时清除
+      var pwdKey = sharePwdKey(data.url || (document.getElementById('shareURL') || {}).textContent);
+      try {
+        if (enabledEl.checked && payload.password.trim()) {
+          localStorage.setItem(pwdKey, payload.password.trim());
+        } else if (!enabledEl.checked && pwdKey) {
+          localStorage.removeItem(pwdKey);
+        }
+      } catch (e) { /* 隐私模式忽略 */ }
       UI.toast(enabledEl.checked ? '分享设置已更新' : '已关闭分享', 'success');
+    });
+  }
+
+  /* ---- 分享密码：生成 / 重置 / 勾选开启时自动填充 ---- */
+  function genPassword() {
+    // 去掉易混淆字符（0/o、1/l/I），6 位数字+字母
+    var chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    var out = '';
+    var buf = new Uint32Array(6);
+    (window.crypto || window.msCrypto).getRandomValues(buf);
+    for (var i = 0; i < 6; i++) out += chars[buf[i] % chars.length];
+    return out;
+  }
+  var pwdInput = document.getElementById('sharePassword');
+  var genPwdBtn = document.getElementById('genPwdBtn');
+  if (genPwdBtn && pwdInput) {
+    genPwdBtn.addEventListener('click', function () {
+      pwdInput.value = genPassword();
+      pwdInput.focus();
+    });
+  }
+  if (enabledEl && pwdInput) {
+    enabledEl.addEventListener('change', function () {
+      // 首次开启且没有历史密码时自动生成，省得手动想
+      if (enabledEl.checked && !pwdInput.value.trim() && !pwdInput.dataset.hasPwd) {
+        pwdInput.value = genPassword();
+      }
     });
   }
 
@@ -260,17 +297,93 @@
     btn.textContent = text;
     setTimeout(function () { btn.textContent = old; }, 1200);
   }
+
+  /* ---- 历史版本：查看修订列表 + 一键回滚 ---- */
+  var revisionsModal = document.getElementById('revisionsModal');
+  var revisionsBtn = document.getElementById('revisionsBtn');
+  if (revisionsModal && revisionsBtn) {
+    UI.bindModal(revisionsModal);
+    var revList = document.getElementById('revisionsList');
+    revisionsBtn.addEventListener('click', async function () {
+      UI.openModal(revisionsModal);
+      revList.innerHTML = '<div class="muted">加载中…</div>';
+      try {
+        var res = await fetch('/admin/api/docs/' + docID() + '/revisions', {
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+        var data = await res.json();
+        var revs = (data && data.revisions) || [];
+        revList.innerHTML = '';
+        if (!revs.length) {
+          var empty = document.createElement('div');
+          empty.className = 'muted';
+          empty.textContent = UI.t('暂无历史版本');
+          revList.appendChild(empty);
+          return;
+        }
+        revs.forEach(function (r) {
+          var row = document.createElement('div');
+          row.className = 'revision-row';
+          var info = document.createElement('span');
+          info.className = 'revision-info';
+          info.textContent = (r.created_at || '').replace('T', ' ').substring(0, 16) + ' · ' + (r.editor_name || '-');
+          row.appendChild(info);
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'btn btn-sm';
+          btn.textContent = UI.t('恢复此版本');
+          btn.addEventListener('click', async function () {
+            if (!await UI.confirm('回滚到此版本？当前内容会先存为新版本。')) return;
+            btn.disabled = true;
+            var res2 = await fetch('/admin/api/docs/' + docID() + '/revisions/' + r.id + '/rollback', {
+              method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            if (res2.ok) { location.reload(); return; }
+            var d2 = await res2.json().catch(function () { return {}; });
+            UI.alert((d2 && d2.error) || '回滚失败');
+            btn.disabled = false;
+          });
+          row.appendChild(btn);
+          revList.appendChild(row);
+        });
+      } catch (e) {
+        revList.innerHTML = '<div class="muted">加载失败</div>';
+      }
+    });
+  }
 })();
 
+// 分享密码本机记忆的存储键（从 /s/<token> 链接中提取 token）
+function sharePwdKey(url) {
+  var m = String(url || '').match(/\/s\/([A-Za-z0-9]+)/);
+  return m ? 'ds_share_pwd_' + m[1] : '';
+}
+function storedSharePwd(url) {
+  var key = sharePwdKey(url);
+  if (!key) return '';
+  try { return localStorage.getItem(key) || ''; } catch (e) { return ''; }
+}
+
 async function copyShare() {
-  var url = document.getElementById('shareURL').textContent.trim();
+  var urlEl = document.getElementById('shareURL');
+  var url = (urlEl && urlEl.textContent || '').trim();
   if (!url) { UI.toast('暂无分享链接', 'error'); return; }
+  // 组合复制：标题 + 链接 + 访问密码（输入框里的新密码优先，其次本机记忆的密码）
+  var titleEl = document.getElementById('docTitle');
+  var title = (titleEl && titleEl.value || '').trim();
+  var pwdInput = document.getElementById('sharePassword');
+  var pwd = (pwdInput && pwdInput.value.trim()) || storedSharePwd(url);
+  var lines = [];
+  if (title) lines.push(UI.t('标题：') + title);
+  lines.push(UI.t('链接：') + url);
+  lines.push(UI.t('访问密码：') + (pwd || UI.t('无')));
+  var text = lines.join('\n');
   try {
     if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(text);
     } else {
       var ta = document.createElement('textarea');
-      ta.value = url;
+      ta.value = text;
       ta.style.position = 'fixed';
       ta.style.opacity = '0';
       document.body.appendChild(ta);

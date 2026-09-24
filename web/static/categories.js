@@ -46,7 +46,7 @@ categoryForm.addEventListener('submit', async function (e) {
 });
 
 async function delCategory(btn) {
-  var ok = await UI.confirm(UI.t('确定删除分类「{0}」？其下文档将变为未分类。', btn.dataset.name));
+  var ok = await UI.confirm(UI.t('确定删除分类「{0}」？其下文档将变为未分类。', btn.dataset.name), { danger: true });
   if (!ok) return;
   try {
     var res = await fetch('/admin/api/categories/' + btn.dataset.id, {

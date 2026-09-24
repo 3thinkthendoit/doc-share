@@ -7,6 +7,7 @@ import (
 
 	"doc-share/internal/middleware"
 	"doc-share/internal/model"
+	"doc-share/internal/util"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -102,25 +103,34 @@ func (a *App) ChangePassword(c *gin.Context) {
 
 // RegisterPage 注册页（公开）
 func (a *App) RegisterPage(c *gin.Context) {
-	a.render(c, "register.html", gin.H{"title": "注册"})
+	s := a.Settings()
+	a.render(c, "register.html", gin.H{
+		"title": "注册", "settings": s, "method": s.RegMethod, "identifier": "", "username": "",
+	})
 }
 
-// Register 用户注册：默认普通用户（viewer），成功后自动登录
+// Register 用户注册：默认普通用户（viewer），成功后自动登录。
+// 注册方式由系统设置唯一决定（username / email / phone），前端不传方式：
+//   - 用户名注册：账号 + 密码（图形验证码防批量注册）
+//   - 邮箱注册：账号 + 邮箱 + SMTP 验证码（免图形验证码）
+//   - 手机注册：账号 + 手机号（短信网关未接入，暂以图形验证码替代）
 func (a *App) Register(c *gin.Context) {
-	username := strings.TrimSpace(c.PostForm("username"))
+	s := a.Settings()
+	method := s.RegMethod
 	password := c.PostForm("password")
+	username := strings.TrimSpace(c.PostForm("username"))
+	identifier := strings.TrimSpace(c.PostForm("identifier"))
 
+	var email, phone string
 	renderErr := func(msg string) {
-		a.render(c, "register.html", gin.H{"title": "注册", "error": msg, "username": username})
+		a.render(c, "register.html", gin.H{
+			"title": "注册", "error": msg, "settings": s,
+			"username": username, "identifier": identifier, "method": method,
+		})
 	}
 
-	// 与登录同样先验验证码，防批量机器注册（一次性，失败即消耗）
-	if !a.CaptchaMgr.Verify(c.PostForm("captcha_id"), c.PostForm("captcha"), true) {
-		renderErr("验证码错误或已过期")
-		return
-	}
 	if username == "" || len(username) > 50 {
-		renderErr("用户名不能为空且不超过 50 字符")
+		renderErr("账号不能为空且不超过 50 字符")
 		return
 	}
 	if len(password) < 6 {
@@ -128,11 +138,49 @@ func (a *App) Register(c *gin.Context) {
 		return
 	}
 
+	// 图形验证码：邮箱注册免（邮箱验证码即所有权证明）；用户名/手机保留防批量注册
+	if method != "email" {
+		if !a.CaptchaMgr.Verify(c.PostForm("captcha_id"), c.PostForm("captcha"), true) {
+			renderErr("验证码错误或已过期")
+			return
+		}
+	}
+
 	var exists int64
 	a.DB.Model(&model.User{}).Where("username = ?", username).Count(&exists)
 	if exists > 0 {
-		renderErr("用户名已存在")
+		renderErr("该账号已被注册")
 		return
+	}
+
+	switch method {
+	case "email":
+		if !util.ValidEmail(identifier) {
+			renderErr("邮箱格式不正确")
+			return
+		}
+		a.DB.Model(&model.User{}).Where("email = ?", identifier).Count(&exists)
+		if exists > 0 {
+			renderErr("该邮箱已被注册")
+			return
+		}
+		// 验证码放在所有前置校验之后：一次性资源，避免其它错误白白消耗
+		if !a.verifyMailCode(identifier, c.PostForm("code")) {
+			renderErr("邮箱验证码错误或已过期")
+			return
+		}
+		email = identifier
+	case "phone":
+		if !util.ValidPhone(identifier) {
+			renderErr("手机号格式不正确")
+			return
+		}
+		a.DB.Model(&model.User{}).Where("phone = ?", identifier).Count(&exists)
+		if exists > 0 {
+			renderErr("该手机号已被注册")
+			return
+		}
+		phone = identifier
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -144,12 +192,14 @@ func (a *App) Register(c *gin.Context) {
 		Username:     username,
 		PasswordHash: string(hash),
 		Nickname:     username,
+		Email:        email,
+		Phone:        phone,
 		Role:         model.RoleViewer, // 注册默认普通用户
 		Status:       model.StatusEnabled,
 	}
 	if err := a.DB.Create(&user).Error; err != nil {
 		// 并发注册时依赖 username 唯一索引兜底
-		renderErr("注册失败，用户名可能已被占用")
+		renderErr("注册失败，账号可能已被占用")
 		return
 	}
 

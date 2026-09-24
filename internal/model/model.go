@@ -1,6 +1,7 @@
 package model
 
 import (
+	"strings"
 	"time"
 )
 
@@ -10,6 +11,8 @@ type User struct {
 	Username     string     `gorm:"size:64;uniqueIndex;not null" json:"username"`
 	PasswordHash string     `gorm:"size:255;not null" json:"-"`
 	Nickname     string     `gorm:"size:64" json:"nickname"`
+	Email        string     `gorm:"size:255;index" json:"email"`                 // 邮箱（唯一性应用层校验，空串允许多个）
+	Phone        string     `gorm:"size:32;index" json:"phone"`                  // 手机号（同上）
 	Avatar       string     `gorm:"size:500" json:"avatar"`                      // 头像 URL（/uploads/... 或外链），空则显示首字圆底
 	Role         string     `gorm:"size:16;not null;default:viewer" json:"role"` // admin / viewer
 	Status       int        `gorm:"not null;default:1" json:"status"`            // 1 启用 0 禁用
@@ -24,6 +27,9 @@ const (
 
 	StatusEnabled  = 1
 	StatusDisabled = 0
+
+	MemberRoleView = "view" // 项目成员：只读
+	MemberRoleEdit = "edit" // 项目成员：可增删改项目内文档与评论
 )
 
 // IsAdmin 判断是否管理员
@@ -31,16 +37,38 @@ func (u *User) IsAdmin() bool {
 	return u.Role == RoleAdmin
 }
 
-// Project 项目（文档归属容器，个人所有）
+// DisplayName 展示名：昵称为空时回退用户名
+func (u *User) DisplayName() string {
+	if u == nil {
+		return ""
+	}
+	if strings.TrimSpace(u.Nickname) != "" {
+		return u.Nickname
+	}
+	return u.Username
+}
+
+// Project 项目（文档归属容器，属主私有；可添加成员按角色协作）
 type Project struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
 	Name        string    `gorm:"size:100;not null" json:"name"`
 	Description string    `gorm:"size:500" json:"description"`
 	OwnerID     uint      `gorm:"index;not null" json:"owner_id"`
 	Owner       User      `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
-	DocCount    int64     `gorm:"-" json:"doc_count"` // 子查询统计，非数据库列
+	DocCount    int64     `gorm:"-" json:"doc_count"`            // 子查询统计，非数据库列
+	MemberCount int64     `gorm:"-" json:"member_count"`         // 成员数统计，非数据库列
+	Role        string    `gorm:"-" json:"role,omitempty"`       // 当前用户在该项目中的成员角色（列表回填，空=属主/无关联）
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// ProjectMember 项目成员（挂项目的文档对成员按角色可见）；成员管理仅项目属主
+type ProjectMember struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	ProjectID uint      `gorm:"uniqueIndex:idx_member_project_user;not null" json:"project_id"`
+	UserID    uint      `gorm:"uniqueIndex:idx_member_project_user;not null" json:"user_id"`
+	Role      string    `gorm:"size:16;not null;default:view" json:"role"` // view / edit
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // Category 分类（个人所有，与 Project 同构；admin 可见全部）
@@ -93,7 +121,8 @@ type Share struct {
 	ID         uint       `gorm:"primaryKey" json:"id"`
 	DocumentID uint       `gorm:"uniqueIndex;not null" json:"document_id"`
 	ShareToken string     `gorm:"size:32;uniqueIndex;not null" json:"share_token"`
-	Password   string     `gorm:"size:255" json:"-"` // bcrypt 哈希，空表示无密码
+	CanEdit    bool       `gorm:"not null;default:false" json:"can_edit"` // 登录用户可编辑
+	Password   string     `gorm:"size:255" json:"-"`                      // bcrypt 哈希，空表示无密码
 	ExpireAt   *time.Time `json:"expire_at"`         // nil 表示永不过期
 	CreatedAt  time.Time  `json:"created_at"`
 	UpdatedAt  time.Time  `json:"updated_at"`
@@ -121,4 +150,38 @@ type SystemSetting struct {
 	Key       string    `gorm:"primaryKey;size:64" json:"key"`
 	Value     string    `gorm:"type:text" json:"value"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// DocumentRevision 文档内容修订快照：分享编辑等覆盖保存前自动创建，支持回滚
+type DocumentRevision struct {
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	DocumentID uint      `gorm:"index;not null" json:"document_id"`
+	EditorID   uint      `gorm:"not null;default:0" json:"editor_id"` // 0=系统
+	EditorName string    `gorm:"size:64" json:"editor_name"`
+	Content    string    `gorm:"type:longtext" json:"content"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// Comment 文档评论：分享页/阅读页可发，游客以游客身份（UserID=0，GuestName）发表
+type Comment struct {
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	DocumentID uint      `gorm:"index;not null" json:"document_id"`
+	ParentID   uint      `gorm:"index;not null;default:0" json:"parent_id"` // 0=顶层，否则为被回复的评论 ID（仅一级回复）
+	UserID     uint      `gorm:"index;not null;default:0" json:"user_id"`   // 0=游客
+	GuestName  string    `gorm:"size:64" json:"guest_name"`                 // 游客昵称（UserID=0 时有效）
+	Content    string    `gorm:"size:1000;not null" json:"content"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// DocumentVisitor 文档历史访客（按 文档+身份 去重，同一访客只留一条并累计次数）
+type DocumentVisitor struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	DocumentID  uint      `gorm:"uniqueIndex:idx_visitor_doc_identity;not null" json:"document_id"`
+	Identity    string    `gorm:"size:64;uniqueIndex:idx_visitor_doc_identity;not null" json:"identity"` // u:<uid> / g:<游客名>
+	UserID      uint      `gorm:"index" json:"user_id"`                                                  // 0=游客
+	Name        string    `gorm:"size:64;not null" json:"name"`
+	Avatar      string    `gorm:"size:500" json:"avatar"`
+	Visits      int64     `gorm:"not null;default:1" json:"visits"`
+	FirstSeenAt time.Time `json:"first_seen_at"`
+	LastSeenAt  time.Time `json:"last_seen_at"`
 }

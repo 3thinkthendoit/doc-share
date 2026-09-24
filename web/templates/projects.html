@@ -13,23 +13,29 @@
   <div class="panel">
     <table class="table" id="projectTable">
       <thead>
-        <tr><th>{{$.T "名称"}}</th><th>{{$.T "描述"}}</th>{{if and .user .user.IsAdmin}}<th>{{$.T "所有者"}}</th>{{end}}<th>{{$.T "文档数"}}</th><th>{{$.T "更新时间"}}</th><th>{{$.T "操作"}}</th></tr>
+        <tr><th>{{$.T "名称"}}</th><th>{{$.T "描述"}}</th>{{if and .user .user.IsAdmin}}<th>{{$.T "所有者"}}</th>{{end}}<th>{{$.T "文档数"}}</th><th>{{$.T "proj.members"}}</th><th>{{$.T "更新时间"}}</th><th>{{$.T "操作"}}</th></tr>
       </thead>
       <tbody>
         {{range .projects}}
         <tr>
-          <td>{{.Name}}</td>
+          <td>{{.Name}}{{if .Role}} <span class="tag">{{if eq .Role "edit"}}{{$.T "proj.roleEdit"}}{{else}}{{$.T "proj.roleView"}}{{end}}</span>{{end}}</td>
           <td class="cell-muted">{{if .Description}}{{.Description}}{{else}}—{{end}}</td>
           {{if $.user}}{{if $.user.IsAdmin}}<td>{{.Owner.Nickname}}</td>{{end}}{{end}}
           <td>{{.DocCount}}</td>
+          <td>{{.MemberCount}}</td>
           <td>{{.UpdatedAt.Format "2006-01-02 15:04"}}</td>
           <td>
+            {{if and $.user (or $.user.IsAdmin (eq .OwnerID $.user.ID))}}
+            <button class="btn btn-sm" data-id="{{.ID}}" onclick="openMembers(this)">{{$.T "proj.members"}}</button>
             <button class="btn btn-sm" data-id="{{.ID}}" data-name="{{.Name}}" data-desc="{{.Description}}" onclick="editProject(this)">{{$.T "编辑"}}</button>
             <button class="btn btn-sm btn-danger" data-id="{{.ID}}" data-name="{{.Name}}" onclick="delProject(this)">{{$.T "删除"}}</button>
+            {{else}}
+            <a class="btn btn-sm" href="/admin/docs?project={{.ID}}">{{$.T "proj.viewDocs"}}</a>
+            {{end}}
           </td>
         </tr>
         {{else}}
-        <tr class="empty-row"><td colspan="{{if and $.user $.user.IsAdmin}}6{{else}}5{{end}}">{{$.T "暂无项目"}}</td></tr>
+        <tr class="empty-row"><td colspan="{{if and $.user $.user.IsAdmin}}7{{else}}6{{end}}">{{$.T "暂无项目"}}</td></tr>
         {{end}}
       </tbody>
     </table>
@@ -59,6 +65,45 @@
     </form>
   </div>
 </div>
+
+<!-- 项目成员管理弹窗：属主添加/移除成员、调整查看/编辑角色 -->
+<div class="modal-overlay" id="membersModal" hidden>
+  <div class="modal modal-sm" role="dialog" aria-modal="true" aria-label="{{$.T "proj.members"}}">
+    <div class="modal-head">
+      <h2>{{$.T "proj.members"}}</h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+    </div>
+    <div class="modal-body import-body" style="padding:18px 22px;overflow:visible">
+      <div id="memberList" class="member-list"></div>
+      <div class="member-add">
+        <div class="member-pick">
+          <input type="text" id="memberUserInput" autocomplete="off" placeholder="{{$.T "proj.selectUser"}}" aria-label="{{$.T "proj.selectUser"}}">
+          <input type="hidden" id="memberUserId">
+          <div id="memberUserList" class="member-suggest" hidden></div>
+        </div>
+        <select id="memberRole" aria-label="{{$.T "proj.roleEdit"}}">
+          <option value="view">{{$.T "proj.roleView"}}</option>
+          <option value="edit">{{$.T "proj.roleEdit"}}</option>
+        </select>
+        <button type="button" id="memberAddBtn" class="btn btn-sm btn-primary">{{$.T "proj.addMember"}}</button>
+      </div>
+    </div>
+  </div>
+</div>
+<style>
+.member-list{display:flex;flex-direction:column;gap:8px;max-height:280px;overflow:auto;margin-bottom:14px}
+.member-row{display:flex;align-items:center;gap:10px;font-size:13.5px}
+.member-row .grow{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.member-row select{padding:6px 10px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:inherit;font-size:13px;background:var(--panel);color:var(--text);cursor:pointer}
+.member-add{display:flex;gap:8px;align-items:center}
+.member-pick{flex:1;min-width:0;position:relative}
+.member-pick input[type=text]{width:100%;height:38px;padding:0 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:inherit;font-size:13.5px;background:var(--panel);color:var(--text);box-sizing:border-box}
+.member-suggest{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--panel);border:1px solid var(--border-strong);border-radius:var(--radius-sm);box-shadow:var(--shadow);max-height:180px;overflow:auto;z-index:10}
+.member-suggest-item{padding:8px 12px;font-size:13.5px;cursor:pointer}
+.member-suggest-item:hover{background:var(--bg-soft)}
+.member-add select{height:38px;padding:0 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:inherit;font-size:13.5px;background:var(--panel);color:var(--text);cursor:pointer;box-sizing:border-box}
+.member-add .btn{height:38px;padding-top:0;padding-bottom:0}
+</style>
 
 <script src="/static/projects.js"></script>
 </body>

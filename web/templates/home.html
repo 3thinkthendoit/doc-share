@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{$.T "DocShare · 把 Markdown 变成能分享的文档站"}}</title>
   <meta name="description" content="{{$.T "单二进制部署的 Markdown 文档分享系统：实时预览、密码分享、项目分类、HMAC 签名开放 API、五语界面。"}}">
+  <link rel="icon" type="image/svg+xml" href="/static/logo-mark.svg">
   <link rel="stylesheet" href="/static/landing.css">
   <script>
     // 首屏绘制前就把主题钉下来，避免闪色；没有历史偏好时默认浅色，用户手动切过则尊重其选择
@@ -21,7 +22,7 @@
 <div class="l-bgfx"></div>
 
 <nav class="l-nav">
-  <a class="l-logo" href="/">{{if .SiteLogo}}<img class="l-logo-img" src="{{.SiteLogo}}" alt="">{{else}}<b>D</b>{{end}}{{.SiteName}}</a>
+  <a class="l-logo" href="/">{{if .SiteLogo}}<img class="l-logo-img" src="{{.SiteLogo}}" alt="">{{else}}<img class="l-logo-img" src="/static/logo-mark.svg" alt="">{{end}}{{.SiteName}}</a>
   <div class="l-nav-links">
     <a href="#features">{{$.T "产品能力"}}</a>
     <a href="#workflow">{{$.T "工作流"}}</a>
@@ -292,7 +293,7 @@ sign = <span class="l-tok-h">HMAC-SHA256</span>(Secret, base)
   <div class="l-wrap">
     <div class="l-foot-grid">
       <div>
-        <a class="l-logo" href="/">{{if .SiteLogo}}<img class="l-logo-img" src="{{.SiteLogo}}" alt="">{{else}}<b>D</b>{{end}}{{.SiteName}}</a>
+        <a class="l-logo" href="/">{{if .SiteLogo}}<img class="l-logo-img" src="{{.SiteLogo}}" alt="">{{else}}<img class="l-logo-img" src="/static/logo-mark.svg" alt="">{{end}}{{.SiteName}}</a>
         <p class="l-foot-desc">{{$.T "轻量 Markdown 文档分享系统，Go 单二进制，内网可私有化部署。"}}</p>
       </div>
       <div>

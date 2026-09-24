@@ -45,7 +45,7 @@ projectForm.addEventListener('submit', async function (e) {
 });
 
 async function delProject(btn) {
-  var ok = await UI.confirm(UI.t('确定删除项目「{0}」？其下文档将回到未分组。', btn.dataset.name));
+  var ok = await UI.confirm(UI.t('确定删除项目「{0}」？其下文档将回到未分组。', btn.dataset.name), { danger: true });
   if (!ok) return;
   try {
     var res = await fetch('/admin/api/projects/' + btn.dataset.id, {
@@ -60,4 +60,144 @@ async function delProject(btn) {
   } catch (err) {
     UI.toast('网络错误，删除失败', 'error');
   }
+}
+
+/* ---- 项目成员管理（属主）：列表/添加/改角色/移除 ---- */
+var membersModal = document.getElementById('membersModal');
+var memberList = document.getElementById('memberList');
+var memberUserInput = document.getElementById('memberUserInput');
+var memberUserId = document.getElementById('memberUserId');
+var memberUserList = document.getElementById('memberUserList');
+var memberRole = document.getElementById('memberRole');
+var memberAddBtn = document.getElementById('memberAddBtn');
+var memberProjectId = 0;
+
+if (membersModal) UI.bindModal(membersModal);
+
+// onclick 属性调用，需挂在全局
+window.openMembers = function (btn) {
+  memberProjectId = btn.dataset.id;
+  UI.openModal(membersModal);
+  loadMembers();
+};
+
+// 成员搜索：按需查询启用用户（后端限 20 条），避免全量枚举
+var memberSearchTimer = 0;
+memberUserInput.addEventListener('input', function () {
+  memberUserId.value = '';
+  clearTimeout(memberSearchTimer);
+  var q = memberUserInput.value.trim();
+  if (!q) { memberUserList.hidden = true; return; }
+  memberSearchTimer = setTimeout(function () { searchMemberUsers(q); }, 250);
+});
+memberUserInput.addEventListener('blur', function () { memberUserList.hidden = true; });
+
+function searchMemberUsers(q) {
+  fetch('/admin/api/users/options?q=' + encodeURIComponent(q), {
+    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+  })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (memberUserInput.value.trim() !== q) return; // 输入已变化，丢弃过期结果
+      var opts = (d && d.data) || [];
+      memberUserList.innerHTML = '';
+      if (!opts.length) { memberUserList.hidden = true; return; }
+      opts.forEach(function (u) {
+        var item = mEl('div', 'member-suggest-item', u.nickname + ' (' + u.username + ')');
+        item.addEventListener('mousedown', function () { // mousedown 先于 input 的 blur
+          memberUserId.value = u.id;
+          memberUserInput.value = u.nickname + ' (' + u.username + ')';
+          memberUserList.hidden = true;
+        });
+        memberUserList.appendChild(item);
+      });
+      memberUserList.hidden = false;
+    })
+    .catch(function () { memberUserList.hidden = true; });
+}
+
+async function loadMembers() {
+  memberList.innerHTML = '<div class="muted">' + UI.t('加载中…') + '</div>';
+  try {
+    var res = await fetch('/admin/api/projects/' + memberProjectId + '/members', {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    var data = await res.json();
+    var ms = (data && data.members) || [];
+    memberList.innerHTML = '';
+    if (!ms.length) {
+      memberList.appendChild(mEl('div', 'muted', UI.t('暂无成员')));
+      return;
+    }
+    ms.forEach(function (m) { memberList.appendChild(memberRow(m)); });
+  } catch (e) {
+    memberList.innerHTML = '<div class="muted">' + UI.t('加载失败') + '</div>';
+  }
+}
+
+function mEl(tag, cls, text) {
+  var n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+
+function memberRow(m) {
+  var row = mEl('div', 'member-row');
+  row.appendChild(mEl('span', 'grow', m.nickname + ' (' + m.username + ')'));
+  var sel = document.createElement('select');
+  [['view', UI.t('proj.roleView')], ['edit', UI.t('proj.roleEdit')]].forEach(function (p) {
+    var o = document.createElement('option');
+    o.value = p[0];
+    o.textContent = p[1];
+    sel.appendChild(o);
+  });
+  sel.value = m.role;
+  sel.addEventListener('change', async function () {
+    var res = await fetch('/admin/api/projects/' + memberProjectId + '/members/' + m.id, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      body: JSON.stringify({ role: sel.value })
+    });
+    if (res.ok) { UI.toast(UI.t('已保存'), 'success'); return; }
+    var d = await res.json().catch(function () { return {}; });
+    UI.toast((d && d.error) || UI.t('更新失败'), 'error');
+    loadMembers();
+  });
+  row.appendChild(sel);
+  var del = mEl('button', 'btn btn-sm btn-danger', UI.t('proj.remove'));
+  del.type = 'button';
+  del.addEventListener('click', async function () {
+    if (!await UI.confirm(UI.t('移除成员「{0}」？其将无法再访问项目内文档。', m.nickname + ' (' + m.username + ')'), { danger: true })) return;
+    var res = await fetch('/admin/api/projects/' + memberProjectId + '/members/' + m.id, {
+      method: 'DELETE', headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    if (res.ok) { loadMembers(); } else { UI.toast(UI.t('删除失败'), 'error'); }
+  });
+  row.appendChild(del);
+  return row;
+}
+
+if (memberAddBtn) {
+  memberAddBtn.addEventListener('click', async function () {
+    var uid = memberUserId.value;
+    if (!uid) { memberUserInput.focus(); return; }
+    memberAddBtn.disabled = true;
+    try {
+      var res = await fetch('/admin/api/projects/' + memberProjectId + '/members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({ user_id: parseInt(uid, 10), role: memberRole.value })
+      });
+      var d = await res.json();
+      if (!res.ok) { UI.alert((d && d.error) || UI.t('创建失败')); return; }
+      memberUserId.value = '';
+      memberUserInput.value = '';
+      await loadMembers();
+    } catch (e) {
+      UI.alert(UI.t('网络错误，创建失败'));
+    } finally {
+      memberAddBtn.disabled = false;
+    }
+  });
 }

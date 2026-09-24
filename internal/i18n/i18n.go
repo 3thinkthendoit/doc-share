@@ -156,19 +156,26 @@ func (b *Bundle) TranslateMap(locale string, m map[string]any) int {
 	return n
 }
 
-// SourceJSON 生成“中文原文 → 目标语言译文”的映射，供前端注入。
-// 脚本里已有的中文字面量可直接查表，不必先改造成 key，迁移风险低。
+// SourceJSON 生成前端 UI.t 用的翻译映射，包含两类键：
+//   - 中文原文 → 译文（脚本里已有的中文字面量可直接查表，迁移风险低）
+//   - i18n key → 译文（脚本里直接传 key 也能翻译，如 UI.t('proj.roleView')）
+//
+// 默认语言（zh-CN）也返回 key → 原文 的映射，保证 key 写法在任何语言下都有值。
 func (b *Bundle) SourceJSON(locale string) string {
-	if locale == Default || locale == "" {
-		return "{}"
+	if locale == "" {
+		locale = Default
 	}
-	m := make(map[string]string, len(b.dicts[Default]))
+	m := make(map[string]string, len(b.dicts[Default])*2)
 	for k, v := range b.dicts[Default] {
-		if tr := b.T(locale, k); tr != v {
-			m[v] = tr
+		tr := b.T(locale, k)
+		if v != k {
+			m[v] = tr // 中文原文 → 译文
+		}
+		if tr != k {
+			m[k] = tr // i18n key → 译文
 		}
 	}
-	// 同一中文原文可能对应多个 key，取翻译后的一条即可
+	// 同一原文/key 冲突时后写覆盖，值一致或差异极小，可接受
 	// encoding/json 默认转义 < > &，可安全嵌入 <script> 标签
 	j, err := json.Marshal(m)
 	if err != nil {

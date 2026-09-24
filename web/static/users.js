@@ -112,7 +112,7 @@ async function resetPwd(id) {
 }
 
 async function delUser(id) {
-  if (!await UI.confirm('确认删除该用户？')) return;
+  if (!await UI.confirm('确认删除该用户？', { danger: true })) return;
   var res = await fetch('/admin/api/users/' + id, {
     method: 'DELETE',
     headers: { 'X-Requested-With': 'XMLHttpRequest' },

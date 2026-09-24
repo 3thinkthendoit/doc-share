@@ -3,23 +3,87 @@ package handler
 import (
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
 	"doc-share/internal/model"
+	"doc-share/internal/util"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
+
+// TestMail 发送测试邮件（SMTP 配置连通性验证，仅 admin）
+func (a *App) TestMail(c *gin.Context) {
+	var req struct {
+		To string `json:"to"`
+	}
+	if err := c.ShouldBind(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+	to := strings.TrimSpace(req.To)
+	if !util.ValidEmail(to) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "收件地址格式不正确"})
+		return
+	}
+	s := a.Settings()
+	if s.SMTPHost == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请先填写并保存 SMTP 服务器配置"})
+		return
+	}
+	subject := s.SiteName + " 邮件服务测试"
+	body := "<p>这是一封测试邮件，收到即说明 SMTP 配置正确。</p><p>发送时间：" + time.Now().Format("2006-01-02 15:04:05") + "</p>"
+	if err := util.SendMail(s.MailConfig(), to, subject, body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
 
 // SiteSettings 站点设置（内存缓存，保存时失效）
 type SiteSettings struct {
 	SiteName   string
 	SiteLogo   string
 	SiteDomain string
+
+	// 注册方式（单选）：username / email / phone
+	RegMethod string
+
+	// SMTP 发信配置（邮箱注册验证码用）
+	SMTPHost     string
+	SMTPPort     int
+	SMTPUser     string
+	SMTPPass     string
+	SMTPFrom     string
+	SMTPFromName string // 发件人显示名称（收件箱里显示的名字，空则显示裸地址）
+	SMTPSSL      bool
 }
 
 // 常用默认值
 const defaultSiteName = "DocShare"
+
+// 系统设置键名（注册方式与 SMTP）
+const (
+	keyRegMethod = "reg_method"
+	keySMTPHost  = "smtp_host"
+	keySMTPPort    = "smtp_port"
+	keySMTPUser    = "smtp_user"
+	keySMTPPass    = "smtp_pass"
+	keySMTPFrom    = "smtp_from"
+	keySMTPFromName = "smtp_from_name"
+	keySMTPSSL     = "smtp_ssl"
+)
+
+func boolVal(s string) bool { return s == "1" || s == "true" }
+
+func boolStr(b bool) string {
+	if b {
+		return "1"
+	}
+	return "0"
+}
 
 // Settings 读取站点设置：首次从 DB 加载后缓存，保存时由 UpdateSettings 失效
 func (a *App) Settings() SiteSettings {
@@ -31,9 +95,14 @@ func (a *App) Settings() SiteSettings {
 	}
 	a.setMu.RUnlock()
 
-	s := SiteSettings{SiteName: defaultSiteName}
+	s := SiteSettings{
+		SiteName:  defaultSiteName,
+		RegMethod: "username", // 默认用户名注册
+		SMTPPort:  465,
+		SMTPSSL:   true,
+	}
 	var rows []model.SystemSetting
-	if err := a.DB.Where("`key` IN ?", []string{model.SettingSiteName, model.SettingSiteLogo, model.SettingSiteDomain}).Find(&rows).Error; err != nil {
+	if err := a.DB.Find(&rows).Error; err != nil {
 		return s // 查询失败不写缓存，下次请求重试；本次降级为默认值
 	}
 	for _, r := range rows {
@@ -46,6 +115,26 @@ func (a *App) Settings() SiteSettings {
 			s.SiteLogo = strings.TrimSpace(r.Value)
 		case model.SettingSiteDomain:
 			s.SiteDomain = strings.TrimSpace(r.Value)
+		case keyRegMethod:
+			if m := strings.TrimSpace(r.Value); m == "username" || m == "email" || m == "phone" {
+				s.RegMethod = m
+			}
+		case keySMTPHost:
+			s.SMTPHost = strings.TrimSpace(r.Value)
+		case keySMTPPort:
+			if p, err := strconv.Atoi(strings.TrimSpace(r.Value)); err == nil && p > 0 {
+				s.SMTPPort = p
+			}
+		case keySMTPUser:
+			s.SMTPUser = strings.TrimSpace(r.Value)
+		case keySMTPPass:
+			s.SMTPPass = r.Value
+		case keySMTPFrom:
+			s.SMTPFrom = strings.TrimSpace(r.Value)
+		case keySMTPFromName:
+			s.SMTPFromName = strings.TrimSpace(r.Value)
+		case keySMTPSSL:
+			s.SMTPSSL = boolVal(r.Value)
 		}
 	}
 
@@ -53,6 +142,14 @@ func (a *App) Settings() SiteSettings {
 	a.setCache = &s
 	a.setMu.Unlock()
 	return s
+}
+
+// MailConfig 当前 SMTP 配置（供验证码发送）
+func (s SiteSettings) MailConfig() util.MailConfig {
+	return util.MailConfig{
+		Host: s.SMTPHost, Port: s.SMTPPort, User: s.SMTPUser,
+		Pass: s.SMTPPass, From: s.SMTPFrom, FromName: s.SMTPFromName, SSL: s.SMTPSSL,
+	}
 }
 
 // SettingsPage 系统设置页（仅 admin）
@@ -70,6 +167,16 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		SiteName   string `json:"site_name"`
 		SiteLogo   string `json:"site_logo"`
 		SiteDomain string `json:"site_domain"`
+		// 注册方式（单选）：username / email / phone
+		RegMethod string `json:"reg_method"`
+		// SMTP
+		SMTPHost string `json:"smtp_host"`
+		SMTPPort int    `json:"smtp_port"`
+		SMTPUser string `json:"smtp_user"`
+		SMTPPass string `json:"smtp_pass"`
+		SMTPFrom string `json:"smtp_from"`
+		SMTPFromName string `json:"smtp_from_name"`
+		SMTPSSL  bool   `json:"smtp_ssl"`
 	}
 	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -107,24 +214,39 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		return
 	}
 
+	// 注册方式单选校验
+	if req.RegMethod != "username" && req.RegMethod != "email" && req.RegMethod != "phone" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "set.errRegMethod")})
+		return
+	}
+	port := req.SMTPPort
+	if port <= 0 || port > 65535 {
+		port = 465
+	}
+
 	values := map[string]string{
 		model.SettingSiteName:   name,
 		model.SettingSiteLogo:   logo,
 		model.SettingSiteDomain: domain,
+		keyRegMethod:            req.RegMethod,
+		keySMTPHost:             strings.TrimSpace(req.SMTPHost),
+		keySMTPPort:             strconv.Itoa(port),
+		keySMTPUser:             strings.TrimSpace(req.SMTPUser),
+		keySMTPPass:             req.SMTPPass,
+		keySMTPFrom:             strings.TrimSpace(req.SMTPFrom),
+		keySMTPFromName:         strings.TrimSpace(req.SMTPFromName),
+		keySMTPSSL:              boolStr(req.SMTPSSL),
 	}
-	// 事务内逐条 upsert：先确保行存在，再显式写 value（显式列更新不受结构体零值跳过影响）
-	err := a.DB.Transaction(func(tx *gorm.DB) error {
-		for k, v := range values {
-			if err := tx.Where(model.SystemSetting{Key: k}).
-				FirstOrCreate(&model.SystemSetting{Key: k}).Error; err != nil {
-				return err
-			}
-			if err := tx.Model(&model.SystemSetting{Key: k}).UpdateColumn("value", v).Error; err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	// 单条批量 upsert（INSERT ... ON DUPLICATE KEY UPDATE）：
+	// 一次网络往返写完全部设置。逐条 SELECT+UPDATE 在远程 MySQL 上要 2N 次往返，保存明显变慢
+	rows := make([]model.SystemSetting, 0, len(values))
+	for k, v := range values {
+		rows = append(rows, model.SystemSetting{Key: k, Value: v})
+	}
+	err := a.DB.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "key"}},
+		DoUpdates: clause.AssignmentColumns([]string{"value", "updated_at"}),
+	}).Create(&rows).Error
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
 		return

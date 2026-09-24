@@ -1,6 +1,7 @@
 package i18n
 
 import (
+	"encoding/json"
 	"os"
 	"regexp"
 	"sort"
@@ -121,17 +122,33 @@ func TestResolve(t *testing.T) {
 	}
 }
 
-// TestSourceJSON 校验前端注入映射：zh-CN 为空对象，其他语言含原文键
+// TestSourceJSON 校验前端注入映射：
+// 默认语言包含 key→原文（供 UI.t 的 key 写法回显）；其他语言含原文键与 key 键
 func TestSourceJSON(t *testing.T) {
 	b := loadDir(t)
-	if got := b.SourceJSON(Default); got != "{}" {
-		t.Errorf("默认语言无需映射：%q", got)
+
+	// 默认语言：key 应映射回原文（UI.t('proj.roleView') 在中文下也要有值）
+	var def map[string]string
+	if err := json.Unmarshal([]byte(b.SourceJSON(Default)), &def); err != nil {
+		t.Fatalf("默认语言映射非法 JSON：%v", err)
 	}
-	got := b.SourceJSON("en-US")
-	if got == "{}" || got == "" {
+	if def["proj.roleView"] == "" {
+		t.Errorf("默认语言映射应包含 key→原文")
+	}
+
+	var m map[string]string
+	if err := json.Unmarshal([]byte(b.SourceJSON("en-US")), &m); err != nil {
+		t.Fatalf("en-US 映射非法 JSON：%v", err)
+	}
+	if len(m) == 0 {
 		t.Fatalf("en-US 映射为空")
 	}
+	// key 写法与中文原文写法都必须能查到
+	if m["proj.roleView"] == "" {
+		t.Errorf("en-US 映射应包含 key→译文")
+	}
 	// encoding/json 会将 < > & 转义，避免注入的译文提前闭合 <script>
+	got := b.SourceJSON("en-US")
 	if i := indexOfTag(got); i >= 0 {
 		t.Fatalf("映射中存在未转义的尖括号：%s", got[max(0, i-20):min(len(got), i+20)])
 	}

@@ -95,7 +95,7 @@ window.UI = (function () {
       (opts.buttons || [{ label: '确定', primary: true, value: true }]).forEach(function (b) {
         var btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = 'btn' + (b.primary ? ' btn-primary' : '');
+        btn.className = 'btn' + (b.primary ? ' btn-primary' : '') + (b.danger ? ' btn-danger-solid' : '');
         btn.dataset.primary = b.primary ? '1' : '0';
         btn.textContent = t(b.label);
         btn.addEventListener('click', function () { confirmWith(btn, b.value); });
@@ -321,12 +321,14 @@ window.UI = (function () {
     alert: function (message) {
       return dialog({ message: message, buttons: [{ label: '知道了', primary: true, value: true }] });
     },
-    confirm: function (message) {
+    // confirm：opts.danger=true 时确认按钮为红色实心（删除/重置等破坏性操作）
+    confirm: function (message, opts) {
+      opts = opts || {};
       return dialog({
         message: message,
         buttons: [
           { label: '取消', primary: false, value: false },
-          { label: '确定', primary: true, value: true },
+          { label: '确定', primary: true, value: true, danger: !!opts.danger },
         ],
       });
     },
@@ -392,7 +394,12 @@ document.addEventListener('DOMContentLoaded', function () {
         var res = await fetch('/admin/api/profile', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-          body: JSON.stringify({ nickname: fd.get('nickname'), avatar: fd.get('avatar') }),
+          body: JSON.stringify({
+            nickname: fd.get('nickname'),
+            avatar: fd.get('avatar'),
+            email: (fd.get('email') || '').trim(),
+            phone: (fd.get('phone') || '').trim(),
+          }),
         });
         var data = await res.json().catch(function () { return {}; });
         if (res.ok) {

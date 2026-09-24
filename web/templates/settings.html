@@ -7,9 +7,9 @@
 <main class="container">
   <div class="page-head"><h1>{{$.T "set.title"}}</h1></div>
 
-  <div class="panel" style="max-width:640px">
+  <div class="panel">
     <div class="panel-head"><h2>{{$.T "set.title"}}</h2></div>
-    <form id="settingsForm" class="share-body" novalidate style="padding:22px">
+    <form id="settingsForm" class="share-body" novalidate style="padding:22px 22px 22px;max-width:960px">
       <label>{{$.T "set.siteName"}}
         <input type="text" name="site_name" required maxlength="64" value="{{.set.SiteName}}" placeholder="DocShare">
       </label>
@@ -33,6 +33,41 @@
         <span class="muted" style="font-size:12.5px">{{$.T "set.siteDomainTip"}}</span>
       </label>
 
+      <div class="settings-section">{{$.T "set.regTitle"}}</div>
+      <label class="check"><input type="radio" name="reg_method" value="username" {{if eq .set.RegMethod "username"}}checked{{end}}> {{$.T "reg.methodUsername"}}</label>
+      <label class="check"><input type="radio" name="reg_method" value="email" {{if eq .set.RegMethod "email"}}checked{{end}}> {{$.T "reg.methodEmail"}}</label>
+      <label class="check"><input type="radio" name="reg_method" value="phone" {{if eq .set.RegMethod "phone"}}checked{{end}}> {{$.T "reg.methodPhone"}}</label>
+
+      <div class="settings-section">{{$.T "set.smtpTitle"}}</div>
+      <div class="smtp-grid">
+        <label>{{$.T "set.smtpHost"}}
+          <input type="text" name="smtp_host" value="{{.set.SMTPHost}}" placeholder="smtp.example.com">
+        </label>
+        <label>{{$.T "set.smtpPort"}}
+          <input type="number" name="smtp_port" value="{{.set.SMTPPort}}" min="1" max="65535">
+        </label>
+      </div>
+      <div class="smtp-grid">
+        <label>{{$.T "set.smtpUser"}}
+          <input type="text" name="smtp_user" value="{{.set.SMTPUser}}" autocomplete="off">
+        </label>
+        <label>{{$.T "set.smtpPass"}}
+          <input type="password" name="smtp_pass" value="{{.set.SMTPPass}}" autocomplete="new-password">
+        </label>
+      </div>
+      <div class="smtp-grid">
+        <label>{{$.T "set.smtpFrom"}}
+          <input type="text" name="smtp_from" value="{{.set.SMTPFrom}}" placeholder="noreply@163.com">
+        </label>
+        <label>{{$.T "set.smtpFromName"}}
+          <input type="text" name="smtp_from_name" value="{{.set.SMTPFromName}}" placeholder="DocShare">
+        </label>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;margin:14px 0 6px">
+        <label class="check" style="margin:0"><input type="checkbox" name="smtp_ssl" {{if .set.SMTPSSL}}checked{{end}}> {{$.T "set.smtpSsl"}}</label>
+        <button type="button" class="btn btn-sm" id="testMailBtn">{{$.T "set.testMail"}}</button>
+      </div>
+
       <div class="modal-foot" style="border-top:none;background:none;padding:18px 0 0">
         <button type="submit" class="btn btn-primary">{{$.T "common.save"}}</button>
       </div>
@@ -40,11 +75,17 @@
   </div>
 </main>
 <style>
+/* 设置表单较窄，居中展示与其他页面容器对齐 */
+.panel-form{max-width:720px;margin:0 auto 24px}
 .logo-pick{display:flex;align-items:center;gap:14px;margin-top:8px}
 .logo-preview{display:grid;place-items:center;width:48px;height:48px;border-radius:10px;border:1px solid var(--border);background:var(--bg-soft);overflow:hidden;flex:none}
 .logo-preview img{width:100%;height:100%;object-fit:cover}
-.logo-preview:empty::after{content:"D";font-weight:700;color:var(--muted)}
+.logo-preview:empty::after{content:"";display:block;width:100%;height:100%;background:url(/static/logo-mark.svg) center/70% no-repeat}
 .logo-actions{display:flex;gap:8px}
+.settings-section{margin:18px 0 10px;font-weight:600;font-size:14px;color:var(--text)}
+.settings-section:first-of-type{margin-top:0}
+.smtp-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.smtp-grid label{margin-bottom:0}
 </style>
 <script>
 (function () {
@@ -83,12 +124,45 @@
   });
   logoClearBtn.addEventListener('click', function () { setLogo(''); });
 
+  document.getElementById('testMailBtn').addEventListener('click', async function () {
+    var to = await UI.prompt(UI.t('set.testMailTo'), 'email', 'name@example.com');
+    if (to === null) return; // 取消
+    to = (to || '').trim();
+    if (!to) { UI.toast(UI.t('set.testMailTo'), 'error'); return; }
+    var btn = this;
+    btn.disabled = true;
+    try {
+      var res = await fetch('/admin/api/settings/test-mail', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({ to: to })
+      });
+      var data = await res.json();
+      if (!res.ok) { UI.alert((data && data.error) || '发送失败'); return; }
+      UI.toast('测试邮件已发送，请查收', 'success');
+    } catch (e) {
+      UI.alert('发送失败：网络错误');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
+    var saveBtn = form.querySelector('button[type=submit]');
+    saveBtn.disabled = true;
     var payload = {
       site_name: form.site_name.value.trim(),
       site_logo: logoInput.value,
-      site_domain: form.site_domain.value.trim()
+      site_domain: form.site_domain.value.trim(),
+      reg_method: form.reg_method.value,
+      smtp_host: form.smtp_host.value.trim(),
+      smtp_port: parseInt(form.smtp_port.value, 10) || 465,
+      smtp_user: form.smtp_user.value.trim(),
+      smtp_pass: form.smtp_pass.value,
+      smtp_from: form.smtp_from.value.trim(),
+      smtp_from_name: form.smtp_from_name.value.trim(),
+      smtp_ssl: form.smtp_ssl.checked
     };
     try {
       var res = await fetch('/admin/api/settings', {

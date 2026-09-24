@@ -94,7 +94,7 @@
 
   window.resetKey = async function (btn) {
     var id = btn.dataset.id;
-    if (!await UI.confirm(UI.t('重置后旧 Secret 立即失效，确认重置「{0}」？', btn.dataset.name))) return;
+    if (!await UI.confirm(UI.t('重置后旧 Secret 立即失效，确认重置「{0}」？', btn.dataset.name), { danger: true })) return;
     try {
       var res = await fetch('/admin/api/apikeys/' + id + '/reset', {
         method: 'PUT',
@@ -133,7 +133,7 @@
 
   window.delKey = async function (btn) {
     var id = btn.dataset.id;
-    if (!await UI.confirm(UI.t('删除后该密钥立即失效且不可恢复，确认删除「{0}」？', btn.dataset.name))) return;
+    if (!await UI.confirm(UI.t('删除后该密钥立即失效且不可恢复，确认删除「{0}」？', btn.dataset.name), { danger: true })) return;
     try {
       var res = await fetch('/admin/api/apikeys/' + id, {
         method: 'DELETE',
