@@ -96,7 +96,8 @@ func (a *App) loadShare(c *gin.Context, token string) (*model.Document, *model.S
 		return nil, nil
 	}
 	var doc model.Document
-	if err := a.DB.First(&doc, share.DocumentID).Error; err != nil {
+	// Preload Owner：阅读页展示作者头像与昵称
+	if err := a.DB.Preload("Owner").First(&doc, share.DocumentID).Error; err != nil {
 		c.String(http.StatusNotFound, "文档不存在")
 		return nil, nil
 	}

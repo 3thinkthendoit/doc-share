@@ -8,13 +8,22 @@
 <body class="reader-body">
   <header class="reader-header">
     <div class="reader-head-inner">
-      <div class="reader-brand"><a href="/">{{if .SiteLogo}}<img class="reader-logo" src="{{.SiteLogo}}" alt="">{{end}}{{.SiteName}}</a></div>
-      <div class="reader-meta">{{if .doc}}{{$.T "share.meta" .doc.ViewCount (.doc.UpdatedAt.Format "2006-01-02 15:04")}}{{end}}</div>
+      <div class="reader-brand"><a href="/">{{if .SiteLogo}}<img class="reader-logo" src="{{.SiteLogo}}" alt="">{{else}}<b>D</b>{{end}}{{.SiteName}}</a></div>
       {{template "langSwitch" .}}
     </div>
   </header>
   <article class="reader">
     <h1 class="doc-title">{{.doc.Title}}</h1>
+    <div class="doc-author">
+      {{if .doc.Owner}}
+      <span class="user-avatar user-avatar-sm">{{if .doc.Owner.Avatar}}<img src="{{.doc.Owner.Avatar}}" alt="">{{else}}{{avatar .doc.Owner.Nickname .doc.Owner.Username}}{{end}}</span>
+      <span class="doc-author-name">{{if .doc.Owner.Nickname}}{{.doc.Owner.Nickname}}{{else}}{{.doc.Owner.Username}}{{end}}</span>
+      <span class="doc-author-dot">·</span>
+      {{end}}
+      <span>{{.doc.UpdatedAt.Format "2006-01-02 15:04"}}</span>
+      {{if .doc}}<span class="doc-author-dot">·</span>
+      <span>{{$.T "share.views" .doc.ViewCount}}</span>{{end}}
+    </div>
     <div id="preview" class="markdown-body"></div>
   </article>
   <textarea id="raw-markdown" hidden>{{.doc.Content}}</textarea>

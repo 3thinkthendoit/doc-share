@@ -1,0 +1,55 @@
+name: Docker Publish (ACR)
+
+# 手动触发：Actions 页面点击 "Run workflow"，可自定义镜像 tag
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '镜像 tag（默认 latest）'
+        type: string
+        required: false
+        default: latest
+
+# 镜像推送到阿里云 ACR（国内节点拉取快）。
+# 需要在仓库 Settings > Secrets and variables > Actions 配置：
+#   ACR_USERNAME —— 阿里云账号全名
+#   ACR_PASSWORD —— ACR 访问凭证（固定密码）
+env:
+  ACR_REGISTRY: ACR_REGISTRY
+  ACR_NAMESPACE: 3thinkthendoit
+  IMAGE_NAME: doc-share
+
+# 同一时刻只允许一个发布任务，避免并发推送时旧 run 覆盖新 latest
+concurrency:
+  group: docker-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          # 用 runner 自带的 docker 驱动，避免从 docker.io 拉 buildkit 镜像超时
+          driver: docker
+
+      - name: Login to Aliyun ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.tag || 'latest' }}
+            ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ github.sha }}

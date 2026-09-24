@@ -276,6 +276,7 @@
   "key.lblAppKey": "AppKey",
   "key.lblSecret": "Secret",
   "key.btnSaved": "保存しました",
+  "key.download": "ダウンロード",
   "key.confirmReset": "リセットすると古い Secret は直ちに無効になります。「{0}」をリセットしますか？",
   "key.confirmDel": "削除するとこのキーは直ちに無効になり復元できません。「{0}」を削除しますか？",
 
@@ -446,6 +447,7 @@
   "edit.btnTable": "表",
   "docs.pageInfo": "{0} / {1} ページ（全 {2} 件）",
   "share.meta": "閲覧 {0} 回 · 更新日 {1}",
+  "share.views": "閲覧 {0} 回",
   "key.info": "キー情報",
   "apidoc.sampleComment": "自分のドキュメント一覧を取得",
 

@@ -276,6 +276,7 @@
   "key.lblAppKey": "AppKey",
   "key.lblSecret": "Secret",
   "key.btnSaved": "I have saved it",
+  "key.download": "Download",
   "key.confirmReset": "Resetting invalidates the old Secret immediately. Reset \"{0}\"?",
   "key.confirmDel": "Deleting revokes this key immediately and cannot be undone. Delete \"{0}\"?",
 
@@ -446,6 +447,7 @@
   "edit.btnTable": "Table",
   "docs.pageInfo": "Page {0} of {1}, {2} documents in total",
   "share.meta": "{0} views · updated {1}",
+  "share.views": "{0} views",
   "key.info": "Key details",
   "apidoc.sampleComment": "List my documents",
 

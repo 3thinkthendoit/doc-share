@@ -276,6 +276,7 @@
   "key.lblAppKey": "AppKey",
   "key.lblSecret": "Secret",
   "key.btnSaved": "我已保存",
+  "key.download": "下载",
   "key.confirmReset": "重置后旧 Secret 立即失效，确认重置「{0}」？",
   "key.confirmDel": "删除后该密钥立即失效且不可恢复，确认删除「{0}」？",
 
@@ -446,6 +447,7 @@
   "edit.btnTable": "表格",
   "docs.pageInfo": "第 {0} / {1} 页，共 {2} 篇",
   "share.meta": "浏览 {0} 次 · 更新于 {1}",
+  "share.views": "浏览 {0} 次",
   "key.info": "密钥信息",
   "apidoc.sampleComment": "查询我的文档列表",
 

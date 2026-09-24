@@ -71,13 +71,15 @@ func (a *App) DocsPage(c *gin.Context) {
 	})
 }
 
-// filterOptions 当前用户可见的项目与分类（个人所有，admin 看全部；供列表筛选与编辑页下拉复用）
+// filterOptions 当前用户自己的项目与分类（个人所有，admin 亦然；
+// 文档归属跟随作者，任何人都不能把文档挂到他人的项目/分类下）
 func (a *App) filterOptions(c *gin.Context) ([]model.Project, []model.Category) {
 	var projects []model.Project
 	var categories []model.Category
+	user := middleware.CurrentUser(c)
 	pTx := a.DB.Model(&model.Project{})
 	cTx := a.DB.Model(&model.Category{})
-	if user := middleware.CurrentUser(c); user != nil && !user.IsAdmin() {
+	if user != nil {
 		pTx = pTx.Where("owner_id = ?", user.ID)
 		cTx = cTx.Where("owner_id = ?", user.ID)
 	}
@@ -174,7 +176,8 @@ func scheme(c *gin.Context) string {
 func (a *App) loadDoc(c *gin.Context) *model.Document {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var doc model.Document
-	if err := a.DB.First(&doc, id).Error; err != nil {
+	// Preload Owner：阅读预览/编辑页展示作者头像与昵称
+	if err := a.DB.Preload("Owner").First(&doc, id).Error; err != nil {
 		if isAjax(c) {
 			c.JSON(http.StatusNotFound, gin.H{"error": errDocNotFound})
 		} else {
@@ -214,13 +217,14 @@ func (a *App) validProjectRef(c *gin.Context, projectID, current uint) bool {
 	if a.DB.First(&project, projectID).Error != nil {
 		return false
 	}
-	if user := middleware.CurrentUser(c); user != nil && !user.IsAdmin() && project.OwnerID != user.ID {
+	// 只能归属到自己的项目（admin 亦然）；与当前值相同（未改动）在入口处已放行
+	if user := middleware.CurrentUser(c); user != nil && project.OwnerID != user.ID {
 		return false
 	}
 	return true
 }
 
-// validCategoryRef 分类引用校验：0 合法；与当前值相同（未改动）合法；否则必须存在且非 admin 只能用自己的（与 validProjectRef 同构）
+// validCategoryRef 分类引用校验：0 合法；与当前值相同（未改动）合法；否则必须存在且只能用自己的（与 validProjectRef 同构）
 func (a *App) validCategoryRef(c *gin.Context, categoryID, current uint) bool {
 	if categoryID == 0 || categoryID == current {
 		return true
@@ -229,7 +233,8 @@ func (a *App) validCategoryRef(c *gin.Context, categoryID, current uint) bool {
 	if err := a.DB.First(&category, categoryID).Error; err != nil {
 		return false
 	}
-	if user := middleware.CurrentUser(c); user != nil && !user.IsAdmin() && category.OwnerID != user.ID {
+	// 只能归属到自己的分类（admin 亦然）
+	if user := middleware.CurrentUser(c); user != nil && category.OwnerID != user.ID {
 		return false
 	}
 	return true
@@ -340,6 +345,10 @@ func (a *App) PreviewDoc(c *gin.Context) {
 	doc := a.loadDoc(c)
 	if doc == nil {
 		return
+	}
+	// loadDoc 不带关联预加载（避免影响 API JSON），这里补取作者供阅读页展示
+	if doc.OwnerID != 0 {
+		a.DB.First(&doc.Owner, doc.OwnerID)
 	}
 	a.render(c, "share_view.html", gin.H{
 		"title":    doc.Title,

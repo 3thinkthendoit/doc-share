@@ -314,11 +314,17 @@ body.modal-open{overflow:hidden}
 .reader-body{background:var(--panel)}
 .reader-header{border-bottom:1px solid var(--border);position:sticky;top:0;background:rgba(255,255,255,.85);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);z-index:5}
 .reader-head-inner{max-width:840px;margin:0 auto;padding:16px 24px;display:flex;justify-content:space-between;align-items:center;gap:14px}
-.reader-brand a{display:inline-flex;align-items:center;gap:8px;font-weight:700;letter-spacing:-.02em;color:var(--text);text-decoration:none}
+/* 阅读页品牌与首页/控制台同款：渐变方块 D（或自定义 Logo 图）+ 站点名 */
+.reader-brand a{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:15px;letter-spacing:-.4px;color:var(--text);text-decoration:none}
+.reader-brand a b{display:grid;place-items:center;width:22px;height:22px;border-radius:5px;background:var(--grad);color:#fff;font-size:12px;letter-spacing:0}
 .reader-brand a img.reader-logo{width:22px;height:22px;border-radius:5px;object-fit:cover;display:block}
-.reader-meta{color:var(--faint);font-size:12.5px;margin-left:auto}
+.reader-head-inner .lang-switch{margin-left:auto}
 .reader{max-width:840px;margin:0 auto;padding:44px 24px 96px}
-.doc-title{font-size:34px;font-weight:700;letter-spacing:-.03em;margin:0 0 28px;padding:0;border:none}
+.doc-title{font-size:34px;font-weight:700;letter-spacing:-.03em;margin:0 0 12px;padding:0;border:none}
+/* 阅读页作者信息：头像 + 昵称 + 更新时间 */
+.doc-author{display:flex;align-items:center;gap:8px;margin:0 0 28px;color:var(--muted);font-size:13.5px}
+.doc-author .user-avatar-sm{width:30px;height:30px;font-size:13px}
+.doc-author-name{color:var(--text);font-weight:600}
 
 /* markdown body */
 .markdown-body{font-size:15.5px;line-height:1.8;color:var(--text)}

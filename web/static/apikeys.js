@@ -16,13 +16,41 @@
     });
   }
 
-  // 展示 AppKey + Secret（创建/重置后各一次）
-  function showSecret(appKey, secret, title) {
+  // 展示 AppKey + Secret（创建/重置后各一次）；记录密钥名称供下载文件用
+  var currentKeyName = '';
+  function showSecret(appKey, secret, title, name) {
     document.getElementById('outAppKey').value = appKey;
     document.getElementById('outSecret').value = secret;
     document.getElementById('secretTitle').textContent = UI.t(title);
+    currentKeyName = name || '';
     UI.openModal(secretModal);
   }
+
+  // 下载密钥凭证为 txt 文件（Secret 仅此一次，防止关闭弹窗后丢失）
+  document.getElementById('btnDownloadKey').addEventListener('click', function () {
+    var appKey = document.getElementById('outAppKey').value;
+    var secret = document.getElementById('outSecret').value;
+    if (!appKey || !secret) return;
+    var lines = [
+      'DocShare API Key',
+      '----------------------------------------',
+      'Name: ' + (currentKeyName || '-'),
+      'AppKey: ' + appKey,
+      'Secret: ' + secret,
+      'Created: ' + new Date().toISOString(),
+      '',
+      UI.t('Secret 仅显示这一次，离开后无法再次查看；遗失请使用「重置密钥」重新生成。'),
+    ];
+    var blob = new Blob([lines.join('\r\n') + '\r\n'], { type: 'text/plain;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    var safeName = (currentKeyName || 'key').replace(/[\\/:*?"<>|\s]+/g, '-');
+    a.download = 'docshare-api-key-' + safeName + '.txt';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+  });
 
   if (keyForm) {
     keyForm.addEventListener('submit', async function (e) {
@@ -38,7 +66,7 @@
         var data = await res.json();
         if (res.ok) {
           UI.closeModal(keyModal);
-          showSecret(data.data.app_key, data.secret, '密钥已生成');
+          showSecret(data.data.app_key, data.secret, '密钥已生成', name);
         } else {
           UI.alert((data && data.error) || '创建失败');
         }
@@ -74,7 +102,7 @@
       });
       var data = await res.json();
       if (res.ok) {
-        showSecret(btn.closest('tr').children[1].textContent.trim(), data.secret, '密钥已重置');
+        showSecret(btn.closest('tr').children[1].textContent.trim(), data.secret, '密钥已重置', btn.dataset.name);
       } else {
         UI.alert((data && data.error) || '重置失败');
       }

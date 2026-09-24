@@ -21,8 +21,8 @@
           <td>{{.Name}}</td>
           <td class="mono">{{.AppKey}}</td>
           <td>{{if eq .Status 1}}<span class="badge badge-on">{{$.T "启用"}}</span>{{else}}<span class="badge badge-off">{{$.T "禁用"}}</span>{{end}}</td>
-          <td>{{if .LastUsedAt}}{{.LastUsedAt.Format "2006-01-02 15:04"}}{{else}}—{{end}}</td>
-          <td>{{.CreatedAt.Format "2006-01-02"}}</td>
+          <td>{{if .LastUsedAt}}{{.LastUsedAt.Format "2006-01-02 15:04:05"}}{{else}}—{{end}}</td>
+          <td>{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
           {{if and $.user $.user.IsAdmin}}<td>{{if .Owner.Nickname}}{{.Owner.Nickname}}{{else}}{{.Owner.Username}}{{end}}</td>{{end}}
           <td>
             <button class="btn btn-sm" data-id="{{.ID}}" data-name="{{.Name}}" onclick="resetKey(this)">{{$.T "重置密钥"}}</button>
@@ -75,6 +75,7 @@
       </label>
     </div>
     <div class="modal-foot">
+      <button type="button" class="btn" id="btnDownloadKey">{{$.T "key.download"}}</button>
       <button type="button" class="btn btn-primary" data-close-modal>{{$.T "我已保存"}}</button>
     </div>
   </div>

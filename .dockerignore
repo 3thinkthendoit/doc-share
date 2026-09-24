@@ -1,0 +1,14 @@
+# 版本管理 / 本地开发文件
+.git
+.github
+.vscode
+.codebuddy
+*.md
+LICENSE
+
+# 运行时数据不进镜像（挂卷持久化）
+uploads
+
+# 本地临时产物
+main
+*.exe
