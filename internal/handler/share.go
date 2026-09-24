@@ -36,9 +36,10 @@ func (a *App) ShareView(c *gin.Context) {
 		return
 	}
 	a.render(c, "share_password.html", gin.H{
-		"title": doc.Title,
-		"token": token,
-		"error": "",
+		"title":    doc.Title,
+		"rawTitle": true, // 用户文档标题，跳过词典反查避免误译
+		"token":    token,
+		"error":    "",
 	})
 }
 
@@ -57,9 +58,10 @@ func (a *App) ShareSubmit(c *gin.Context) {
 	ip := c.ClientIP()
 	if !a.Limiter.Allowed(ip, token) {
 		a.render(c, "share_password.html", gin.H{
-			"title": doc.Title,
-			"token": token,
-			"error": "尝试次数过多，请稍后再试",
+			"title":    doc.Title,
+			"rawTitle": true,
+			"token":    token,
+			"error":    "尝试次数过多，请稍后再试",
 		})
 		return
 	}
@@ -68,9 +70,10 @@ func (a *App) ShareSubmit(c *gin.Context) {
 	if bcrypt.CompareHashAndPassword([]byte(share.Password), []byte(password)) != nil {
 		a.Limiter.Fail(ip, token)
 		a.render(c, "share_password.html", gin.H{
-			"title": doc.Title,
-			"token": token,
-			"error": "密码错误",
+			"title":    doc.Title,
+			"rawTitle": true,
+			"token":    token,
+			"error":    "密码错误",
 		})
 		return
 	}
@@ -106,7 +109,8 @@ func (a *App) serveDoc(c *gin.Context, doc *model.Document) {
 		UpdateColumn("view_count", gorm.Expr("view_count + 1"))
 	doc.ViewCount++
 	a.render(c, "share_view.html", gin.H{
-		"title": doc.Title,
-		"doc":   doc,
+		"title":    doc.Title,
+		"rawTitle": true, // 用户文档标题，跳过词典反查避免误译
+		"doc":      doc,
 	})
 }

@@ -67,16 +67,16 @@ func checkCategoryReq(name string) (string, string) {
 func (a *App) loadCategory(c *gin.Context) *model.Category {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil || id <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "分类 id 非法"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errCatIDBad})
 		return nil
 	}
 	var category model.Category
 	if err := a.DB.First(&category, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "分类不存在"})
+		c.JSON(http.StatusNotFound, gin.H{"error": errCatNotFound})
 		return nil
 	}
 	if user := middleware.CurrentUser(c); user != nil && !user.IsAdmin() && category.OwnerID != user.ID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "无权操作他人的分类"})
+		c.JSON(http.StatusForbidden, gin.H{"error": errCatForbidden})
 		return nil
 	}
 	return &category
@@ -97,7 +97,7 @@ func (a *App) CreateCategory(c *gin.Context) {
 	user := middleware.CurrentUser(c)
 	category := model.Category{Name: name, Sort: req.Sort, OwnerID: user.ID}
 	if err := a.DB.Create(&category).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "创建失败，你的分类名已存在"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errCatDupCreate})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": category})
@@ -122,7 +122,7 @@ func (a *App) UpdateCategory(c *gin.Context) {
 	category.Name = name
 	category.Sort = req.Sort
 	if err := a.DB.Save(category).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "更新失败，你的分类名已存在"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errCatDupUpdate})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": category})
@@ -142,7 +142,7 @@ func (a *App) DeleteCategory(c *gin.Context) {
 		return tx.Delete(&model.Category{}, category.ID).Error
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除失败"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})

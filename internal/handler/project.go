@@ -55,16 +55,16 @@ type projectReq struct {
 func (a *App) loadProject(c *gin.Context) *model.Project {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil || id <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "项目 id 非法"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errProjIDBad})
 		return nil
 	}
 	var project model.Project
 	if err := a.DB.First(&project, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "项目不存在"})
+		c.JSON(http.StatusNotFound, gin.H{"error": errProjNotFound})
 		return nil
 	}
 	if user := middleware.CurrentUser(c); user != nil && !user.IsAdmin() && project.OwnerID != user.ID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "无权操作他人的项目"})
+		c.JSON(http.StatusForbidden, gin.H{"error": errProjForbidden})
 		return nil
 	}
 	return &project
@@ -106,7 +106,7 @@ func (a *App) CreateProject(c *gin.Context) {
 		OwnerID:     user.ID,
 	}
 	if err := a.DB.Create(&project).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建失败"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errCreateFail})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": project})
@@ -132,7 +132,7 @@ func (a *App) UpdateProject(c *gin.Context) {
 	project.Name = name
 	project.Description = desc
 	if err := a.DB.Save(project).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新失败"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errUpdateFail})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": project})
@@ -152,7 +152,7 @@ func (a *App) DeleteProject(c *gin.Context) {
 		return tx.Delete(&model.Project{}, project.ID).Error
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除失败"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})

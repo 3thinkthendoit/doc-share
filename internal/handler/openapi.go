@@ -88,42 +88,42 @@ func (a *App) RequireAppKey() gin.HandlerFunc {
 		nonce := c.GetHeader("X-Nonce")
 		sig := c.GetHeader("X-Signature")
 		if appKey == "" || ts == "" || nonce == "" || sig == "" {
-			openAbort(c, http.StatusUnauthorized, "缺少签名头：X-App-Key / X-Timestamp / X-Nonce / X-Signature")
+			openAbort(c, http.StatusUnauthorized, errMissingSigHeaders)
 			return
 		}
 		tsInt, err := strconv.ParseInt(ts, 10, 64)
 		if err != nil || intAbs(int(time.Now().Unix())-int(tsInt)) > openSigWindow {
-			openAbort(c, http.StatusUnauthorized, "时间戳无效或与服务器偏差超过 5 分钟")
+			openAbort(c, http.StatusUnauthorized, errTimestampBad)
 			return
 		}
 		if len(nonce) < openNonceMin || len(nonce) > openNonceMax {
-			openAbort(c, http.StatusUnauthorized, "nonce 长度需在 8~64 之间")
+			openAbort(c, http.StatusUnauthorized, errNonceLen)
 			return
 		}
 		var key model.ApiKey
 		if err := a.DB.Where("app_key = ?", appKey).First(&key).Error; err != nil || key.Status != model.StatusEnabled {
-			openAbort(c, http.StatusUnauthorized, "AppKey 不存在或已禁用")
+			openAbort(c, http.StatusUnauthorized, errAppKeyBad)
 			return
 		}
 		body, err := io.ReadAll(io.LimitReader(c.Request.Body, openBodyLimit+1))
 		if err != nil || len(body) > openBodyLimit {
-			openAbort(c, http.StatusBadRequest, "读取请求体失败或超过 2MB")
+			openAbort(c, http.StatusBadRequest, errBodyTooLarge)
 			return
 		}
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
 		// 先验签再消费 nonce，避免伪造请求污染去重缓存
 		sts := stringToSign(appKey, c.Request.Method, c.Request.URL.Path, ts, nonce, body)
 		if !hmac.Equal([]byte(calcSignature(key.Secret, sts)), []byte(strings.ToLower(sig))) {
-			openAbort(c, http.StatusUnauthorized, "签名校验失败")
+			openAbort(c, http.StatusUnauthorized, errSigBad)
 			return
 		}
 		if nonceSeen(appKey + ":" + nonce) {
-			openAbort(c, http.StatusUnauthorized, "nonce 已使用，疑似重放请求")
+			openAbort(c, http.StatusUnauthorized, errNonceReplay)
 			return
 		}
 		var owner model.User
 		if err := a.DB.First(&owner, key.OwnerID).Error; err != nil || owner.Status != model.StatusEnabled {
-			openAbort(c, http.StatusUnauthorized, "密钥属主不存在或已禁用")
+			openAbort(c, http.StatusUnauthorized, errOwnerBad)
 			return
 		}
 		a.DB.Model(&key).UpdateColumn("last_used_at", time.Now())

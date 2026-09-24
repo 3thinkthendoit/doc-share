@@ -34,11 +34,15 @@ func (a *App) render(c *gin.Context, name string, data gin.H) {
 	data["SiteName"] = s.SiteName
 	data["SiteLogo"] = s.SiteLogo
 	data["SiteDomain"] = s.SiteDomain
-	// 部分页面直接拿 handler 传入的中文标题 / 表单错误文案，这里统一反查词典
-	for _, k := range []string{"title", "error"} {
-		if s, ok := data[k].(string); ok {
-			data[k] = a.i18nText(lang, s)
+	// 部分页面直接拿 handler 传入的中文标题 / 表单错误文案，这里统一反查词典；
+	// rawTitle=true 表示 title 是用户内容（文档标题等），跳过反查避免与词典原文撞车被误译
+	if _, raw := data["rawTitle"]; !raw {
+		if s, ok := data["title"].(string); ok {
+			data["title"] = a.i18nText(lang, s)
 		}
+	}
+	if s, ok := data["error"].(string); ok {
+		data["error"] = a.i18nText(lang, s)
 	}
 	// dev 模式：每次渲染从磁盘重新解析模板，改模板刷新浏览器即生效；
 	// 解析失败沿用上次成功的模板集合（a.Tmpl 不被覆盖），页面仍可用

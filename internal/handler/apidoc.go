@@ -45,14 +45,14 @@ type apiErrorGroup struct {
 	Rows []apiErrorRow
 }
 
-const p = "/openapi/v1"
+const openAPIBase = "/openapi/v1"
 
 // openAPIGroups 开放平台接口清单，与 router.go 的 /openapi/v1 路由一一对应。
 // 新增接口时同步维护此表即可，模板自动渲染。
 func openAPIGroups() []apiGroup {
 	return []apiGroup{
 		{GroupKey: "apidoc.gCats", Items: []apiEndpoint{
-			{Method: "GET", Path: p + "/categories", DescKey: "ep.catList", LabelKey: "ep.tCatList",
+			{Method: "GET", Path: openAPIBase + "/categories", DescKey: "ep.catList", LabelKey: "ep.tCatList",
 				RespExample: `{
   "data": [
     {
@@ -64,7 +64,7 @@ func openAPIGroups() []apiGroup {
     }
   ]
 }`},
-			{Method: "POST", Path: p + "/categories", DescKey: "ep.catCreate", LabelKey: "ep.tCatCreate",
+			{Method: "POST", Path: openAPIBase + "/categories", DescKey: "ep.catCreate", LabelKey: "ep.tCatCreate",
 				ReqExample: `{
   "name": "产品文档",
   "sort": 0
@@ -78,7 +78,7 @@ func openAPIGroups() []apiGroup {
     "doc_count": 0
   }
 }`},
-			{Method: "PUT", Path: p + "/categories/:id", DescKey: "ep.catUpdate", LabelKey: "ep.tCatUpdate",
+			{Method: "PUT", Path: openAPIBase + "/categories/:id", DescKey: "ep.catUpdate", LabelKey: "ep.tCatUpdate",
 				ReqExample: `{
   "name": "产品文档（改名）",
   "sort": 10
@@ -92,13 +92,13 @@ func openAPIGroups() []apiGroup {
     "doc_count": 5
   }
 }`},
-			{Method: "DELETE", Path: p + "/categories/:id", DescKey: "ep.catDelete", LabelKey: "ep.tCatDelete",
+			{Method: "DELETE", Path: openAPIBase + "/categories/:id", DescKey: "ep.catDelete", LabelKey: "ep.tCatDelete",
 				RespExample: `{
   "ok": true
 }`},
 		}},
 		{GroupKey: "apidoc.gProjects", Items: []apiEndpoint{
-			{Method: "GET", Path: p + "/projects", DescKey: "ep.projList", LabelKey: "ep.tProjList",
+			{Method: "GET", Path: openAPIBase + "/projects", DescKey: "ep.projList", LabelKey: "ep.tProjList",
 				RespExample: `{
   "data": [
     {
@@ -112,7 +112,7 @@ func openAPIGroups() []apiGroup {
     }
   ]
 }`},
-			{Method: "POST", Path: p + "/projects", DescKey: "ep.projCreate", LabelKey: "ep.tProjCreate",
+			{Method: "POST", Path: openAPIBase + "/projects", DescKey: "ep.projCreate", LabelKey: "ep.tProjCreate",
 				ReqExample: `{
   "name": "2026 规划",
   "description": "年度规划文档"
@@ -128,7 +128,7 @@ func openAPIGroups() []apiGroup {
     "updated_at": "2026-09-24T09:00:00+08:00"
   }
 }`},
-			{Method: "PUT", Path: p + "/projects/:id", DescKey: "ep.projUpdate", LabelKey: "ep.tProjUpdate",
+			{Method: "PUT", Path: openAPIBase + "/projects/:id", DescKey: "ep.projUpdate", LabelKey: "ep.tProjUpdate",
 				ReqExample: `{
   "name": "2026 规划（修订）",
   "description": "年度规划与里程碑"
@@ -143,13 +143,13 @@ func openAPIGroups() []apiGroup {
     "updated_at": "2026-09-24T10:00:00+08:00"
   }
 }`},
-			{Method: "DELETE", Path: p + "/projects/:id", DescKey: "ep.projDelete", LabelKey: "ep.tProjDelete",
+			{Method: "DELETE", Path: openAPIBase + "/projects/:id", DescKey: "ep.projDelete", LabelKey: "ep.tProjDelete",
 				RespExample: `{
   "ok": true
 }`},
 		}},
 		{GroupKey: "apidoc.gDocs", Items: []apiEndpoint{
-			{Method: "GET", Path: p + "/docs", DescKey: "ep.docList", LabelKey: "ep.tDocList",
+			{Method: "GET", Path: openAPIBase + "/docs", DescKey: "ep.docList", LabelKey: "ep.tDocList",
 				RespExample: `{
   "data": [
     {
@@ -169,7 +169,7 @@ func openAPIGroups() []apiGroup {
   "page": 1,
   "size": 20
 }`},
-			{Method: "GET", Path: p + "/docs/:id", DescKey: "ep.docGet", LabelKey: "ep.tDocGet",
+			{Method: "GET", Path: openAPIBase + "/docs/:id", DescKey: "ep.docGet", LabelKey: "ep.tDocGet",
 				RespExample: `{
   "data": {
     "id": 12,
@@ -185,7 +185,7 @@ func openAPIGroups() []apiGroup {
     "updated_at": "2026-09-20T18:02:00+08:00"
   }
 }`},
-			{Method: "POST", Path: p + "/docs", DescKey: "ep.docCreate", LabelKey: "ep.tDocCreate",
+			{Method: "POST", Path: openAPIBase + "/docs", DescKey: "ep.docCreate", LabelKey: "ep.tDocCreate",
 				ReqExample: `{
   "title": "接入指南",
   "content": "# 接入指南\n\n正文 Markdown…",
@@ -205,7 +205,7 @@ func openAPIGroups() []apiGroup {
     "view_count": 0
   }
 }`},
-			{Method: "PUT", Path: p + "/docs/:id", DescKey: "ep.docUpdate", LabelKey: "ep.tDocUpdate",
+			{Method: "PUT", Path: openAPIBase + "/docs/:id", DescKey: "ep.docUpdate", LabelKey: "ep.tDocUpdate",
 				ReqExample: `{
   "title": "接入指南（修订）",
   "content": "# 接入指南 v2\n\n更新后的正文…",
@@ -225,7 +225,7 @@ func openAPIGroups() []apiGroup {
     "view_count": 16
   }
 }`},
-			{Method: "DELETE", Path: p + "/docs/:id", DescKey: "ep.docDelete", LabelKey: "ep.tDocDelete",
+			{Method: "DELETE", Path: openAPIBase + "/docs/:id", DescKey: "ep.docDelete", LabelKey: "ep.tDocDelete",
 				RespExample: `{
   "ok": true
 }`},
@@ -233,32 +233,38 @@ func openAPIGroups() []apiGroup {
 	}
 }
 
-// openAPIErrors 错误码清单：error 信息为 handler 返回的中文原文。
-// 通用 = openapi 签名中间件（openapi.go）；业务 = 各 CRUD handler（category/project/doc.go）。
+// openAPIErrors 错误码清单：文案引用 errmsg.go 共享常量，与 handler 返回自动同步。
 func openAPIErrors() []apiErrorGroup {
 	return []apiErrorGroup{
 		{Key: "apidoc.errCommon", Rows: []apiErrorRow{
-			{401, "缺少签名头：X-App-Key / X-Timestamp / X-Nonce / X-Signature"},
-			{401, "时间戳无效或与服务器偏差超过 5 分钟"},
-			{401, "nonce 长度需在 8~64 之间"},
-			{401, "AppKey 不存在或已禁用"},
-			{400, "读取请求体失败或超过 2MB"},
-			{401, "签名校验失败"},
-			{401, "nonce 已使用，疑似重放请求"},
-			{401, "密钥属主不存在或已禁用"},
+			{401, errMissingSigHeaders},
+			{401, errTimestampBad},
+			{401, errNonceLen},
+			{401, errAppKeyBad},
+			{400, errBodyTooLarge},
+			{401, errSigBad},
+			{401, errNonceReplay},
+			{401, errOwnerBad},
 		}},
 		{Key: "apidoc.errBiz", Rows: []apiErrorRow{
-			{400, "参数错误"},
-			{400, "标题不能为空"},
-			{400, "项目或分类非法"},
-			{400, "项目非法或无权归属到该项目"},
-			{400, "分类非法或无权归属到该分类"},
-			{400, "创建失败，你的分类名已存在"},
-			{400, "更新失败，你的分类名已存在"},
-			{400, "分类 id 非法 / 项目 id 非法"},
-			{403, "无权操作他人的分类 / 项目 / 文档"},
-			{404, "分类不存在 / 项目不存在 / 文档不存在"},
-			{500, "创建失败 / 更新失败 / 删除失败"},
+			{400, errParam},
+			{400, errTitleEmpty},
+			{400, errProjCatBad},
+			{400, errProjRefBad},
+			{400, errCatRefBad},
+			{400, errCatDupCreate},
+			{400, errCatDupUpdate},
+			{400, errCatIDBad},
+			{400, errProjIDBad},
+			{403, errCatForbidden},
+			{403, errProjForbidden},
+			{403, errDocForbidden},
+			{404, errCatNotFound},
+			{404, errProjNotFound},
+			{404, errDocNotFound},
+			{500, errCreateFail},
+			{500, errUpdateFail},
+			{500, errDeleteFail},
 		}},
 	}
 }
@@ -271,7 +277,7 @@ func buildAPIGroups() []apiGroup {
 		g.Anchor = "epg-" + strings.ToLower(strings.TrimPrefix(g.GroupKey, "apidoc.g"))
 		for ii := range g.Items {
 			it := &g.Items[ii]
-			suffix := strings.TrimPrefix(it.Path, p) // 如 /categories/:id
+			suffix := strings.TrimPrefix(it.Path, openAPIBase) // 如 /categories/:id
 			anchor := strings.ToLower(strings.ReplaceAll(it.Method+suffix, "/", "-"))
 			anchor = strings.ReplaceAll(anchor, ":", "")
 			it.Anchor = anchor

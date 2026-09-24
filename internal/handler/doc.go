@@ -176,17 +176,17 @@ func (a *App) loadDoc(c *gin.Context) *model.Document {
 	var doc model.Document
 	if err := a.DB.First(&doc, id).Error; err != nil {
 		if isAjax(c) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "文档不存在"})
+			c.JSON(http.StatusNotFound, gin.H{"error": errDocNotFound})
 		} else {
-			c.String(http.StatusNotFound, "文档不存在")
+			c.String(http.StatusNotFound, errDocNotFound)
 		}
 		return nil
 	}
 	if user := middleware.CurrentUser(c); user != nil && !user.IsAdmin() && doc.OwnerID != user.ID {
 		if isAjax(c) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "无权操作他人的文档"})
+			c.JSON(http.StatusForbidden, gin.H{"error": errDocForbidden})
 		} else {
-			c.String(http.StatusForbidden, "无权操作他人的文档")
+			c.String(http.StatusForbidden, errDocForbidden)
 		}
 		return nil
 	}
@@ -239,7 +239,7 @@ func (a *App) validCategoryRef(c *gin.Context, categoryID, current uint) bool {
 func (a *App) CreateDoc(c *gin.Context) {
 	var req docReq
 	if err := c.ShouldBind(&req); err != nil || req.Title == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "标题不能为空"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errTitleEmpty})
 		return
 	}
 	user := middleware.CurrentUser(c)
@@ -256,7 +256,7 @@ func (a *App) CreateDoc(c *gin.Context) {
 		doc.CategoryID = *req.CategoryID
 	}
 	if !a.validProjectRef(c, doc.ProjectID, 0) || !a.validCategoryRef(c, doc.CategoryID, 0) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "项目或分类非法"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errProjCatBad})
 		return
 	}
 	for {
@@ -282,7 +282,7 @@ func (a *App) UpdateDoc(c *gin.Context) {
 	}
 	var req docReq
 	if err := c.ShouldBind(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errParam})
 		return
 	}
 	if req.Title != "" {
@@ -292,14 +292,14 @@ func (a *App) UpdateDoc(c *gin.Context) {
 	// 指针语义：未传 = 不修改，传 0 = 清空；项目未改动时跳过归属校验（M-1：避免 viewer 保存他人项目下的文档被拒）
 	if req.ProjectID != nil && *req.ProjectID != doc.ProjectID {
 		if !a.validProjectRef(c, *req.ProjectID, doc.ProjectID) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "项目非法或无权归属到该项目"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": errProjRefBad})
 			return
 		}
 		doc.ProjectID = *req.ProjectID
 	}
 	if req.CategoryID != nil && *req.CategoryID != doc.CategoryID {
 		if !a.validCategoryRef(c, *req.CategoryID, doc.CategoryID) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "分类非法或无权归属到该分类"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": errCatRefBad})
 			return
 		}
 		doc.CategoryID = *req.CategoryID
@@ -318,11 +318,11 @@ func (a *App) DeleteDoc(c *gin.Context) {
 		return
 	}
 	if err := a.DB.Where("document_id = ?", doc.ID).Delete(&model.Share{}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除失败"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
 		return
 	}
 	if err := a.DB.Delete(&model.Document{}, doc.ID).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除失败"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -342,8 +342,9 @@ func (a *App) PreviewDoc(c *gin.Context) {
 		return
 	}
 	a.render(c, "share_view.html", gin.H{
-		"title": doc.Title,
-		"doc":   doc,
+		"title":    doc.Title,
+		"rawTitle": true, // 用户文档标题，跳过词典反查避免误译
+		"doc":      doc,
 	})
 }
 

@@ -57,7 +57,13 @@
 
   function setLogo(url) {
     logoInput.value = url;
-    logoPreview.innerHTML = url ? '<img src="' + url + '" alt="">' : '';
+    logoPreview.innerHTML = '';
+    if (url) {
+      var img = new Image();
+      img.alt = '';
+      img.src = url;
+      logoPreview.appendChild(img);
+    }
     logoClearBtn.disabled = !url;
   }
 
@@ -69,10 +75,10 @@
     try {
       var res = await fetch('/admin/api/upload', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
       var data = await res.json();
-      if (!res.ok) { UI.alert((data && data.error) || '上传失败'); return; }
+      if (!res.ok) { UI.alert((data && data.error) || UI.t('上传失败')); return; }
       setLogo(data.url);
-      UI.toast('Logo 已更新，保存后生效', 'success');
-    } catch (e) { UI.alert('上传失败：网络错误'); }
+      UI.toast(UI.t('Logo 已更新，保存后生效'), 'success');
+    } catch (e) { UI.alert(UI.t('上传失败：网络错误或服务不可用')); }
     logoFile.value = '';
   });
   logoClearBtn.addEventListener('click', function () { setLogo(''); });
@@ -91,10 +97,10 @@
         body: JSON.stringify(payload)
       });
       var data = await res.json();
-      if (!res.ok) { UI.alert((data && data.error) || '保存失败'); return; }
-      UI.toast('已保存，刷新页面后全站生效', 'success');
+      if (!res.ok) { UI.alert((data && data.error) || UI.t('保存失败')); return; }
+      UI.toast(UI.t('已保存，刷新页面后全站生效'), 'success');
       setTimeout(function () { location.reload(); }, 700);
-    } catch (err) { UI.alert('保存失败：网络错误'); }
+    } catch (err) { UI.alert(UI.t('保存失败：网络错误或服务不可用')); }
   });
 })();
 </script>

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 
 	"doc-share/internal/model"
@@ -97,6 +98,14 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		}
 	}
 	domain := normalizeSiteURL(req.SiteDomain)
+	if strings.TrimSpace(req.SiteDomain) != "" && domain == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "set.errDomain")})
+		return
+	}
+	if len(domain) > 200 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "set.errDomain")})
+		return
+	}
 
 	values := map[string]string{
 		model.SettingSiteName:   name,
@@ -127,7 +136,8 @@ func (a *App) UpdateSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-// normalizeSiteURL 归一域名：补 https:// 前缀、去尾部斜杠；空值返回空
+// normalizeSiteURL 归一域名：补 https:// 前缀、去尾部斜杠；空值返回空，
+// 无法解析出合法 http(s) host 时返回空（由调用方判为格式错误）
 func normalizeSiteURL(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -136,7 +146,11 @@ func normalizeSiteURL(s string) string {
 	if !strings.Contains(s, "://") {
 		s = "https://" + s
 	}
-	return strings.TrimRight(s, "/")
+	u, err := url.Parse(s)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return ""
+	}
+	return strings.TrimRight(u.String(), "/")
 }
 
 // siteBaseURL 分享链接等绝对地址的站点前缀：优先系统域名，留空取当前请求
