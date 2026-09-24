@@ -25,7 +25,7 @@
           <td>{{.CreatedAt.Format "2006-01-02"}}</td>
           <td>{{if .LastActiveAt}}{{.LastActiveAt.Format "2006-01-02 15:04"}}{{else}}—{{end}}</td>
           <td class="col-actions">
-            <button class="btn btn-sm" onclick="editUser({{.ID}}, {{.Username}}, {{.Nickname}}, {{.Role}}, {{.Status}}, {{.Avatar}})">{{$.T "编辑"}}</button>
+            <button class="btn btn-sm" onclick="editUser({{.ID}}, {{.Username}}, {{.Nickname}}, {{.Role}}, {{.Status}}, {{.Avatar}}, {{.Email}}, {{.Phone}})">{{$.T "编辑"}}</button>
             <button class="btn btn-sm" onclick="resetPwd({{.ID}})">{{$.T "重置密码"}}</button>
             <button class="btn btn-sm btn-danger" onclick="delUser({{.ID}})">{{$.T "删除"}}</button>
           </td>
@@ -95,6 +95,12 @@
         </label>
         <label>{{$.T "昵称"}}
           <input type="text" name="nickname" placeholder="{{$.T "显示名称（可选）"}}">
+        </label>
+        <label>{{$.T "prof.email"}}
+          <input type="email" name="email" maxlength="255" autocomplete="off" placeholder="name@example.com">
+        </label>
+        <label>{{$.T "prof.phone"}}
+          <input type="tel" name="phone" maxlength="11" autocomplete="off" placeholder="13800138000">
         </label>
         <label>{{$.T "角色"}}
           <select name="role">

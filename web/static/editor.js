@@ -177,6 +177,33 @@
 
   var docID = function () { return window.DOC_ID || 0; }; // 惰性读取，避免脚本加载顺序问题
 
+// 编辑占用心跳：每 10 秒上报，他人正在编辑时显示提示条
+(function () {
+  if (!docID()) return; // 新建文档无占用概念
+  var banner = document.getElementById('editingBanner');
+  async function pollEditing() {
+    if (!banner) return;
+    try {
+      var res = await fetch('/admin/api/docs/' + docID() + '/editing', {
+        method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      });
+      if (!res.ok) { banner.hidden = true; return; }
+      var data = await res.json();
+      var editors = (data && data.editors) || [];
+      if (editors.length) {
+        banner.textContent = editors.join('、') + ' ' + UI.t('正在编辑此文档');
+        banner.hidden = false;
+      } else {
+        banner.hidden = true;
+      }
+    } catch (e) { /* 轮询失败忽略 */ }
+  }
+  if (banner) {
+    pollEditing();
+    setInterval(pollEditing, 10000);
+  }
+})();
+
   async function save() {
     var id = docID();
     var payload = {

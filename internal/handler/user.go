@@ -31,6 +31,8 @@ type userReq struct {
 	Role     string  `form:"role" json:"role"`
 	Status   *int    `form:"status" json:"status"` // 指针：区分“未传”与“传 0”，避免只改密码时误禁用
 	Password string  `form:"password" json:"password"`
+	Email    string  `json:"email"` // 编辑弹窗总是提交，空即清空
+	Phone    string  `json:"phone"`
 }
 
 // validAvatar 头像 URL 长度校验
@@ -107,6 +109,35 @@ func (a *App) UpdateUser(c *gin.Context) {
 	if req.Role == model.RoleAdmin || req.Role == model.RoleViewer {
 		user.Role = req.Role
 	}
+	// 邮箱/手机：编辑弹窗总是提交，空即清空；格式+唯一性校验（排除自己）
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	if email != "" && !util.ValidEmail(email) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "邮箱格式不正确"})
+		return
+	}
+	if email != "" {
+		var n int64
+		a.DB.Model(&model.User{}).Where("email = ? AND id <> ?", email, user.ID).Count(&n)
+		if n > 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "该邮箱已被其他账号使用"})
+			return
+		}
+	}
+	user.Email = email
+	phone := strings.TrimSpace(req.Phone)
+	if phone != "" && !util.ValidPhone(phone) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "手机号格式不正确"})
+		return
+	}
+	if phone != "" {
+		var n int64
+		a.DB.Model(&model.User{}).Where("phone = ? AND id <> ?", phone, user.ID).Count(&n)
+		if n > 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "该手机号已被其他账号使用"})
+			return
+		}
+	}
+	user.Phone = phone
 	if req.Status != nil && (*req.Status == model.StatusEnabled || *req.Status == model.StatusDisabled) {
 		user.Status = *req.Status
 	}

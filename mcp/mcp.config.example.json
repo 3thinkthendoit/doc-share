@@ -1,0 +1,5 @@
+{
+  "baseUrl": "http://127.0.0.1:9000",
+  "appKey": "ak_在此填入后台创建的AppKey",
+  "secret": "在此填入创建密钥时仅显示一次的Secret"
+}

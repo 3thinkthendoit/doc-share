@@ -78,7 +78,7 @@ func (a *App) Dashboard(c *gin.Context) {
 	user := middleware.CurrentUser(c)
 	isAdmin := user != nil && user.IsAdmin()
 
-	var docCount, userCount, shareCount int64
+	var docCount, userCount, shareCount, projectCount int64
 	recentTx := a.DB.Model(&model.Document{})
 	if isAdmin {
 		a.DB.Model(&model.Document{}).Count(&docCount)
@@ -91,16 +91,21 @@ func (a *App) Dashboard(c *gin.Context) {
 			Where("document_id IN (SELECT id FROM documents WHERE owner_id = ?)", user.ID).Count(&shareCount)
 		recentTx = recentTx.Where("owner_id = ?", user.ID)
 	}
+	// 关联项目数：自己拥有的 + 作为成员参与的项目（去重）
+	a.DB.Model(&model.Project{}).
+		Where("owner_id = ? OR id IN (SELECT project_id FROM project_members WHERE user_id = ?)", user.ID, user.ID).
+		Count(&projectCount)
 
 	var recent []model.Document
 	recentTx.Preload("Owner").Preload("Share").Order("updated_at desc").Limit(5).Find(&recent)
 
 	a.render(c, "dashboard.html", gin.H{
-		"title":      "仪表盘",
-		"isAdmin":    isAdmin,
-		"docCount":   docCount,
-		"userCount":  userCount,
-		"shareCount": shareCount,
-		"recent":     recent,
+		"title":        "仪表盘",
+		"isAdmin":      isAdmin,
+		"docCount":     docCount,
+		"userCount":    userCount,
+		"shareCount":   shareCount,
+		"projectCount": projectCount,
+		"recent":       recent,
 	})
 }

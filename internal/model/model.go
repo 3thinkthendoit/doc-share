@@ -48,6 +48,29 @@ func (u *User) DisplayName() string {
 	return u.Username
 }
 
+// MaskedEmail 脱敏邮箱：保留首字符与域名，如 a***@163.com
+func (u *User) MaskedEmail() string {
+	if u == nil || u.Email == "" {
+		return ""
+	}
+	at := strings.Index(u.Email, "@")
+	if at <= 0 {
+		return "***"
+	}
+	return u.Email[:1] + "***" + u.Email[at:]
+}
+
+// MaskedPhone 脱敏手机号：保留前 3 后 4，如 159****5028
+func (u *User) MaskedPhone() string {
+	if u == nil || u.Phone == "" {
+		return ""
+	}
+	if len(u.Phone) != 11 {
+		return "***"
+	}
+	return u.Phone[:3] + "****" + u.Phone[7:]
+}
+
 // Project 项目（文档归属容器，属主私有；可添加成员按角色协作）
 type Project struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`

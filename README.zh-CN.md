@@ -11,6 +11,7 @@
 - **分享链接** — 任意文档可通过 `/s/:token` 公开访问，支持密码保护
 - **管理后台** — 管理文档、项目、分类、用户和 API 密钥
 - **开放 API** — 通过 API Key（HMAC 签名）认证，支持文档/项目/分类完整增删改查
+- **MCP 服务** — 内置零依赖 MCP 服务器，CodeBuddy / Claude / Cursor 等 AI 客户端可直接管理文档
 - **多语言界面** — 简体中文、繁體中文、English、日本語、Français
 - **安全机制** — Session HMAC 签名、登录/注册验证码、bcrypt 密码加密
 - **单二进制部署** — 模板、静态资源、多语言词典全部通过 `go:embed` 嵌入
@@ -98,6 +99,56 @@ web/
 | 分享访问 | `GET/POST /s/:token` |
 | 开放 API（API Key） | `/open/docs`、`/open/projects`、`/open/categories`（完整增删改查） |
 | 上传 / 转换 | `POST /api/upload`、`POST /api/convert` |
+
+## MCP 服务（AI 客户端接入）
+
+`mcp/mcp-server.js` 是一个零依赖的 MCP 服务器（Node >= 18，stdio 传输），把开放 API 包装成 MCP 工具，供 CodeBuddy / Claude Desktop / Cursor 等 AI 客户端直接管理文档、项目和分类。
+
+### 1. 准备密钥
+
+在 DocShare 后台 `/admin/apikeys` 创建 API 密钥，得到 `AppKey`（`ak_` 开头）和 `Secret`（`sk_` 开头，仅创建时显示一次）。密钥属主即文档所有者，权限与后台一致。
+
+### 2. 客户端配置
+
+在 MCP 客户端的 `mcpServers` 配置中加入：
+
+```json
+{
+  "mcpServers": {
+    "docshare": {
+      "command": "node",
+      "args": ["/path/to/doc-share/mcp/mcp-server.js"],
+      "env": {
+        "DOC_SHARE_BASE_URL": "http://127.0.0.1:9000",
+        "DOC_SHARE_APP_KEY": "ak_xxx",
+        "DOC_SHARE_SECRET": "sk_xxx"
+      }
+    }
+  }
+}
+```
+
+也可以不设环境变量，改为在 `mcp/` 目录创建 `mcp.config.json`（参考 `mcp/mcp.config.example.json`，已被 `.gitignore` 忽略）：
+
+```json
+{
+  "baseUrl": "http://127.0.0.1:9000",
+  "appKey": "ak_xxx",
+  "secret": "sk_xxx"
+}
+```
+
+环境变量优先于配置文件；`DOC_SHARE_BASE_URL` 默认 `http://127.0.0.1:9000`。
+
+### 3. 可用工具
+
+| 工具 | 说明 |
+|---|---|
+| `docshare_list_docs` | 文档分页列表（不含正文），可按 `project_id` / `category_id` 过滤 |
+| `docshare_get_doc` | 读取文档完整内容（含 Markdown 正文） |
+| `docshare_create_doc` / `docshare_update_doc` / `docshare_delete_doc` | 文档增删改（更新时 `content` 整体覆盖，`title` 留空表示不修改） |
+| `docshare_list_projects` / `docshare_create_project` / `docshare_update_project` / `docshare_delete_project` | 项目管理（删除后其下文档回到未分组） |
+| `docshare_list_categories` / `docshare_create_category` / `docshare_update_category` / `docshare_delete_category` | 分类管理（删除后其下文档变为未分类） |
 
 ## 许可证
 

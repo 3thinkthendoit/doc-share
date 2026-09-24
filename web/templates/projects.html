@@ -10,17 +10,34 @@
     <button class="btn btn-primary" id="btnNewProject">{{$.T "新建项目"}}</button>
   </div>
 
+  <form method="get" action="/admin/projects" class="search-bar filter-bar">
+    <input type="text" name="q" placeholder="{{$.T "proj.filterName"}}" value="{{.q}}">
+    <input type="text" name="owner" placeholder="{{$.T "proj.filterOwner"}}" value="{{.owner}}">
+    <select name="scope">
+      <option value="">{{$.T "docs.originAll"}}</option>
+      <option value="mine" {{if eq .scope "mine"}}selected{{end}}>{{$.T "docs.originMine"}}</option>
+      <option value="joined" {{if eq .scope "joined"}}selected{{end}}>{{$.T "docs.originShared"}}</option>
+    </select>
+    <button type="submit" class="btn">{{$.T "docs.query"}}</button>
+    {{if or .q .owner .scope}}<a href="/admin/projects" class="btn">{{$.T "重置"}}</a>{{end}}
+  </form>
+
   <div class="panel">
     <table class="table" id="projectTable">
       <thead>
-        <tr><th>{{$.T "名称"}}</th><th>{{$.T "描述"}}</th>{{if and .user .user.IsAdmin}}<th>{{$.T "所有者"}}</th>{{end}}<th>{{$.T "文档数"}}</th><th>{{$.T "proj.members"}}</th><th>{{$.T "更新时间"}}</th><th>{{$.T "操作"}}</th></tr>
+        <tr><th>{{$.T "名称"}}</th><th>{{$.T "描述"}}</th><th>{{$.T "proj.ownership"}}</th><th>{{$.T "文档数"}}</th><th>{{$.T "proj.members"}}</th><th>{{$.T "更新时间"}}</th><th>{{$.T "操作"}}</th></tr>
       </thead>
       <tbody>
         {{range .projects}}
         <tr>
           <td>{{.Name}}{{if .Role}} <span class="tag">{{if eq .Role "edit"}}{{$.T "proj.roleEdit"}}{{else}}{{$.T "proj.roleView"}}{{end}}</span>{{end}}</td>
           <td class="cell-muted">{{if .Description}}{{.Description}}{{else}}—{{end}}</td>
-          {{if $.user}}{{if $.user.IsAdmin}}<td>{{.Owner.Nickname}}</td>{{end}}{{end}}
+          <td>
+            {{if and $.user (eq .OwnerID $.user.ID)}}—{{/* 自己的项目无需查看归属信息 */}}
+            {{else if .Owner.ID}}
+            <span class="owner-link" data-name="{{.Owner.DisplayName}}" data-username="{{.Owner.Username}}" data-avatar="{{.Owner.Avatar}}" data-email="{{.Owner.MaskedEmail}}" data-phone="{{.Owner.MaskedPhone}}">{{.Owner.DisplayName}}</span>
+            {{else}}—{{end}}
+          </td>
           <td>{{.DocCount}}</td>
           <td>{{.MemberCount}}</td>
           <td>{{.UpdatedAt.Format "2006-01-02 15:04"}}</td>
@@ -30,12 +47,14 @@
             <button class="btn btn-sm" data-id="{{.ID}}" data-name="{{.Name}}" data-desc="{{.Description}}" onclick="editProject(this)">{{$.T "编辑"}}</button>
             <button class="btn btn-sm btn-danger" data-id="{{.ID}}" data-name="{{.Name}}" onclick="delProject(this)">{{$.T "删除"}}</button>
             {{else}}
-            <a class="btn btn-sm" href="/admin/docs?project={{.ID}}">{{$.T "proj.viewDocs"}}</a>
+            <button class="btn btn-sm" data-id="{{.ID}}" data-readonly="1" onclick="openMembers(this)">{{$.T "proj.members"}}</button>
+            <button class="btn btn-sm" data-id="{{.ID}}" onclick="openProjectDocs(this)">{{$.T "proj.viewDocs"}}</button>
+            <button class="btn btn-sm btn-danger" data-id="{{.ID}}" data-name="{{.Name}}" onclick="leaveProject(this)">{{$.T "proj.leave"}}</button>
             {{end}}
           </td>
         </tr>
         {{else}}
-        <tr class="empty-row"><td colspan="{{if and $.user $.user.IsAdmin}}7{{else}}6{{end}}">{{$.T "暂无项目"}}</td></tr>
+        <tr class="empty-row"><td colspan="7">{{$.T "暂无项目"}}</td></tr>
         {{end}}
       </tbody>
     </table>
@@ -74,7 +93,6 @@
       <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
     </div>
     <div class="modal-body import-body" style="padding:18px 22px;overflow:visible">
-      <div id="memberList" class="member-list"></div>
       <div class="member-add">
         <div class="member-pick">
           <input type="text" id="memberUserInput" autocomplete="off" placeholder="{{$.T "proj.selectUser"}}" aria-label="{{$.T "proj.selectUser"}}">
@@ -87,24 +105,186 @@
         </select>
         <button type="button" id="memberAddBtn" class="btn btn-sm btn-primary">{{$.T "proj.addMember"}}</button>
       </div>
+      <div id="memberList" class="member-list"></div>
     </div>
   </div>
 </div>
 <style>
-.member-list{display:flex;flex-direction:column;gap:8px;max-height:280px;overflow:auto;margin-bottom:14px}
-.member-row{display:flex;align-items:center;gap:10px;font-size:13.5px}
-.member-row .grow{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.member-list{display:flex;flex-direction:column;max-height:280px;overflow:auto;margin-top:14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-soft)}
+.member-row{display:flex;align-items:center;gap:10px;font-size:13.5px;padding:9px 12px;border-bottom:1px solid var(--border)}
+.member-row:last-child{border-bottom:none}
+.member-row .grow{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
 .member-row select{padding:6px 10px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:inherit;font-size:13px;background:var(--panel);color:var(--text);cursor:pointer}
 .member-add{display:flex;gap:8px;align-items:center}
-.member-pick{flex:1;min-width:0;position:relative}
-.member-pick input[type=text]{width:100%;height:38px;padding:0 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:inherit;font-size:13.5px;background:var(--panel);color:var(--text);box-sizing:border-box}
+.member-add .member-pick{flex:1;min-width:0;position:relative}
+.member-add .member-pick input[type=text]{width:100%;height:38px;padding:0 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:inherit;font-size:13.5px;background:var(--panel);color:var(--text);box-sizing:border-box}
+.member-add select{height:38px;padding:0 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:inherit;font-size:13.5px;background:var(--panel);color:var(--text);cursor:pointer;box-sizing:border-box}
+.member-add .btn{height:38px;padding-top:0;padding-bottom:0;flex:none}
 .member-suggest{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--panel);border:1px solid var(--border-strong);border-radius:var(--radius-sm);box-shadow:var(--shadow);max-height:180px;overflow:auto;z-index:10}
 .member-suggest-item{padding:8px 12px;font-size:13.5px;cursor:pointer}
 .member-suggest-item:hover{background:var(--bg-soft)}
-.member-add select{height:38px;padding:0 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:inherit;font-size:13.5px;background:var(--panel);color:var(--text);cursor:pointer;box-sizing:border-box}
-.member-add .btn{height:38px;padding-top:0;padding-bottom:0}
+.owner-link{cursor:pointer;color:var(--primary)}
+.owner-link:hover{color:var(--primary-dark);text-decoration:underline}
+.owner-pop{position:fixed;z-index:60;width:240px;padding:10px 12px;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);display:flex;gap:10px;align-items:flex-start}
+/* 顶部指向箭头：--arrow-x 由 JS 按触发元素水平中心计算 */
+.owner-pop::before{content:"";position:absolute;top:-5px;left:var(--arrow-x,24px);width:9px;height:9px;background:var(--panel);border-left:1px solid var(--border);border-top:1px solid var(--border);transform:rotate(45deg)}
+.owner-pop .owner-initial{width:40px;height:40px;border-radius:50%;overflow:hidden;flex:none;display:grid;place-items:center;background:var(--primary-soft);color:var(--primary-dark);font-weight:600;font-size:16px}
+.owner-pop .owner-initial img{width:100%;height:100%;object-fit:cover;display:block}
+.owner-pop .info{min-width:0;flex:1}
+.owner-pop .info .name{font-weight:600;font-size:13.5px;color:var(--text);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.owner-pop .info .username{font-size:11.5px;color:var(--muted);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.owner-pop .info .divider{height:1px;background:var(--border);margin:6px 0}
+.owner-pop .info .field{font-size:12px;line-height:1.8;display:flex;gap:8px;white-space:nowrap}
+.owner-pop .info .field .lbl{color:var(--muted);flex:none}
+.owner-pop .info .field .val{color:var(--text);overflow:hidden;text-overflow:ellipsis}
 </style>
 
+<script>
+// 用户悬停信息卡（手机号/邮箱为后端脱敏值）；window.bindOwnerHover 供动态列表复用
+(function () {
+  if (!window.UI) return;
+
+  var pop = document.createElement('div');
+  pop.className = 'owner-pop';
+  pop.hidden = true;
+  document.body.appendChild(pop);
+
+  function show(el) {
+    var name = el.dataset.name || '';
+    var av = el.dataset.avatar || '';
+    var initial = name.charAt(0) || '?';
+    var avNode = document.createElement('span');
+    avNode.className = 'owner-initial';
+    if (av) {
+      var img = document.createElement('img');
+      img.src = av;
+      img.alt = '';
+      avNode.appendChild(img);
+    } else {
+      avNode.textContent = initial;
+    }
+    var info = document.createElement('div');
+    info.className = 'info';
+    var nameRow = document.createElement('div');
+    nameRow.className = 'name';
+    nameRow.textContent = name;
+    var userRow = document.createElement('div');
+    userRow.className = 'username';
+    userRow.textContent = '@' + (el.dataset.username || '');
+    var divider = document.createElement('div');
+    divider.className = 'divider';
+    info.appendChild(nameRow);
+    info.appendChild(userRow);
+    info.appendChild(divider);
+    [['手机号', el.dataset.phone], ['邮箱', el.dataset.email]].forEach(function (p) {
+      var row = document.createElement('div');
+      row.className = 'field';
+      var lbl = document.createElement('span');
+      lbl.className = 'lbl';
+      lbl.textContent = UI.t(p[0]);
+      var val = document.createElement('span');
+      val.className = 'val';
+      val.textContent = p[1] || '—';
+      row.appendChild(lbl);
+      row.appendChild(val);
+      info.appendChild(row);
+    });
+
+    pop.innerHTML = '';
+    pop.appendChild(avNode);
+    pop.appendChild(info);
+
+    pop.hidden = false;
+    var rect = el.getBoundingClientRect();
+    var top = rect.bottom + 7;
+    var left = Math.min(rect.left, window.innerWidth - pop.offsetWidth - 8);
+    if (left < 8) left = 8;
+    pop.style.top = top + 'px';
+    pop.style.left = left + 'px';
+    // 箭头对准名字水平中心（限制在气泡内）
+    var arrowX = rect.left + rect.width / 2 - left;
+    arrowX = Math.max(14, Math.min(arrowX, pop.offsetWidth - 14));
+    pop.style.setProperty('--arrow-x', arrowX + 'px');
+  }
+
+  window.bindOwnerHover = function (root) {
+    (root || document).querySelectorAll('.owner-link').forEach(function (el) {
+      if (el.dataset.popBound) return; // 防止动态列表重复绑定
+      el.dataset.popBound = '1';
+      el.addEventListener('mouseenter', function () { show(el); });
+      el.addEventListener('mouseleave', function () { pop.hidden = true; });
+    });
+  };
+  window.bindOwnerHover(document);
+})();
+</script>
+
+<!-- 项目文档列表弹窗 -->
+<div class="modal-overlay" id="projDocsModal" hidden>
+  <div class="modal modal-sm">
+    <div class="modal-head">
+      <h2>{{$.T "proj.viewDocs"}}</h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+    </div>
+    <div class="modal-body share-body">
+      <div id="projDocsList" style="max-height:320px;overflow:auto"></div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var docsModal = document.getElementById('projDocsModal');
+  if (!docsModal || !window.UI) return;
+  UI.bindModal(docsModal);
+  var list = document.getElementById('projDocsList');
+
+  window.openProjectDocs = function (btn) {
+    list.innerHTML = '<div class="muted">加载中…</div>';
+    UI.openModal(docsModal);
+    fetch('/admin/api/projects/' + btn.dataset.id + '/docs', {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    }).then(function (r) { return r.json(); }).then(function (data) {
+      var docs = (data && data.docs) || [];
+      list.innerHTML = '';
+      if (!docs.length) {
+        var empty = document.createElement('div');
+        empty.className = 'muted';
+        empty.textContent = UI.t('项目内暂无文档');
+        list.appendChild(empty);
+        return;
+      }
+      docs.forEach(function (d) {
+        var row = document.createElement('div');
+        row.className = 'member-row';
+        var a = document.createElement('a');
+        a.className = 'grow';
+        a.href = '/admin/docs/' + d.id + '/preview';
+        a.target = '_blank';
+        a.textContent = d.title;
+        row.appendChild(a);
+        if (d.is_shared) {
+          var tag = document.createElement('span');
+          tag.className = 'tag';
+          tag.textContent = UI.t('已分享');
+          row.appendChild(tag);
+        }
+        var t = document.createElement('span');
+        t.className = 'muted';
+        t.style.fontSize = '12px';
+        t.textContent = (d.updated_at || '').replace('T', ' ').substring(0, 16);
+        row.appendChild(t);
+        list.appendChild(row);
+      });
+    }).catch(function () {
+      list.innerHTML = '<div class="muted">加载失败</div>';
+    });
+  };
+})();
+</script>
+
+<script>
+  window.CURRENT_USER_ID = {{if .user}}{{.user.ID}}{{else}}0{{end}};
+</script>
 <script src="/static/projects.js"></script>
 </body>
 </html>

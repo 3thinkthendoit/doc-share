@@ -229,6 +229,8 @@ h1,h2{letter-spacing:-.02em;font-weight:650}
 .auth-card label{display:block;margin-bottom:16px;font-weight:500;color:var(--text);font-size:13px}
 .auth-card input{width:100%;margin-top:6px;padding:11px 14px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-size:15px;font-family:inherit;transition:all .15s}
 .auth-card input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+/* 编辑页：他人正在编辑提示条 */
+.editing-banner{margin-bottom:14px;padding:8px 14px;background:#fdf6e7;border:1px solid #f0d9a6;color:#8a6116;border-radius:var(--radius-sm);font-size:13px}
 /* 注册方式单选 */
 .reg-method{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--text);margin-bottom:10px;cursor:pointer}
 .reg-method input[type=radio]{width:15px;height:15px;margin:0;accent-color:var(--primary);cursor:pointer}
@@ -276,9 +278,9 @@ h1,h2{letter-spacing:-.02em;font-weight:650}
 .share-body .pwd-row input{flex:1;min-width:0;margin-top:0;height:40px;box-sizing:border-box}
 .share-body .pwd-row .btn{flex:none;height:40px;padding-top:0;padding-bottom:0}
 /* 只作用于表单控件，避免误伤 checkbox；number/textarea 同样要覆盖（项目描述、分类排序字段） */
-.share-body input[type=text],.share-body input[type=password],.share-body input[type=number],.share-body textarea,.share-body select{display:block;margin-top:6px;padding:8px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);width:100%;font-family:inherit;font-size:14px;transition:all .15s;background:var(--panel);color:var(--text)}
+.share-body input[type=text],.share-body input[type=password],.share-body input[type=number],.share-body input[type=email],.share-body input[type=tel],.share-body textarea,.share-body select{display:block;margin-top:6px;padding:8px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);width:100%;font-family:inherit;font-size:14px;transition:all .15s;background:var(--panel);color:var(--text)}
 .share-body textarea{resize:vertical;min-height:64px;line-height:1.6}
-.share-body input[type=text]:focus,.share-body input[type=password]:focus,.share-body input[type=number]:focus,.share-body textarea:focus,.share-body select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+.share-body input[type=text]:focus,.share-body input[type=password]:focus,.share-body input[type=number]:focus,.share-body input[type=email]:focus,.share-body input[type=tel]:focus,.share-body textarea:focus,.share-body select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
 .share-body input::placeholder,.share-body textarea::placeholder{color:var(--muted)}
 label.check{display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}
 .check input[type=checkbox]{width:16px;height:16px;margin:0;padding:0;border:initial;box-shadow:none;accent-color:var(--primary);cursor:pointer}

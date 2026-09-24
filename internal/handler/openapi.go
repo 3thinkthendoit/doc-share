@@ -138,7 +138,22 @@ func (a *App) RequireAppKey() gin.HandlerFunc {
 func (a *App) OpenListCategories(c *gin.Context) {
 	user := middleware.CurrentUser(c)
 	var items []model.Category
-	a.DB.Where("owner_id = ?", user.ID).Order("sort asc, id asc").Find(&items)
+	a.DB.Preload("Owner").Where("owner_id = ?", user.ID).Order("sort asc, id asc").Find(&items)
+
+	// 回填文档数（与 Web 端分类页一致：viewer 只算自己的文档）
+	var counts []struct {
+		K   uint
+		Cnt int64
+	}
+	a.DB.Model(&model.Document{}).Select("category_id AS k, COUNT(*) AS cnt").
+		Where("owner_id = ?", user.ID).Group("category_id").Scan(&counts)
+	countMap := make(map[uint]int64, len(counts))
+	for _, row := range counts {
+		countMap[row.K] = row.Cnt
+	}
+	for i := range items {
+		items[i].DocCount = countMap[items[i].ID]
+	}
 	c.JSON(http.StatusOK, gin.H{"data": items})
 }
 
@@ -146,7 +161,32 @@ func (a *App) OpenListCategories(c *gin.Context) {
 func (a *App) OpenListProjects(c *gin.Context) {
 	user := middleware.CurrentUser(c)
 	var items []model.Project
-	a.DB.Where("owner_id = ?", user.ID).Order("updated_at desc").Find(&items)
+	a.DB.Preload("Owner").Where("owner_id = ?", user.ID).Order("updated_at desc").Find(&items)
+
+	// 回填文档数与成员数（与 Web 端项目页一致，属主固定 +1）
+	var counts []struct {
+		K   uint
+		Cnt int64
+	}
+	a.DB.Model(&model.Document{}).Select("project_id AS k, COUNT(*) AS cnt").
+		Where("owner_id = ?", user.ID).Group("project_id").Scan(&counts)
+	countMap := make(map[uint]int64, len(counts))
+	for _, row := range counts {
+		countMap[row.K] = row.Cnt
+	}
+	var mcounts []struct {
+		K   uint
+		Cnt int64
+	}
+	a.DB.Model(&model.ProjectMember{}).Select("project_id AS k, COUNT(*) AS cnt").Group("project_id").Scan(&mcounts)
+	memberMap := make(map[uint]int64, len(mcounts))
+	for _, row := range mcounts {
+		memberMap[row.K] = row.Cnt
+	}
+	for i := range items {
+		items[i].DocCount = countMap[items[i].ID]
+		items[i].MemberCount = memberMap[items[i].ID] + 1
+	}
 	c.JSON(http.StatusOK, gin.H{"data": items})
 }
 

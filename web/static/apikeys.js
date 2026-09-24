@@ -114,6 +114,10 @@
   window.toggleKey = async function (btn) {
     var id = btn.dataset.id;
     var status = parseInt(btn.dataset.status, 10);
+    // 禁用立即使密钥失效、中断开放平台调用，需确认；启用无破坏性，直接执行
+    if (status === 0) {
+      if (!await UI.confirm(UI.t('禁用后该密钥立即失效，其开放平台调用将被拒绝，确认禁用「{0}」？', btn.dataset.name), { danger: true })) return;
+    }
     try {
       var res = await fetch('/admin/api/apikeys/' + id + '/status', {
         method: 'PUT',

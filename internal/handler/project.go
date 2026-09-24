@@ -13,30 +13,51 @@ import (
 	"gorm.io/gorm"
 )
 
-// ProjectsPage 项目列表页：自己的项目 + 所参与的项目（带角色标签），admin 看全部
+// ProjectsPage 项目列表页：自己的项目 + 所参与的项目（带角色标签），admin 看全部。
+// 支持筛选：项目名称（模糊）、项目拥有者（用户名/昵称模糊）、关联范围（我拥有的/我参与的）
 func (a *App) ProjectsPage(c *gin.Context) {
 	user := middleware.CurrentUser(c)
+	q := strings.TrimSpace(c.Query("q"))
+	owner := strings.TrimSpace(c.Query("owner"))
+	scope := c.Query("scope") // "" | mine | joined
 
 	// 参与的项目及角色（admin 天然全可见，无需回填角色）
 	roleByPid := make(map[uint]string)
-	if user != nil && !user.IsAdmin() {
+	memberPids := make([]uint, 0)
+	if user != nil {
 		var ms []model.ProjectMember
 		a.DB.Where("user_id = ?", user.ID).Find(&ms)
 		for _, m := range ms {
 			roleByPid[m.ProjectID] = m.Role
+			memberPids = append(memberPids, m.ProjectID)
 		}
 	}
 
 	tx := a.DB.Model(&model.Project{})
 	if user != nil && !user.IsAdmin() {
-		if len(roleByPid) > 0 {
-			pids := make([]uint, 0, len(roleByPid))
-			for pid := range roleByPid {
-				pids = append(pids, pid)
-			}
-			tx = tx.Where("owner_id = ? OR id IN ?", user.ID, pids)
+		if len(memberPids) > 0 {
+			tx = tx.Where("owner_id = ? OR id IN ?", user.ID, memberPids)
 		} else {
 			tx = tx.Where("owner_id = ?", user.ID)
+		}
+	}
+	// 名称模糊筛选
+	if q != "" {
+		tx = tx.Where("name LIKE ?", "%"+q+"%")
+	}
+	// 拥有者筛选（用户名/昵称模糊）
+	if owner != "" {
+		like := "%" + owner + "%"
+		tx = tx.Where("owner_id IN (SELECT id FROM users WHERE username LIKE ? OR nickname LIKE ?)", like, like)
+	}
+	// 关联范围：我拥有的 / 我参与的（他人项目）
+	if user != nil && scope == "mine" {
+		tx = tx.Where("owner_id = ?", user.ID)
+	} else if user != nil && scope == "joined" {
+		if len(memberPids) > 0 {
+			tx = tx.Where("owner_id <> ? AND id IN ?", user.ID, memberPids)
+		} else {
+			tx = tx.Where("1 = 0")
 		}
 	}
 	var projects []model.Project
@@ -76,13 +97,17 @@ func (a *App) ProjectsPage(c *gin.Context) {
 	}
 	for i := range projects {
 		projects[i].DocCount = countMap[projects[i].ID]
-		projects[i].MemberCount = memberMap[projects[i].ID]
+		// 成员数包含属主（属主不在 project_members 表中，固定 +1）
+		projects[i].MemberCount = memberMap[projects[i].ID] + 1
 		projects[i].Role = roleByPid[projects[i].ID]
 	}
 
 	a.render(c, "projects.html", gin.H{
 		"title":    "项目管理",
 		"projects": projects,
+		"q":        q,
+		"owner":    owner,
+		"scope":    scope,
 	})
 }
 
@@ -124,6 +149,32 @@ func checkProjectReq(req *projectReq) (string, string, string) {
 		return "", "", "项目描述不能超过 500 字"
 	}
 	return name, desc, ""
+}
+
+// ListProjectDocs 项目内文档列表（属主/管理员/项目成员）：GET /admin/api/projects/:id/docs
+func (a *App) ListProjectDocs(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var project model.Project
+	if err := a.DB.First(&project, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "项目不存在"})
+		return
+	}
+	user := middleware.CurrentUser(c)
+	allowed := user != nil && (user.IsAdmin() || project.OwnerID == user.ID)
+	if !allowed && user != nil {
+		var n int64
+		a.DB.Model(&model.ProjectMember{}).Where("project_id = ? AND user_id = ?", project.ID, user.ID).Count(&n)
+		allowed = n > 0
+	}
+	if !allowed {
+		c.JSON(http.StatusForbidden, gin.H{"error": "无权查看该项目"})
+		return
+	}
+	var docs []model.Document
+	a.DB.Where("project_id = ?", project.ID).
+		Select("id", "title", "is_shared", "updated_at").
+		Order("updated_at desc").Find(&docs)
+	c.JSON(http.StatusOK, gin.H{"docs": docs})
 }
 
 // CreateProject 新建项目
@@ -201,6 +252,32 @@ func (a *App) DeleteProject(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// LeaveProject 成员退出项目：DELETE /admin/api/projects/:id/members/me
+// 仅项目成员本人可退出；创建者不能退出（拥有该项目，需走删除）
+func (a *App) LeaveProject(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var project model.Project
+	if err := a.DB.First(&project, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "项目不存在"})
+		return
+	}
+	user := middleware.CurrentUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未登录"})
+		return
+	}
+	if project.OwnerID == user.ID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "创建者不能退出自己的项目，如不需要可直接删除项目"})
+		return
+	}
+	res := a.DB.Where("project_id = ? AND user_id = ?", project.ID, user.ID).Delete(&model.ProjectMember{})
+	if res.Error != nil || res.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "你不是该项目成员"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 // UserOptions 成员选择器搜索：按用户名/昵称模糊匹配启用用户。
 // 任意登录用户可用，仅暴露 id/用户名/昵称；必须带搜索词且一次最多 20 条，避免全量枚举账号
 func (a *App) UserOptions(c *gin.Context) {
@@ -221,26 +298,44 @@ func (a *App) UserOptions(c *gin.Context) {
 // ---- 项目成员 ----
 
 type memberView struct {
-	ID       uint   `json:"id"` // 成员记录 ID
+	ID       uint   `json:"id"`     // 成员记录 ID
 	UserID   uint   `json:"user_id"`
 	Username string `json:"username"`
 	Nickname string `json:"nickname"`
+	Avatar   string `json:"avatar"`
+	Email    string `json:"email"` // 后端脱敏
+	Phone    string `json:"phone"` // 后端脱敏
 	Role     string `json:"role"`
 }
 
 // ListProjectMembers 成员列表（属主/管理员）
+// ListProjectMembers 成员列表（属主/管理员/项目成员均可读；增删改仍属主/管理员）
 func (a *App) ListProjectMembers(c *gin.Context) {
-	project := a.loadProject(c)
-	if project == nil {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var project model.Project
+	if err := a.DB.First(&project, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "项目不存在"})
+		return
+	}
+	user := middleware.CurrentUser(c)
+	allowed := user != nil && (user.IsAdmin() || project.OwnerID == user.ID)
+	if !allowed && user != nil {
+		var n int64
+		a.DB.Model(&model.ProjectMember{}).Where("project_id = ? AND user_id = ?", project.ID, user.ID).Count(&n)
+		allowed = n > 0
+	}
+	if !allowed {
+		c.JSON(http.StatusForbidden, gin.H{"error": "无权查看该项目"})
 		return
 	}
 	var ms []model.ProjectMember
 	a.DB.Where("project_id = ?", project.ID).Order("created_at asc").Find(&ms)
 
-	ids := make([]uint, 0, len(ms))
+	ids := make([]uint, 0, len(ms)+1)
 	for _, m := range ms {
 		ids = append(ids, m.UserID)
 	}
+	ids = append(ids, project.OwnerID) // 属主信息也用于展示
 	users := map[uint]model.User{}
 	if len(ids) > 0 {
 		var us []model.User
@@ -249,12 +344,28 @@ func (a *App) ListProjectMembers(c *gin.Context) {
 			users[u.ID] = u
 		}
 	}
-	views := make([]memberView, 0, len(ms))
-	for _, m := range ms {
-		v := memberView{ID: m.ID, UserID: m.UserID, Role: m.Role}
-		if u, ok := users[m.UserID]; ok {
+	fillView := func(v *memberView, userID uint) {
+		if u, ok := users[userID]; ok {
 			v.Username, v.Nickname = u.Username, u.DisplayName()
+			v.Avatar = u.Avatar
+			v.Email = u.MaskedEmail()
+			v.Phone = u.MaskedPhone()
 		}
+	}
+	views := make([]memberView, 0, len(ms)+1)
+	// 属主列为只读首行（Role=owner，前端据此隐藏改角色/移除操作）
+	var owner model.User
+	if a.DB.First(&owner, project.OwnerID).Error == nil {
+		v := memberView{UserID: owner.ID, Role: "owner"}
+		fillView(&v, owner.ID)
+		views = append(views, v)
+	}
+	for _, m := range ms {
+		if m.UserID == project.OwnerID {
+			continue // 兼容历史脏数据：属主不重复展示
+		}
+		v := memberView{ID: m.ID, UserID: m.UserID, Role: m.Role}
+		fillView(&v, m.UserID)
 		views = append(views, v)
 	}
 	c.JSON(http.StatusOK, gin.H{"members": views})

@@ -25,27 +25,44 @@
       <option value="0" {{if eq .category "0"}}selected{{end}}>{{$.T "未分类"}}</option>
       {{range .categories}}<option value="{{.ID}}" {{if eq $.category (print .ID)}}selected{{end}}>{{.Name}}</option>{{end}}
     </select>
+    <select name="shared">
+      <option value="">{{$.T "docs.shareAll"}}</option>
+      <option value="1" {{if eq .shared "1"}}selected{{end}}>{{$.T "已分享"}}</option>
+      <option value="0" {{if eq .shared "0"}}selected{{end}}>{{$.T "未分享"}}</option>
+    </select>
     <select name="origin">
       <option value="">{{$.T "docs.originAll"}}</option>
       <option value="mine" {{if eq .origin "mine"}}selected{{end}}>{{$.T "docs.originMine"}}</option>
       {{if and $.user (not $.user.IsAdmin)}}<option value="shared" {{if eq .origin "shared"}}selected{{end}}>{{$.T "docs.originShared"}}</option>{{end}}
     </select>
     <button type="submit" class="btn">{{$.T "docs.query"}}</button>
-    {{if or .project .category .origin}}<a href="/admin/docs{{if .q}}?q={{.q}}{{end}}" class="btn">{{$.T "重置"}}</a>{{end}}
+    {{if or .project .category .shared .origin}}<a href="/admin/docs{{if .q}}?q={{.q}}{{end}}" class="btn">{{$.T "重置"}}</a>{{end}}
   </form>
 
   <div class="panel">
     <table class="table">
-      <thead><tr><th>{{$.T "标题"}}</th><th>{{$.T "项目"}}</th><th>{{$.T "分类"}}</th><th>{{$.T "所有者"}}</th><th>{{$.T "浏览"}}</th><th>{{$.T "分享"}}</th><th>{{$.T "更新时间"}}</th><th class="col-actions">{{$.T "操作"}}</th></tr></thead>
+      <thead><tr><th>{{$.T "标题"}}</th><th>{{$.T "项目"}}</th><th>{{$.T "分类"}}</th><th>{{$.T "所有者"}}</th><th>{{$.T "浏览"}}</th><th>{{$.T "分享"}}</th><th>{{$.T "docs.permHeader"}}</th><th>{{$.T "更新时间"}}</th><th class="col-actions">{{$.T "操作"}}</th></tr></thead>
       <tbody>
       {{range .docs}}
         <tr>
-          <td><a href="/admin/docs/{{.ID}}/edit">{{.Title}}</a><div class="muted mono">{{.Slug}}</div></td>
+          <td>
+            {{/* 有编辑权限点标题进编辑页；否则进阅读预览页 */}}
+            {{if and $.canEdit (index $.canEdit .ID)}}
+            <a href="/admin/docs/{{.ID}}/edit">{{.Title}}</a><div class="muted mono">{{.Slug}}</div>
+            {{else}}
+            <a href="/admin/docs/{{.ID}}/preview" target="_blank">{{.Title}}</a><div class="muted mono">{{.Slug}}</div>
+            {{end}}
+          </td>
           <td>{{if .Project}}{{.Project.Name}}{{else}}<span class="muted">—</span>{{end}}</td>
           <td>{{if .Category}}{{.Category.Name}}{{else}}<span class="muted">—</span>{{end}}</td>
           <td>{{.Owner.Nickname}}</td>
           <td>{{.ViewCount}}</td>
           <td>{{if .IsShared}}<span class="tag tag-green">{{$.T "已分享"}}</span>{{else}}<span class="tag">{{$.T "未分享"}}</span>{{end}}</td>
+          <td>
+            {{if .IsShared}}{{if .Share}}{{if .Share.CanEdit}}<span class="tag tag-green">{{$.T "编辑"}}</span>{{else}}<span class="tag tag-green">{{$.T "docs.permBrowse"}}</span>{{end}}{{else}}<span class="tag tag-green">{{$.T "docs.permBrowse"}}</span>{{end}}
+            {{else if .ProjectID}}<span class="tag">{{$.T "docs.permProject"}}</span>
+            {{else}}<span class="tag" style="color:var(--muted)">{{$.T "docs.permPrivate"}}</span>{{end}}
+          </td>
           <td>{{.UpdatedAt.Format "2006-01-02 15:04"}}</td>
           <td class="col-actions">
             <a href="/admin/docs/{{.ID}}/preview" target="_blank" class="btn btn-sm" title="{{$.T "以读者视图查看（不计浏览数）"}}">{{$.T "查看"}}</a>
@@ -56,7 +73,7 @@
           </td>
         </tr>
       {{else}}
-        <tr><td colspan="8" class="empty">{{$.T "没有文档"}}</td></tr>
+        <tr><td colspan="9" class="empty">{{$.T "没有文档"}}</td></tr>
       {{end}}
       </tbody>
     </table>
@@ -65,9 +82,9 @@
   {{if gt .totalPages 1}}
   {{/* 翻页保留当前筛选条件 */}}
   <div class="pager">
-    {{if gt .page 1}}<a class="btn" href="/admin/docs?page={{sub .page 1}}&q={{.q}}&project={{.project}}&category={{.category}}&origin={{.origin}}">{{$.T "上一页"}}</a>{{end}}
+    {{if gt .page 1}}<a class="btn" href="/admin/docs?page={{sub .page 1}}&q={{.q}}&project={{.project}}&category={{.category}}&shared={{.shared}}&origin={{.origin}}">{{$.T "上一页"}}</a>{{end}}
     <span class="muted">{{$.T "docs.pageInfo" .page .totalPages .total}}</span>
-    {{if lt .page .totalPages}}<a class="btn" href="/admin/docs?page={{add .page 1}}&q={{.q}}&project={{.project}}&category={{.category}}&origin={{.origin}}">{{$.T "下一页"}}</a>{{end}}
+    {{if lt .page .totalPages}}<a class="btn" href="/admin/docs?page={{add .page 1}}&q={{.q}}&project={{.project}}&category={{.category}}&shared={{.shared}}&origin={{.origin}}">{{$.T "下一页"}}</a>{{end}}
   </div>
   {{end}}
 </main>

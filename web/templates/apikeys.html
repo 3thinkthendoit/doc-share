@@ -11,6 +11,11 @@
   </div>
 
   <div class="panel">
+    <style>
+      /* AppKey 列字号与正文一致，消除同一行基线错位 */
+      #keyTable td{vertical-align:middle}
+      #keyTable td.mono{font-size:14px}
+    </style>
     <table class="table" id="keyTable">
       <thead>
         <tr><th>{{$.T "名称"}}</th><th>AppKey</th><th>{{$.T "状态"}}</th><th>{{$.T "最近使用"}}</th><th>{{$.T "创建时间"}}</th>{{if and .user .user.IsAdmin}}<th>{{$.T "所有者"}}</th>{{end}}<th>{{$.T "操作"}}</th></tr>
@@ -26,7 +31,7 @@
           {{if and $.user $.user.IsAdmin}}<td>{{if .Owner.Nickname}}{{.Owner.Nickname}}{{else}}{{.Owner.Username}}{{end}}</td>{{end}}
           <td>
             <button class="btn btn-sm" data-id="{{.ID}}" data-name="{{.Name}}" onclick="resetKey(this)">{{$.T "重置密钥"}}</button>
-            <button class="btn btn-sm" data-id="{{.ID}}" data-status="{{if eq .Status 1}}0{{else}}1{{end}}" onclick="toggleKey(this)">{{if eq .Status 1}}{{$.T "禁用"}}{{else}}{{$.T "启用"}}{{end}}</button>
+            <button class="btn btn-sm" data-id="{{.ID}}" data-name="{{.Name}}" data-status="{{if eq .Status 1}}0{{else}}1{{end}}" onclick="toggleKey(this)">{{if eq .Status 1}}{{$.T "禁用"}}{{else}}{{$.T "启用"}}{{end}}</button>
             <button class="btn btn-sm btn-danger" data-id="{{.ID}}" data-name="{{.Name}}" onclick="delKey(this)">{{$.T "删除"}}</button>
           </td>
         </tr>

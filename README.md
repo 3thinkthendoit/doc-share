@@ -11,6 +11,7 @@ A lightweight self-hosted documentation sharing platform built with Go and Gin. 
 - **Sharing links** — publish any document via `/s/:token`, optionally protected by a password
 - **Admin dashboard** — manage documents, projects, categories, users and API keys
 - **Open API** — full CRUD for documents/projects/categories authenticated by API keys (HMAC)
+- **MCP server** — built-in zero-dependency MCP server so AI clients (CodeBuddy / Claude / Cursor) can manage documents directly
 - **Multi-language UI** — English, 简体中文, 繁體中文, 日本語, Français
 - **Security** — session signing (HMAC), captcha on login/register, bcrypt password hashing
 - **Single binary** — templates, static assets and i18n dictionaries are embedded via `go:embed`
@@ -98,6 +99,56 @@ Set `DOC_SHARE_DEV=true` to read templates and static files directly from the `w
 | Share view | `GET/POST /s/:token` |
 | Open API (API key) | `/open/docs`, `/open/projects`, `/open/categories` (full CRUD) |
 | Upload / Convert | `POST /api/upload`, `POST /api/convert` |
+
+## MCP Server (AI Client Integration)
+
+`mcp/mcp-server.js` is a zero-dependency MCP server (Node >= 18, stdio transport) that wraps the Open API into MCP tools, so AI clients such as CodeBuddy / Claude Desktop / Cursor can manage documents, projects and categories directly.
+
+### 1. Create an API Key
+
+Create a key at `/admin/apikeys` in the DocShare admin panel. You'll get an `AppKey` (prefix `ak_`) and a `Secret` (prefix `sk_`, shown only once). The key owner owns the resulting documents; permissions match the web UI.
+
+### 2. Client Configuration
+
+Add the server to your MCP client's `mcpServers` config:
+
+```json
+{
+  "mcpServers": {
+    "docshare": {
+      "command": "node",
+      "args": ["/path/to/doc-share/mcp/mcp-server.js"],
+      "env": {
+        "DOC_SHARE_BASE_URL": "http://127.0.0.1:9000",
+        "DOC_SHARE_APP_KEY": "ak_xxx",
+        "DOC_SHARE_SECRET": "sk_xxx"
+      }
+    }
+  }
+}
+```
+
+Alternatively, skip the env vars and create `mcp/mcp.config.json` (see `mcp/mcp.config.example.json`; git-ignored):
+
+```json
+{
+  "baseUrl": "http://127.0.0.1:9000",
+  "appKey": "ak_xxx",
+  "secret": "sk_xxx"
+}
+```
+
+Environment variables take precedence over the config file; `DOC_SHARE_BASE_URL` defaults to `http://127.0.0.1:9000`.
+
+### 3. Available Tools
+
+| Tool | Description |
+|---|---|
+| `docshare_list_docs` | Paged document list (without content), filterable by `project_id` / `category_id` |
+| `docshare_get_doc` | Read a single document with full Markdown content |
+| `docshare_create_doc` / `docshare_update_doc` / `docshare_delete_doc` | Document CRUD (`content` is fully replaced on update; leave `title` empty to keep it) |
+| `docshare_list_projects` / `docshare_create_project` / `docshare_update_project` / `docshare_delete_project` | Project management (documents become ungrouped after project deletion) |
+| `docshare_list_categories` / `docshare_create_category` / `docshare_update_category` / `docshare_delete_category` | Category management (documents become uncategorized after category deletion) |
 
 ## License
 

@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"doc-share/internal/middleware"
@@ -59,6 +60,12 @@ func (a *App) DocsPage(c *gin.Context) {
 		} else if pid, err := strconv.Atoi(p); err == nil {
 			tx = tx.Where("project_id = ?", pid)
 		}
+	}
+	// 分享状态筛选：1=已分享 0=未分享
+	if sh := c.Query("shared"); sh == "1" {
+		tx = tx.Where("is_shared = 1")
+	} else if sh == "0" {
+		tx = tx.Where("is_shared = 0")
 	}
 	if ct := c.Query("category"); ct != "" {
 		if ct == "0" {
@@ -118,6 +125,7 @@ func (a *App) DocsPage(c *gin.Context) {
 		"totalPages": totalPages,
 		"project":    c.Query("project"),
 		"category":   c.Query("category"),
+		"shared":     c.Query("shared"),
 		"projects":   projects,
 		"categories": categories,
 		"canEdit":    canEdit,
@@ -447,18 +455,77 @@ type shareReq struct {
 	ExpireDays int    `json:"expire_days" form:"expire_days"` // 0 表示永不过期
 }
 
-// PreviewDoc 管理端阅读预览：作者或管理员以读者视图查看文档，
-// 不要求开启分享、不写分享凭证、不计浏览数
-func (a *App) PreviewDoc(c *gin.Context) {
+// ---- 编辑占用心跳（HTTP 轮询）：提示他人正在编辑同一文档 ----
+
+const editPresenceTTL = 30 * time.Second
+
+type editEntry struct {
+	name string
+	at   time.Time
+}
+
+var editPresence = struct {
+	sync.Mutex
+	m map[uint]map[uint]editEntry // docID -> userID -> 心跳
+}{m: map[uint]map[uint]editEntry{}}
+
+// MarkEditing 编辑页心跳：POST /admin/api/docs/:id/editing
+// 登记本人心跳并返回其他正在编辑者的名字（30 秒内心跳有效）
+func (a *App) MarkEditing(c *gin.Context) {
 	doc := a.loadDoc(c)
 	if doc == nil {
 		return
 	}
-	// loadDoc 不带关联预加载（避免影响 API JSON），这里补取作者供阅读页展示
-	if doc.OwnerID != 0 {
-		a.DB.First(&doc.Owner, doc.OwnerID)
+	user := middleware.CurrentUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未登录"})
+		return
+	}
+	now := time.Now()
+	editPresence.Lock()
+	entries, ok := editPresence.m[doc.ID]
+	if !ok {
+		entries = map[uint]editEntry{}
+		editPresence.m[doc.ID] = entries
+	}
+	for uid, e := range entries { // 清理过期心跳
+		if now.Sub(e.at) > editPresenceTTL {
+			delete(entries, uid)
+		}
+	}
+	entries[user.ID] = editEntry{name: user.DisplayName(), at: now}
+	var others []string
+	for uid, e := range entries {
+		if uid != user.ID {
+			others = append(others, e.name)
+		}
+	}
+	editPresence.Unlock()
+	c.JSON(http.StatusOK, gin.H{"editors": others})
+}
+
+// PreviewDoc 管理端阅读预览：作者/管理员/项目成员以读者视图查看文档，
+// 不要求开启分享、不写分享凭证、不计浏览数
+func (a *App) PreviewDoc(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var doc model.Document
+	// Preload Owner：阅读页展示作者信息
+	if err := a.DB.Preload("Owner").First(&doc, id).Error; err != nil {
+		c.String(http.StatusNotFound, "文档不存在")
+		return
 	}
 	user := middleware.CurrentUser(c)
+	allowed := user != nil && (user.IsAdmin() || doc.OwnerID == user.ID)
+	// 项目成员（view/edit 角色）可读属主文档
+	if !allowed && user != nil && doc.ProjectID != 0 {
+		var n int64
+		a.DB.Model(&model.ProjectMember{}).Where("project_id = ? AND user_id = ?", doc.ProjectID, user.ID).Count(&n)
+		allowed = n > 0
+	}
+	if !allowed {
+		c.String(http.StatusForbidden, "无权查看该文档")
+		return
+	}
 	a.render(c, "share_view.html", gin.H{
 		"title":       doc.Title,
 		"rawTitle":    true, // 用户文档标题，跳过词典反查避免误译

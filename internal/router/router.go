@@ -49,6 +49,9 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.PUT("/api/settings", middleware.RequireAdmin(), app.UpdateSettings)
 		admin.POST("/api/settings/test-mail", middleware.RequireAdmin(), app.TestMail)
 
+			// 项目内文档列表（属主/管理员/成员）：项目弹窗用
+		admin.GET("/api/projects/:id/docs", app.ListProjectDocs)
+
 		// 项目管理（个人归属，viewer 管自己的）；成员管理仅属主
 		admin.GET("/projects", app.ProjectsPage)
 		admin.POST("/api/projects", app.CreateProject)
@@ -57,6 +60,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.GET("/api/projects/:id/members", app.ListProjectMembers)
 		admin.POST("/api/projects/:id/members", app.AddProjectMember)
 		admin.PUT("/api/projects/:id/members/:mid", app.UpdateProjectMember)
+		admin.DELETE("/api/projects/:id/members/me", app.LeaveProject)
 		admin.DELETE("/api/projects/:id/members/:mid", app.RemoveProjectMember)
 
 		// 成员选择器（任意登录用户，仅暴露 id/用户名/昵称）
@@ -80,6 +84,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.POST("/api/docs", app.CreateDoc)
 		admin.PUT("/api/docs/:id", app.UpdateDoc)
 		admin.DELETE("/api/docs/:id", app.DeleteDoc)
+		admin.POST("/api/docs/:id/editing", app.MarkEditing)
 		admin.POST("/api/docs/:id/share", app.UpsertShare)
 		admin.DELETE("/api/docs/:id/share", app.DeleteShare)
 

@@ -70,15 +70,41 @@ var memberUserId = document.getElementById('memberUserId');
 var memberUserList = document.getElementById('memberUserList');
 var memberRole = document.getElementById('memberRole');
 var memberAddBtn = document.getElementById('memberAddBtn');
+var memberAddRow = document.querySelector('.members-modal .member-add') || document.querySelector('.member-add');
 var memberProjectId = 0;
+var membersReadonly = false; // 非属主查看成员列表：只读模式
 
 if (membersModal) UI.bindModal(membersModal);
 
 // onclick 属性调用，需挂在全局
 window.openMembers = function (btn) {
   memberProjectId = btn.dataset.id;
+  membersReadonly = btn.dataset.readonly === '1';
+  memberAddRow.style.display = membersReadonly ? 'none' : 'flex';
   UI.openModal(membersModal);
   loadMembers();
+};
+
+// onclick 属性调用：成员退出自己参与的项目（创建者不可退出，后端校验）
+window.leaveProject = function (btn) {
+  var id = btn.dataset.id;
+  var name = btn.dataset.name || '';
+  UI.confirm(UI.t('确认退出该项目「{0}」？退出后将无法再访问项目内文档。', name), { danger: true }).then(async function (ok) {
+    if (!ok) return;
+    btn.disabled = true;
+    try {
+      var res = await fetch('/admin/api/projects/' + id + '/members/me', {
+        method: 'DELETE', headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      });
+      var d = await res.json().catch(function () { return {}; });
+      if (!res.ok) { UI.alert((d && d.error) || UI.t('退出失败')); btn.disabled = false; return; }
+      UI.toast(UI.t('已退出项目'), 'success');
+      setTimeout(function () { location.reload(); }, 600); // 成员数/行变化，整页刷新
+    } catch (e) {
+      UI.alert(UI.t('退出失败：网络错误'));
+      btn.disabled = false;
+    }
+  });
 };
 
 // 成员搜索：按需查询启用用户（后端限 20 条），避免全量枚举
@@ -130,6 +156,7 @@ async function loadMembers() {
       return;
     }
     ms.forEach(function (m) { memberList.appendChild(memberRow(m)); });
+    if (window.bindOwnerHover) window.bindOwnerHover(memberList);
   } catch (e) {
     memberList.innerHTML = '<div class="muted">' + UI.t('加载失败') + '</div>';
   }
@@ -144,7 +171,24 @@ function mEl(tag, cls, text) {
 
 function memberRow(m) {
   var row = mEl('div', 'member-row');
-  row.appendChild(mEl('span', 'grow', m.nickname + ' (' + m.username + ')'));
+  // 名字为悬停链接：弹出用户信息卡（脱敏）
+  var nameSpan = document.createElement('span');
+  nameSpan.className = 'owner-link grow';
+  nameSpan.dataset.name = m.nickname || '';
+  nameSpan.dataset.username = m.username || '';
+  nameSpan.dataset.avatar = m.avatar || '';
+  nameSpan.dataset.email = m.email || '';
+  nameSpan.dataset.phone = m.phone || '';
+  nameSpan.textContent = m.nickname + ' (' + m.username + ')';
+  row.appendChild(nameSpan);
+  // 只读模式（非属主查看）与属主行：展示角色文本，无操作按钮
+  if (membersReadonly || m.role === 'owner') {
+    var roleText = m.role === 'owner' ? UI.t('proj.ownerRole')
+      : (m.role === 'edit' ? UI.t('proj.roleEdit') : UI.t('proj.roleView'));
+    row.appendChild(mEl('span', 'tag', roleText));
+    if (window.bindOwnerHover) window.bindOwnerHover(row);
+    return row;
+  }
   var sel = document.createElement('select');
   [['view', UI.t('proj.roleView')], ['edit', UI.t('proj.roleEdit')]].forEach(function (p) {
     var o = document.createElement('option');

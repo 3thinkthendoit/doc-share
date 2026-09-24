@@ -51,10 +51,12 @@
   var editAvatar = UI.avatarPicker(editForm && editForm.querySelector('[data-avatar-pick]'));
   var editID = 0;
   UI.bindModal(editModal);
-  window.editUser = function (id, username, nickname, role, status, avatar) {
+  window.editUser = function (id, username, nickname, role, status, avatar, email, phone) {
     editID = id;
     document.getElementById('editUsername').value = username || '';
     editForm.querySelector('input[name=nickname]').value = nickname || '';
+    editForm.querySelector('input[name=email]').value = email || '';
+    editForm.querySelector('input[name=phone]').value = phone || '';
     if (editAvatar) editAvatar.set(avatar || '');
     var roleSel = editForm.querySelector('select[name=role]');
     var statusSel = editForm.querySelector('select[name=status]');
@@ -74,6 +76,8 @@
         role: fd.get('role'),
         status: parseInt(fd.get('status'), 10),
         avatar: fd.get('avatar'),
+        email: (fd.get('email') || '').trim(),
+        phone: (fd.get('phone') || '').trim(),
       };
       try {
         var res = await fetch('/admin/api/users/' + editID, {
