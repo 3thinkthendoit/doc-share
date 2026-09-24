@@ -1,0 +1,65 @@
+{{define "categories.html"}}
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>{{template "head" .}}</head>
+<body>
+{{template "nav" .}}
+<main class="container">
+  <div class="page-head">
+    <h1>{{$.T "分类"}}</h1>
+    <button class="btn btn-primary" id="btnNewCategory">{{$.T "新建分类"}}</button>
+  </div>
+
+  <div class="panel">
+    <table class="table" id="categoryTable">
+      <thead>
+        <tr><th>{{$.T "名称"}}</th><th>{{$.T "排序"}}</th><th>{{$.T "文档数"}}</th>{{if and .user .user.IsAdmin}}<th>{{$.T "所有者"}}</th>{{end}}<th>{{$.T "操作"}}</th></tr>
+      </thead>
+      <tbody>
+        {{range .categories}}
+        <tr>
+          <td>{{.Name}}</td>
+          <td>{{.Sort}}</td>
+          <td>{{.DocCount}}</td>
+          {{if and $.user $.user.IsAdmin}}<td>{{if .Owner.Nickname}}{{.Owner.Nickname}}{{else}}{{.Owner.Username}}{{end}}</td>{{end}}
+          <td>
+            <button class="btn btn-sm" data-id="{{.ID}}" data-name="{{.Name}}" data-sort="{{.Sort}}" onclick="editCategory(this)">{{$.T "编辑"}}</button>
+            <button class="btn btn-sm btn-danger" data-id="{{.ID}}" data-name="{{.Name}}" onclick="delCategory(this)">{{$.T "删除"}}</button>
+          </td>
+        </tr>
+        {{else}}
+        <tr class="empty-row"><td colspan="{{if and $.user $.user.IsAdmin}}5{{else}}4{{end}}">{{$.T "暂无分类"}}</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</main>
+
+<div class="modal-overlay" id="categoryModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="{{$.T "cat.editTitle"}}">
+    <div class="modal-head">
+      <h2 id="categoryModalTitle">{{$.T "新建分类"}}</h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+    </div>
+    <form id="categoryForm" novalidate>
+      <input type="hidden" name="id">
+      <div class="modal-body share-body">
+        <label>{{$.T "分类名称"}}
+          <input type="text" name="name" required maxlength="50" placeholder="{{$.T "如：需求文档"}}">
+        </label>
+        <label>{{$.T "排序"}}
+          <input type="number" name="sort" value="0" placeholder="{{$.T "数字越小越靠前"}}">
+        </label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" data-close-modal>{{$.T "取消"}}</button>
+        <button type="submit" class="btn btn-primary">{{$.T "保存"}}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/static/categories.js"></script>
+</body>
+</html>
+{{end}}

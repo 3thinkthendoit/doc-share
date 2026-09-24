@@ -1,0 +1,116 @@
+{{define "doc_edit.html"}}
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>
+{{template "head" .}}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github.min.css">
+</head>
+<body>
+{{template "nav" .}}
+<main class="container wide">
+  <div class="page-head">
+    <div class="head-title">
+      <h1>{{if .doc}}{{$.T "编辑文档"}}{{else}}{{$.T "新建文档"}}{{end}}</h1>
+      <label class="meta-select">{{$.T "项目"}}
+        <select id="docProject">
+          <option value="0">{{$.T "未分组"}}</option>
+          {{range .projects}}<option value="{{.ID}}" {{if and $.doc (eq $.doc.ProjectID .ID)}}selected{{end}}>{{.Name}}</option>{{end}}
+        </select>
+      </label>
+      <label class="meta-select">{{$.T "分类"}}
+        <select id="docCategory">
+          <option value="0">{{$.T "未分类"}}</option>
+          {{range .categories}}<option value="{{.ID}}" {{if and $.doc (eq $.doc.CategoryID .ID)}}selected{{end}}>{{.Name}}</option>{{end}}
+        </select>
+      </label>
+    </div>
+    <div class="head-side">
+      <a href="/admin/docs" class="btn">{{$.T "返回列表"}}</a>
+      {{if .doc}}<button id="shareBtn" class="btn">{{$.T "分享"}}</button>{{end}}
+      <button id="saveBtn" class="btn btn-primary">{{$.T "保存"}}</button>
+    </div>
+  </div>
+
+  <div class="edit-grid">
+    <div class="edit-left">
+      <input type="text" id="docTitle" class="input-title" placeholder="{{$.T "文档标题"}}" value="{{if .doc}}{{.doc.Title}}{{end}}">
+      <div class="md-toolbar">
+        <button type="button" data-md="bold" title="{{$.T "加粗 Ctrl+B"}}"><strong>B</strong></button>
+        <button type="button" data-md="italic" title="{{$.T "斜体 Ctrl+I"}}"><em>I</em></button>
+        <button type="button" data-md="strike" title="{{$.T "删除线"}}"><s>S</s></button>
+        <span class="tb-sep"></span>
+        <button type="button" data-md="h1" title="{{$.T "一级标题"}}">H1</button>
+        <button type="button" data-md="h2" title="{{$.T "二级标题"}}">H2</button>
+        <button type="button" data-md="h3" title="{{$.T "三级标题"}}">H3</button>
+        <span class="tb-sep"></span>
+        <button type="button" data-md="quote" title="{{$.T "引用"}}">&gt;</button>
+        <button type="button" data-md="ul" title="{{$.T "无序列表"}}">•</button>
+        <button type="button" data-md="ol" title="{{$.T "有序列表"}}">1.</button>
+        <button type="button" data-md="code" title="{{$.T "行内代码"}}">&lt;/&gt;</button>
+        <button type="button" data-md="codeblock" title="{{$.T "代码块"}}">{&nbsp;}</button>
+        <span class="tb-sep"></span>
+        <button type="button" data-md="link" title="{{$.T "链接 Ctrl+K"}}">{{$.T "edit.btnLink"}}</button>
+        <button type="button" data-md="image" title="{{$.T "插入图片"}}">{{$.T "edit.btnImage"}}</button>
+        <button type="button" data-md="table" title="{{$.T "插入表格"}}">{{$.T "edit.btnTable"}}</button>
+        <button type="button" data-md="hr" title="{{$.T "分隔线"}}">―</button>
+        <span class="tb-sep"></span>
+        <button type="button" data-md="import" title="{{$.T "导入 PDF / doc / docx 并转为 Markdown"}}">{{$.T "导入文档"}}</button>
+        <span class="toolbar-hint">{{$.T "支持粘贴 / 拖拽图片上传"}}</span>
+        <input type="file" id="uploadInput" accept=".png,.jpg,.jpeg,.gif,.webp,.bmp" hidden>
+        <input type="file" id="importInput" accept=".pdf,.doc,.docx" hidden>
+      </div>
+      <textarea id="docContent" class="editor" placeholder="{{$.T "# 在此输入 Markdown..."}}">{{if .doc}}{{.doc.Content}}{{end}}</textarea>
+    </div>
+    <div class="edit-right">
+      <div class="preview-head">{{$.T "预览"}}</div>
+      <div id="preview" class="markdown-body"></div>
+    </div>
+  </div>
+
+  {{if .doc}}
+  <div class="modal-overlay" id="shareModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-label="{{$.T "分享设置"}}">
+      <div class="modal-head">
+        <h2>{{$.T "分享设置"}}</h2>
+        <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+      </div>
+      <div class="modal-body share-body">
+        <label class="check"><input type="checkbox" id="shareEnabled" {{if .share}}checked{{end}}> {{$.T "开启分享链接"}}</label>
+        <div id="shareConfig" class="share-config" {{if not .share}}style="display:none"{{end}}>
+          <label>{{$.T "访问密码（留空则不修改 / 无密码）"}}
+            <input type="text" id="sharePassword" placeholder="{{if .share}}{{if .share.HasPassword}}{{$.T "已设置密码"}}{{end}}{{end}}">
+          </label>
+          <label>{{$.T "有效期"}}
+            <select id="shareExpire">
+              <option value="0">{{$.T "永久有效"}}</option>
+              <option value="1">{{$.T "1 天"}}</option>
+              <option value="7">{{$.T "7 天"}}</option>
+              <option value="30">{{$.T "30 天"}}</option>
+            </select>
+          </label>
+          <div id="shareLink" class="share-link" {{if not .shareURL}}style="display:none"{{end}}>
+            {{$.T "分享链接："}}<code id="shareURL">{{.shareURL}}</code>
+            <button type="button" class="btn btn-sm" onclick="copyShare()">{{$.T "复制"}}</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" data-close-modal>{{$.T "关闭"}}</button>
+        <button type="button" id="saveShareBtn" class="btn btn-primary">{{$.T "应用分享设置"}}</button>
+      </div>
+    </div>
+  </div>
+  <input type="hidden" id="docID" value="{{if .doc}}{{.doc.ID}}{{end}}">
+  {{end}}
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/core.min.js"></script>
+<script>
+  window.DOC_ID = {{if .doc}}{{.doc.ID}}{{else}}0{{end}};
+</script>
+<script src="/static/editor.js"></script>
+</body>
+</html>
+{{end}}

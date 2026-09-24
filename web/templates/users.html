@@ -1,0 +1,123 @@
+{{define "users.html"}}
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>{{template "head" .}}</head>
+<body>
+{{template "nav" .}}
+<main class="container">
+  <div class="page-head">
+    <h1>{{$.T "用户管理"}}</h1>
+    <button id="createUserBtn" class="btn btn-primary">{{$.T "新建用户"}}</button>
+  </div>
+
+  <div class="panel">
+    <table class="table">
+      <thead><tr><th>ID</th><th>{{$.T "头像"}}</th><th>{{$.T "用户名"}}</th><th>{{$.T "昵称"}}</th><th>{{$.T "角色"}}</th><th>{{$.T "状态"}}</th><th>{{$.T "创建时间"}}</th><th>{{$.T "最近活跃"}}</th><th class="col-actions">{{$.T "操作"}}</th></tr></thead>
+      <tbody>
+      {{range .users}}
+        <tr data-id="{{.ID}}">
+          <td>{{.ID}}</td>
+          <td><span class="user-avatar user-avatar-sm">{{if .Avatar}}<img src="{{.Avatar}}" alt="{{$.T "头像"}}">{{else}}{{avatar .Nickname .Username}}{{end}}</span></td>
+          <td class="mono">{{.Username}}</td>
+          <td>{{.Nickname}}</td>
+          <td class="mono">{{.Role}}</td>
+          <td>{{if eq .Status 1}}<span class="badge badge-on">{{$.T "启用"}}</span>{{else}}<span class="badge badge-off">{{$.T "禁用"}}</span>{{end}}</td>
+          <td>{{.CreatedAt.Format "2006-01-02"}}</td>
+          <td>{{if .LastActiveAt}}{{.LastActiveAt.Format "2006-01-02 15:04"}}{{else}}—{{end}}</td>
+          <td class="col-actions">
+            <button class="btn btn-sm" onclick="editUser({{.ID}}, {{.Username}}, {{.Nickname}}, {{.Role}}, {{.Status}}, {{.Avatar}})">{{$.T "编辑"}}</button>
+            <button class="btn btn-sm" onclick="resetPwd({{.ID}})">{{$.T "重置密码"}}</button>
+            <button class="btn btn-sm btn-danger" onclick="delUser({{.ID}})">{{$.T "删除"}}</button>
+          </td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+</main>
+
+<div class="modal-overlay" id="createUserModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="{{$.T "新建用户"}}">
+    <div class="modal-head">
+      <h2>{{$.T "新建用户"}}</h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+    </div>
+    <form id="createForm" novalidate>
+      <div class="modal-body share-body">
+        <div class="avatar-pick" data-avatar-pick>
+          <span class="user-avatar avatar-box" data-avatar-preview>{{$.T "common.avatarChar"}}</span>
+          <input type="hidden" name="avatar" data-avatar-input>
+          <button type="button" class="btn btn-sm" data-avatar-upload>{{$.T "上传头像"}}</button>
+          <button type="button" class="btn btn-sm" data-avatar-clear>{{$.T "移除"}}</button>
+          <input type="file" accept=".png,.jpg,.jpeg,.gif,.webp,.bmp" hidden data-avatar-file>
+        </div>
+        <label>{{$.T "用户名"}}
+          <input type="text" name="username" required autocomplete="off" placeholder="{{$.T "登录账号"}}">
+        </label>
+        <label>{{$.T "昵称"}}
+          <input type="text" name="nickname" placeholder="{{$.T "显示名称（可选）"}}">
+        </label>
+        <label>{{$.T "密码"}}
+          <input type="password" name="password" required autocomplete="new-password" placeholder="{{$.T "至少 6 位"}}">
+        </label>
+        <label>{{$.T "角色"}}
+          <select name="role">
+            <option value="viewer">{{$.T "viewer（普通用户）"}}</option>
+            <option value="admin">{{$.T "admin（管理员）"}}</option>
+          </select>
+        </label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" data-close-modal>{{$.T "取消"}}</button>
+        <button type="submit" class="btn btn-primary">{{$.T "创建"}}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="editUserModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="{{$.T "编辑用户"}}">
+    <div class="modal-head">
+      <h2>{{$.T "编辑用户"}}</h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+    </div>
+    <form id="editForm">
+      <div class="modal-body share-body">
+        <div class="avatar-pick" data-avatar-pick>
+          <span class="user-avatar avatar-box" data-avatar-preview>{{$.T "common.avatarChar"}}</span>
+          <input type="hidden" name="avatar" data-avatar-input>
+          <button type="button" class="btn btn-sm" data-avatar-upload>{{$.T "上传头像"}}</button>
+          <button type="button" class="btn btn-sm" data-avatar-clear>{{$.T "移除"}}</button>
+          <input type="file" accept=".png,.jpg,.jpeg,.gif,.webp,.bmp" hidden data-avatar-file>
+        </div>
+        <label>{{$.T "用户名"}}
+          <input type="text" id="editUsername" disabled>
+        </label>
+        <label>{{$.T "昵称"}}
+          <input type="text" name="nickname" placeholder="{{$.T "显示名称（可选）"}}">
+        </label>
+        <label>{{$.T "角色"}}
+          <select name="role">
+            <option value="viewer">{{$.T "viewer（普通用户）"}}</option>
+            <option value="admin">{{$.T "admin（管理员）"}}</option>
+          </select>
+        </label>
+        <label>{{$.T "状态"}}
+          <select name="status">
+            <option value="1">{{$.T "启用"}}</option>
+            <option value="0">{{$.T "禁用"}}</option>
+          </select>
+        </label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" data-close-modal>{{$.T "取消"}}</button>
+        <button type="submit" class="btn btn-primary">{{$.T "保存"}}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/static/users.js"></script>
+</body>
+</html>
+{{end}}

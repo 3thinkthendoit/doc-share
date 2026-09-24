@@ -1,0 +1,41 @@
+{{define "dashboard.html"}}
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>{{template "head" .}}</head>
+<body>
+{{template "nav" .}}
+<main class="container">
+  <h1>{{$.T "仪表盘"}}</h1>
+  <div class="stat-grid">
+    <div class="stat-card"><div class="stat-num">{{.docCount}}</div><div class="stat-label">{{if .isAdmin}}{{$.T "文档总数"}}{{else}}{{$.T "我的文档"}}{{end}}</div></div>
+    {{if .isAdmin}}<div class="stat-card"><div class="stat-num">{{.userCount}}</div><div class="stat-label">{{$.T "用户总数"}}</div></div>{{end}}
+    <div class="stat-card"><div class="stat-num">{{.shareCount}}</div><div class="stat-label">{{if .isAdmin}}{{$.T "分享链接"}}{{else}}{{$.T "我的分享"}}{{end}}</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>{{$.T "最近更新"}}</h2><a href="/admin/docs/new" class="btn btn-primary">{{$.T "新建文档"}}</a></div>
+    <table class="table">
+      <thead><tr><th>{{$.T "标题"}}</th><th>{{$.T "所有者"}}</th><th>{{$.T "浏览"}}</th><th>{{$.T "状态"}}</th><th>{{$.T "更新时间"}}</th><th class="col-actions">{{$.T "操作"}}</th></tr></thead>
+      <tbody>
+      {{range .recent}}
+        <tr>
+          <td><a href="/admin/docs/{{.ID}}/edit">{{.Title}}</a></td>
+          <td>{{.Owner.Nickname}}</td>
+          <td>{{.ViewCount}}</td>
+          <td>{{if .IsShared}}<span class="tag tag-green">{{$.T "已分享"}}</span>{{else}}<span class="tag">{{$.T "未分享"}}</span>{{end}}</td>
+          <td>{{.UpdatedAt.Format "2006-01-02 15:04"}}</td>
+          <td class="col-actions">
+            {{if and .IsShared .Share}}<a href="/s/{{.Share.ShareToken}}" target="_blank" class="btn btn-sm">{{$.T "预览"}}</a>{{end}}
+            <a href="/admin/docs/{{.ID}}/edit" class="btn btn-sm btn-primary">{{$.T "编辑"}}</a>
+          </td>
+        </tr>
+      {{else}}
+        <tr><td colspan="6" class="empty">{{$.T "还没有文档"}}</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+</main>
+</body>
+</html>
+{{end}}

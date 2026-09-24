@@ -1,0 +1,44 @@
+{{define "login.html"}}
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>{{template "head" .}}</head>
+<body class="auth-body">
+  <div class="auth-lang">{{template "langSwitch" .}}</div>
+  <div class="auth-card">
+    <h1 class="auth-title">DocShare</h1>
+    <p class="auth-sub">{{$.T "page.brand"}}</p>
+    {{if .error}}<div class="alert alert-error">{{.error}}</div>{{end}}
+    <form method="post" action="/login" novalidate>
+      <label>{{$.T "login.username"}}
+        <input type="text" name="username" required autofocus>
+      </label>
+      <label>{{$.T "login.password"}}
+        <input type="password" name="password" required>
+      </label>
+      <label>{{$.T "login.captcha"}}
+        <div class="captcha-row">
+          <input type="text" name="captcha" required maxlength="4" autocomplete="off" placeholder="{{$.T "login.captchaPh"}}">
+          <img id="captchaImg" class="captcha-img" alt="{{$.T "login.captchaAlt"}}" title="{{$.T "login.captchaTip"}}">
+        </div>
+      </label>
+      <input type="hidden" name="captcha_id" id="captchaId">
+      <button type="submit" class="btn btn-primary btn-block">{{$.T "login.submit"}}</button>
+    </form>
+    <p class="auth-alt">{{$.T "login.noAccount"}}<a href="/register">{{$.T "login.registerLink"}}</a></p>
+  </div>
+<script>
+UI.bindFormValidation(document.querySelector('form'));
+async function refreshCaptcha() {
+  try {
+    const res = await fetch('/captcha');
+    const data = await res.json();
+    document.getElementById('captchaId').value = data.id;
+    document.getElementById('captchaImg').src = data.b64;
+  } catch (e) { /* 忽略网络抖动，点击可重试 */ }
+}
+document.getElementById('captchaImg').addEventListener('click', refreshCaptcha);
+refreshCaptcha();
+</script>
+</body>
+</html>
+{{end}}

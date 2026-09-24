@@ -1,0 +1,65 @@
+{{define "register.html"}}
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>{{template "head" .}}</head>
+<body class="auth-body">
+  <div class="auth-lang">{{template "langSwitch" .}}</div>
+  <div class="auth-card">
+    <h1 class="auth-title">{{$.T "reg.title"}}</h1>
+    <p class="auth-sub">{{$.T "reg.sub"}}</p>
+    {{if .error}}<div class="alert alert-error">{{.error}}</div>{{end}}
+    <form method="post" action="/register" id="registerForm" novalidate>
+      <label>{{$.T "login.username"}}
+        <input type="text" name="username" value="{{.username}}" required maxlength="50" autocomplete="username" autofocus>
+      </label>
+      <label>{{$.T "login.password"}}
+        <input type="password" name="password" required minlength="6" autocomplete="new-password">
+      </label>
+      <label>{{$.T "reg.confirmPwd"}}
+        <input type="password" name="confirm" required minlength="6" autocomplete="new-password">
+      </label>
+      <label>{{$.T "login.captcha"}}
+        <div class="captcha-row">
+          <input type="text" name="captcha" required maxlength="4" autocomplete="off" placeholder="{{$.T "login.captchaPh"}}">
+          <img id="captchaImg" class="captcha-img" alt="{{$.T "login.captchaAlt"}}" title="{{$.T "login.captchaTip"}}">
+        </div>
+      </label>
+      <input type="hidden" name="captcha_id" id="captchaId">
+      <button type="submit" class="btn btn-primary btn-block">{{$.T "reg.submit"}}</button>
+    </form>
+    <p class="auth-alt">{{$.T "reg.hasAccount"}}<a href="/login">{{$.T "reg.toLogin"}}</a></p>
+  </div>
+<script>
+async function refreshCaptcha() {
+  try {
+    const res = await fetch('/captcha');
+    const data = await res.json();
+    document.getElementById('captchaId').value = data.id;
+    document.getElementById('captchaImg').src = data.b64;
+  } catch (e) { /* 忽略网络抖动，点击可重试 */ }
+}
+document.getElementById('captchaImg').addEventListener('click', refreshCaptcha);
+refreshCaptcha();
+
+document.getElementById('registerForm').addEventListener('submit', function (e) {
+  if (!UI.validateForm(this)) { e.preventDefault(); return; }
+  const pwd = this.querySelector('input[name=password]');
+  const confirm = this.querySelector('input[name=confirm]');
+  if (pwd.value.length < 6) {
+    e.preventDefault();
+    pwd.classList.add('field-error');
+    UI.toast('密码至少 6 位', 'error');
+    pwd.focus();
+    return;
+  }
+  if (confirm.value !== pwd.value) {
+    e.preventDefault();
+    confirm.classList.add('field-error');
+    UI.toast('两次输入的密码不一致', 'error');
+    confirm.focus();
+  }
+});
+</script>
+</body>
+</html>
+{{end}}

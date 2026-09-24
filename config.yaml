@@ -1,0 +1,34 @@
+# 环境变量占位符语法（仅作用于配置值，注释中的 ${...} 不会被展开）：
+#   ${VAR}        取环境变量；未设置或为空时展开为空并在启动日志提示
+#   ${VAR:-def}   环境变量未设置或为空时使用默认值 def
+#   ${VAR-def}    仅未设置时使用默认值 def（显式设为空则展开为空）
+# 注意：默认值不能包含 '}' 或换行。
+
+server:
+  port: "${DOC_SHARE_PORT:-:8080}"
+  # 开发模式：模板/静态资源直读磁盘（web/ 目录，相对运行目录），改前端刷新浏览器即生效，无需重启
+  # 生产务必保持 false（嵌入式资源不受运行目录影响）
+  dev: ${DOC_SHARE_DEV:-false}
+
+database:
+  # 需预先创建空库，例如： CREATE DATABASE doc_share DEFAULT CHARSET utf8mb4;
+  dsn: "${DOC_SHARE_DB_DSN:-root:root@tcp(127.0.0.1:3306)/doc_share?charset=utf8mb4&parseTime=True&loc=Local}"
+  show_log: ${DOC_SHARE_DB_LOG:-false}
+  max_open_conn: ${DOC_SHARE_DB_MAX_OPEN:-50}
+  max_idle_conn: ${DOC_SHARE_DB_MAX_IDLE:-10}
+
+auth:
+  # 用于 session 与分享凭证的 HMAC 签名密钥。
+  # 敏感项故意为裸 ${VAR} 形式、不带默认值：未设置时服务拒绝启动。
+  # 生产：设置 DOC_SHARE_SESSION_SECRET 为随机长字符串（>=32 位）
+  # 本地调试：也可设置 DOC_SHARE_ALLOW_INSECURE_DEFAULTS=true 临时放行
+  session_secret: "${DOC_SHARE_SESSION_SECRET}"
+  # 首次启动自动创建的默认管理员
+  default_admin: "${DOC_SHARE_ADMIN_USER:-admin}"
+  default_password: "${DOC_SHARE_ADMIN_PASSWORD:-admin123}"
+
+upload:
+  # 图片本地存储目录（映射到 /uploads 路径，备份该目录即可）
+  dir: "${DOC_SHARE_UPLOAD_DIR:-./uploads}"
+  # 单张图片大小上限（MB）
+  max_size_mb: ${DOC_SHARE_UPLOAD_MAX_MB:-10}

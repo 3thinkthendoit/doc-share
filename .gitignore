@@ -1,0 +1,35 @@
+# 编译产物
+*.exe
+*.exe~
+*.test
+*.out
+__debug_bin*
+
+# 目录
+/bin/
+/dist/
+/build/
+
+# 日志与数据
+*.log
+logs/
+/data/
+
+# 用户上传文件（运行时数据，路径由 DOC_SHARE_UPLOAD_DIR 配置）
+/uploads/
+
+# 本地环境
+.env
+.env.local
+
+# IDE / 编辑器
+.idea/
+.vscode/
+*.swp
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 依赖（如后续引入前端构建）
+node_modules/

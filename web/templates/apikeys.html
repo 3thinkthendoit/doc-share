@@ -1,0 +1,107 @@
+{{define "apikeys.html"}}
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>{{template "head" .}}</head>
+<body>
+{{template "nav" .}}
+<main class="container">
+  <div class="page-head">
+    <h1>{{$.T "API 密钥"}}</h1>
+    <button class="btn btn-primary" id="btnNewKey">{{$.T "新建密钥"}}</button>
+  </div>
+
+  <div class="panel">
+    <table class="table" id="keyTable">
+      <thead>
+        <tr><th>{{$.T "名称"}}</th><th>AppKey</th><th>{{$.T "状态"}}</th><th>{{$.T "最近使用"}}</th><th>{{$.T "创建时间"}}</th>{{if and .user .user.IsAdmin}}<th>{{$.T "所有者"}}</th>{{end}}<th>{{$.T "操作"}}</th></tr>
+      </thead>
+      <tbody>
+        {{range .keys}}
+        <tr>
+          <td>{{.Name}}</td>
+          <td class="mono">{{.AppKey}}</td>
+          <td>{{if eq .Status 1}}<span class="badge badge-on">{{$.T "启用"}}</span>{{else}}<span class="badge badge-off">{{$.T "禁用"}}</span>{{end}}</td>
+          <td>{{if .LastUsedAt}}{{.LastUsedAt.Format "2006-01-02 15:04"}}{{else}}—{{end}}</td>
+          <td>{{.CreatedAt.Format "2006-01-02"}}</td>
+          {{if and $.user $.user.IsAdmin}}<td>{{if .Owner.Nickname}}{{.Owner.Nickname}}{{else}}{{.Owner.Username}}{{end}}</td>{{end}}
+          <td>
+            <button class="btn btn-sm" data-id="{{.ID}}" data-name="{{.Name}}" onclick="resetKey(this)">{{$.T "重置密钥"}}</button>
+            <button class="btn btn-sm" data-id="{{.ID}}" data-status="{{if eq .Status 1}}0{{else}}1{{end}}" onclick="toggleKey(this)">{{if eq .Status 1}}{{$.T "禁用"}}{{else}}{{$.T "启用"}}{{end}}</button>
+            <button class="btn btn-sm btn-danger" data-id="{{.ID}}" data-name="{{.Name}}" onclick="delKey(this)">{{$.T "删除"}}</button>
+          </td>
+        </tr>
+        {{else}}
+        <tr class="empty-row"><td colspan="{{if and $.user $.user.IsAdmin}}7{{else}}6{{end}}">{{$.T "暂无密钥，点击右上角新建"}}</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel api-doc">
+    <h2>{{$.T "对接说明"}}</h2>
+    <p>{{$.TH "apidoc.intro"}}</p>
+    <table class="table">
+      <thead><tr><th>{{$.T "请求头"}}</th><th>{{$.T "说明"}}</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">X-App-Key</td><td>{{$.T "身份标识（创建密钥时生成）"}}</td></tr>
+        <tr><td class="mono">X-Timestamp</td><td>{{$.T "当前 Unix 秒，与服务器偏差须在 5 分钟内"}}</td></tr>
+        <tr><td class="mono">X-Nonce</td><td>{{$.T "8~64 位随机串，5 分钟内不可重复（防重放）"}}</td></tr>
+        <tr><td class="mono">X-Signature</td><td>{{$.T "按下述算法计算的 hex 签名"}}</td></tr>
+      </tbody>
+    </table>
+    <p>{{$.TH "apidoc.algo"}}</p>
+    <pre class="api-code"># {{$.T "apidoc.sampleComment"}}
+METHOD=GET  PATH=/openapi/v1/docs  BODY=
+sign=$(printf "%s\n%s\n%s\n%s\n%s\n%s" "$APP_KEY" "GET" "$PATH" "$TS" "$NONCE" \
+       "$(printf '' | sha256sum | cut -d' ' -f1)" | openssl dgst -sha256 -hmac "$SECRET" -hex | awk '{print $NF}')
+curl -H "X-App-Key: $APP_KEY" -H "X-Timestamp: $TS" -H "X-Nonce: $NONCE" -H "X-Signature: $sign" \
+     https://your-host/openapi/v1/docs?page=1&amp;size=20</pre>
+    <p>{{$.TH "apidoc.endpoints"}}</p>
+  </div>
+</main>
+
+<div class="modal-overlay" id="keyModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="{{$.T "新建密钥"}}">
+    <div class="modal-head">
+      <h2>{{$.T "新建密钥"}}</h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+    </div>
+    <form id="keyForm" novalidate>
+      <div class="modal-body share-body">
+        <label>{{$.T "名称"}}
+          <input type="text" name="name" required maxlength="100" placeholder="{{$.T "如：需求同步任务"}}">
+        </label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" data-close-modal>{{$.T "取消"}}</button>
+        <button type="submit" class="btn btn-primary">{{$.T "创建"}}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="secretModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="{{$.T "key.info"}}">
+    <div class="modal-head">
+      <h2 id="secretTitle">{{$.T "密钥已生成"}}</h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+    </div>
+    <div class="modal-body share-body">
+      <div class="secret-warn">{{$.T "Secret 仅显示这一次，离开后无法再次查看；遗失请使用「重置密钥」重新生成。"}}</div>
+      <label>AppKey
+        <div class="secret-row"><input type="text" id="outAppKey" readonly><button type="button" class="btn btn-sm" data-copy="outAppKey">{{$.T "复制"}}</button></div>
+      </label>
+      <label>Secret
+        <div class="secret-row"><input type="text" id="outSecret" readonly><button type="button" class="btn btn-sm" data-copy="outSecret">{{$.T "复制"}}</button></div>
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-primary" data-close-modal>{{$.T "我已保存"}}</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/apikeys.js"></script>
+</body>
+</html>
+{{end}}

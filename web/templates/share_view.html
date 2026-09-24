@@ -1,0 +1,27 @@
+{{define "share_view.html"}}
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>
+{{template "head" .}}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github.min.css">
+</head>
+<body class="reader-body">
+  <header class="reader-header">
+    <div class="reader-head-inner">
+      <div class="reader-brand"><a href="/admin">DocShare</a></div>
+      <div class="reader-meta">{{if .doc}}{{$.T "share.meta" .doc.ViewCount (.doc.UpdatedAt.Format "2006-01-02 15:04")}}{{end}}</div>
+      {{template "langSwitch" .}}
+    </div>
+  </header>
+  <article class="reader">
+    <h1 class="doc-title">{{.doc.Title}}</h1>
+    <div id="preview" class="markdown-body"></div>
+  </article>
+  <textarea id="raw-markdown" hidden>{{.doc.Content}}</textarea>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/core.min.js"></script>
+  <script src="/static/render.js"></script>
+</body>
+</html>
+{{end}}

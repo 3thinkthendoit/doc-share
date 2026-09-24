@@ -1,0 +1,66 @@
+{{define "projects.html"}}
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>{{template "head" .}}</head>
+<body>
+{{template "nav" .}}
+<main class="container">
+  <div class="page-head">
+    <h1>{{$.T "项目"}}</h1>
+    <button class="btn btn-primary" id="btnNewProject">{{$.T "新建项目"}}</button>
+  </div>
+
+  <div class="panel">
+    <table class="table" id="projectTable">
+      <thead>
+        <tr><th>{{$.T "名称"}}</th><th>{{$.T "描述"}}</th>{{if and .user .user.IsAdmin}}<th>{{$.T "所有者"}}</th>{{end}}<th>{{$.T "文档数"}}</th><th>{{$.T "更新时间"}}</th><th>{{$.T "操作"}}</th></tr>
+      </thead>
+      <tbody>
+        {{range .projects}}
+        <tr>
+          <td>{{.Name}}</td>
+          <td class="cell-muted">{{if .Description}}{{.Description}}{{else}}—{{end}}</td>
+          {{if $.user}}{{if $.user.IsAdmin}}<td>{{.Owner.Nickname}}</td>{{end}}{{end}}
+          <td>{{.DocCount}}</td>
+          <td>{{.UpdatedAt.Format "2006-01-02 15:04"}}</td>
+          <td>
+            <button class="btn btn-sm" data-id="{{.ID}}" data-name="{{.Name}}" data-desc="{{.Description}}" onclick="editProject(this)">{{$.T "编辑"}}</button>
+            <button class="btn btn-sm btn-danger" data-id="{{.ID}}" data-name="{{.Name}}" onclick="delProject(this)">{{$.T "删除"}}</button>
+          </td>
+        </tr>
+        {{else}}
+        <tr class="empty-row"><td colspan="{{if and $.user $.user.IsAdmin}}6{{else}}5{{end}}">{{$.T "暂无项目"}}</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</main>
+
+<div class="modal-overlay" id="projectModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="{{$.T "proj.editTitle"}}">
+    <div class="modal-head">
+      <h2 id="projectModalTitle">{{$.T "新建项目"}}</h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+    </div>
+    <form id="projectForm" novalidate>
+      <input type="hidden" name="id">
+      <div class="modal-body share-body">
+        <label>{{$.T "项目名称"}}
+          <input type="text" name="name" required maxlength="100" placeholder="{{$.T "如：XX 平台重构"}}">
+        </label>
+        <label>{{$.T "描述"}}
+          <textarea name="description" rows="3" maxlength="500" placeholder="{{$.T "可选"}}"></textarea>
+        </label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" data-close-modal>{{$.T "取消"}}</button>
+        <button type="submit" class="btn btn-primary">{{$.T "保存"}}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/static/projects.js"></script>
+</body>
+</html>
+{{end}}

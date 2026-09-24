@@ -1,0 +1,106 @@
+{{define "head"}}
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{if .title}}{{.title}} · {{end}}DocShare</title>
+<link rel="stylesheet" href="/static/style.css">
+{{/* “中文原文→译文”映射先于 ui.js 注入：脚本里的文案统一走 UI.t() */}}
+<script>window.__LANG={{.Lang}};window.__L10N={{.Dict}};</script>
+<script src="/static/ui.js"></script>
+{{end}}
+
+{{define "langSwitch"}}
+<form class="lang-switch" method="get" action="/lang">
+  <input type="hidden" name="next" value="{{.Path}}">
+  <select name="lang" aria-label="{{$.T "nav.langTip"}}" onchange="this.form.submit()">
+    {{range .Langs}}<option value="{{.Code}}" {{if eq .Code $.Lang}}selected{{end}}>{{.Name}}</option>{{end}}
+  </select>
+</form>
+{{end}}
+
+{{define "nav"}}
+<nav class="topnav">
+  <div class="nav-brand"><a href="/admin"><b>D</b>DocShare</a></div>
+  <div class="nav-links">
+    <a href="/admin">{{$.T "nav.dashboard"}}</a>
+    <a href="/admin/docs">{{$.T "nav.docs"}}</a>
+    <a href="/admin/projects">{{$.T "nav.projects"}}</a>
+    <a href="/admin/categories">{{$.T "nav.categories"}}</a>
+    <a href="/admin/apikeys">{{$.T "nav.apikeys"}}</a>
+    {{if and .user .user.IsAdmin}}<a href="/admin/users">{{$.T "nav.users"}}</a>{{end}}
+  </div>
+  {{template "langSwitch" .}}
+  {{if .user}}
+  <div class="user-menu">
+    <button type="button" class="user-chip" id="userMenuBtn" aria-haspopup="true">
+      <span class="user-avatar">{{if .user.Avatar}}<img src="{{.user.Avatar}}" alt="{{$.T "user.colAvatar"}}">{{else}}{{avatar .user.Nickname .user.Username}}{{end}}</span>
+      <span>{{.user.Nickname}} ({{.user.Username}})</span>
+      <span class="chip-caret">▾</span>
+    </button>
+    <div class="user-dropdown" id="userDropdown" hidden>
+      <button type="button" id="profileBtn">{{$.T "nav.profile"}}</button>
+      <button type="button" id="changePwdBtn">{{$.T "nav.changePwd"}}</button>
+      <form method="post" action="/logout">
+        <button type="submit" class="danger">{{$.T "nav.logout"}}</button>
+      </form>
+    </div>
+  </div>
+  {{end}}
+</nav>
+{{if .user}}
+{{/* 弹窗必须放在 nav 外：topnav 的 backdrop-filter 会成为 fixed 定位的包含块，导致遮罩错位 */}}
+<div class="modal-overlay" id="profileModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="{{$.T "prof.title"}}">
+    <div class="modal-head">
+      <h2>{{$.T "prof.title"}}</h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "common.close"}}">✕</button>
+    </div>
+    <form id="profileForm" novalidate>
+      <div class="modal-body share-body">
+        <div class="avatar-pick" data-avatar-pick>
+          <span class="user-avatar avatar-box" data-avatar-preview>{{avatar .user.Nickname .user.Username}}</span>
+          <input type="hidden" name="avatar" data-avatar-input value="{{.user.Avatar}}">
+          <button type="button" class="btn btn-sm" data-avatar-upload>{{$.T "user.avatarUpload"}}</button>
+          <button type="button" class="btn btn-sm" data-avatar-clear>{{$.T "user.avatarClear"}}</button>
+          <input type="file" accept=".png,.jpg,.jpeg,.gif,.webp,.bmp" hidden data-avatar-file>
+        </div>
+        <label>{{$.T "prof.username"}}
+          <input type="text" value="{{.user.Username}}" disabled>
+        </label>
+        <label>{{$.T "prof.nickname"}}
+          <input type="text" name="nickname" required maxlength="64" value="{{.user.Nickname}}">
+        </label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" data-close-modal>{{$.T "common.cancel"}}</button>
+        <button type="submit" class="btn btn-primary">{{$.T "common.save"}}</button>
+      </div>
+    </form>
+  </div>
+</div>
+<div class="modal-overlay" id="pwdModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="{{$.T "nav.changePwd"}}">
+    <div class="modal-head">
+      <h2>{{$.T "nav.changePwd"}}</h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "common.close"}}">✕</button>
+    </div>
+    <form id="pwdForm" novalidate>
+      <div class="modal-body share-body">
+        <label>{{$.T "pwd.old"}}
+          <input type="password" name="old" required autocomplete="current-password">
+        </label>
+        <label>{{$.T "pwd.new"}}
+          <input type="password" name="new" required autocomplete="new-password" placeholder="{{$.T "user.pwdPh"}}">
+        </label>
+        <label>{{$.T "pwd.confirm"}}
+          <input type="password" name="confirm" required autocomplete="new-password">
+        </label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" data-close-modal>{{$.T "common.cancel"}}</button>
+        <button type="submit" class="btn btn-primary">{{$.T "pwd.submit"}}</button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}
+{{end}}

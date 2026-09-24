@@ -1,0 +1,326 @@
+{{define "home.html"}}<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{$.T "DocShare · 把 Markdown 变成能分享的文档站"}}</title>
+  <meta name="description" content="{{$.T "单二进制部署的 Markdown 文档分享系统：实时预览、密码分享、项目分类、HMAC 签名开放 API、五语界面。"}}">
+  <link rel="stylesheet" href="/static/landing.css">
+  <script>
+    // 首屏绘制前就把主题钉下来，避免闪色；没有历史偏好时默认浅色，用户手动切过则尊重其选择
+    try {
+      var t = localStorage.getItem('ds_theme');
+      if (t !== 'dark' && t !== 'light') t = 'light';
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  </script>
+</head>
+<body class="l-site">
+<div class="l-bgfx"></div>
+
+<nav class="l-nav">
+  <a class="l-logo" href="/"><b>D</b>DocShare</a>
+  <div class="l-nav-links">
+    <a href="#features">{{$.T "产品能力"}}</a>
+    <a href="#workflow">{{$.T "工作流"}}</a>
+    <a href="#openapi">{{$.T "开放平台"}}</a>
+    <a href="#faq">{{$.T "常见问题"}}</a>
+  </div>
+  <div class="l-nav-right">
+    <button type="button" class="l-btn l-theme" aria-label="{{$.T "切换明暗配色"}}" title="{{$.T "切换明暗配色"}}">
+      <svg class="i-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
+      <svg class="i-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
+    <form class="l-lang" method="get" action="/lang">
+      <input type="hidden" name="next" value="{{.Path}}">
+      <select name="lang" aria-label="{{$.T "界面语言"}}" onchange="this.form.submit()">
+        {{range .Langs}}<option value="{{.Code}}" {{if eq .Code $.Lang}}selected{{end}}>{{.Name}}</option>{{end}}
+      </select>
+    </form>
+    {{if .user}}<a class="l-btn l-btn-primary" href="/admin">{{$.T "进入控制台"}}</a>
+    {{else}}<a class="l-btn l-btn-ghost" href="/login">{{$.T "登录"}}</a>{{end}}
+  </div>
+</nav>
+
+<header class="l-hero">
+  <div class="l-wrap l-hero-grid">
+    <div data-reveal>
+      <div class="l-eyebrow">01 // DOCSHARE</div>
+      <h1 class="l-h1">{{$.T "把 Markdown"}}<br><em>{{$.T "变成能分享的文档站"}}</em></h1>
+      <p class="l-hero-sub">{{$.T "写作、发布、权限、开放 API 一站搞定。模板、静态资源与多语言词典全部内嵌进单个二进制，一条命令跑在内网。"}}</p>
+      <div class="l-hero-btns">
+        {{if .user}}<a class="l-btn l-btn-primary l-btn-lg" href="/admin">{{$.T "进入控制台"}} →</a>{{else}}
+        <a class="l-btn l-btn-primary l-btn-lg" href="/register">{{$.T "立即开始"}} →</a>
+        <a class="l-btn l-btn-lg" href="/login">{{$.T "登录控制台"}}</a>{{end}}
+      </div>
+      <div class="l-hero-meta">
+        <span>{{$.T "无需外部运行时"}}</span>
+        <span>{{$.T "五语界面"}}</span>
+        <span>{{$.T "私有化部署"}}</span>
+      </div>
+      <div class="l-anchors">
+        <a href="#features">{{$.T "产品能力"}}</a>
+        <a href="#workflow">{{$.T "工作流"}}</a>
+        <a href="#openapi">{{$.T "开放平台"}}</a>
+        <a href="#faq">{{$.T "常见问题"}}</a>
+      </div>
+    </div>
+
+    <div class="l-mock" data-reveal>
+      <div class="l-mock-bar">
+        <i class="l-dot"></i><i class="l-dot"></i><i class="l-dot"></i>
+        <span class="l-mock-title">doc-share — release-notes.md</span>
+        <span class="l-live"><i></i>LIVE</span>
+      </div>
+      <div class="l-mock-body">
+        <div class="l-pane">
+          <div class="l-pane-h">EDITOR</div>
+          <div><span class="l-tok-h"># </span>{{$.T "发布说明 v2.4"}}</div>
+          <div><span class="l-tok-h">## </span>{{$.T "新增"}}</div>
+          <div><span class="l-tok-mut">-</span> {{$.T "支持 项目 / 分类 双维度归档"}}</div>
+          <div><span class="l-tok-mut">-</span> {{$.T "开放平台 HMAC-SHA256 签名鉴权"}}</div>
+          <div><span class="l-tok-mut">-</span> {{$.T "界面支持 5 种语言"}}</div>
+          <div class="l-caret"><span class="l-tok-mut">-</span> {{$.T "分享链接支持密码与有效期"}}</div>
+        </div>
+        <div class="l-pane">
+          <div class="l-pane-h">PREVIEW</div>
+          <div class="l-tok-3" style="font-size:17px;font-weight:600;color:var(--l-head)">{{$.T "发布说明 v2.4"}}</div>
+          <div style="margin-top:10px">{{$.T "新增"}}</div>
+          <ul style="margin:6px 0 0;padding-left:18px;color:var(--l-muted);font-size:12px">
+            <li>{{$.T "支持 项目 / 分类 双维度归档"}}</li>
+            <li>{{$.T "开放平台 HMAC-SHA256 签名鉴权"}}</li>
+            <li>{{$.T "界面支持 5 种语言"}}</li>
+          </ul>
+          <span class="l-chip">🔒 {{$.T "分享已加密"}} · /s/8fj2KdQ1</span>
+        </div>
+      </div>
+      <div class="l-term">
+        <div><span class="p">$</span> ./doc-share.exe -config config.yaml</div>
+        <div class="ok">{{$.T "DocShare 服务已启动: http://localhost:9000"}}</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section class="l-section" id="features">
+  <div class="l-wrap">
+    <div class="l-head-row" data-reveal>
+      <div>
+        <div class="l-eyebrow">02 // FEATURES</div>
+        <h2 class="l-h2">{{$.T "一个二进制，覆盖文档协作全链路"}}</h2>
+      </div>
+      <p class="l-lead" style="margin:0">{{$.T "从本地写作到对外分享，再到程序化批量维护，不需要额外中间件与服务。"}}</p>
+    </div>
+    <div class="l-grid l-grid-3">
+      <div class="l-card" data-reveal>
+        <div class="l-card-no">01<span class="l-card-tag">  --markdown</span></div>
+        <h3>{{$.T "Markdown 实时预览"}}</h3>
+        <p>{{$.T "CommonMark 与 GFM 表格、任务列表、代码高亮，编辑即所见。"}}</p>
+        <ul><li>{{$.T "工具栏插入链接 / 图片 / 表格"}}</li><li>{{$.T "渲染结果服务端净化，防 XSS"}}</li></ul>
+      </div>
+      <div class="l-card" data-reveal>
+        <div class="l-card-no">02<span class="l-card-tag">  --share</span></div>
+        <h3>{{$.T "一键分享链接"}}</h3>
+        <p>{{$.T "为任意文档生成独立链接，读者无需登录即可查看。"}}</p>
+        <ul><li>{{$.T "可设置访问密码"}}</li><li>{{$.T "浏览计数与更新时间回显"}}</li></ul>
+      </div>
+      <div class="l-card" data-reveal>
+        <div class="l-card-no">03<span class="l-card-tag">  --project</span></div>
+        <h3>{{$.T "项目与分类归档"}}</h3>
+        <p>{{$.T "文档按项目、分类双维度组织，支持关键词检索与分页。"}}</p>
+        <ul><li>{{$.T "个人归属，互不干扰"}}</li><li>{{$.T "普通用户可维护自己的空间"}}</li></ul>
+      </div>
+      <div class="l-card" data-reveal>
+        <div class="l-card-no">04<span class="l-card-tag">  --upload</span></div>
+        <h3>{{$.T "图片拖拽上传"}}</h3>
+        <p>{{$.T "编辑器里直接贴图，文件名随机化，扩展名与大小服务端校验。"}}</p>
+        <ul><li>{{$.T "大小上限可在配置中调整"}}</li><li>{{$.T "上传目录映射到 /uploads"}}</li></ul>
+      </div>
+      <div class="l-card" data-reveal>
+        <div class="l-card-no">05<span class="l-card-tag">  --openapi</span></div>
+        <h3>{{$.T "开放平台 API"}}</h3>
+        <p>{{$.T "用密钥签名以程序方式维护项目、分类与文档，共 13 个接口。"}}</p>
+        <ul><li>{{$.T "HMAC-SHA256 + 时间戳 + nonce 防重放"}}</li><li>{{$.T "以密钥属主身份执行，权限天然隔离"}}</li></ul>
+      </div>
+      <div class="l-card" data-reveal>
+        <div class="l-card-no">06<span class="l-card-tag">  --i18n</span></div>
+        <h3>{{$.T "五语界面"}}</h3>
+        <p>{{$.T "简体中文、繁体中文、日文、英语、法语，右上角一键切换并记忆。"}}</p>
+        <ul><li>{{$.T "按 Accept-Language 自动协商"}}</li><li>{{$.T "接口提示文案同步翻译"}}</li></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="l-section" id="workflow">
+  <div class="l-wrap">
+    <div class="l-eyebrow" data-reveal>03 // WORKFLOW</div>
+    <h2 class="l-h2" data-reveal style="margin-bottom:34px">{{$.T "三步把文档发出去"}}</h2>
+
+    <div class="l-step" data-reveal>
+      <div class="l-step-no">01</div>
+      <div>
+        <h3>{{$.T "写"}}</h3>
+        <p>{{$.T "新建文档，选项目与分类，左侧 Markdown 右侧实时预览。"}}</p>
+      </div>
+      <pre class="l-code"><span class="c">{{$.T "# 控制台 → 文档 → 新建"}}</span>
+POST /admin/api/docs
+{ <span class="l-tok-2">"title"</span>: "{{$.T "发布说明 v2.4"}}",
+  <span class="l-tok-2">"project_id"</span>: 1, <span class="l-tok-2">"category_id"</span>: 3,
+  <span class="l-tok-2">"content"</span>: "## {{$.T "新增"}}\n- ..." }</pre>
+    </div>
+
+    <div class="l-step" data-reveal>
+      <div class="l-step-no">02</div>
+      <div>
+        <h3>{{$.T "发"}}</h3>
+        <p>{{$.T "勾选分享即可得到公开链接，可叠加访问密码；随时可撤销。"}}</p>
+      </div>
+      <pre class="l-code"><span class="c">{{$.T "# 生成分享"}}</span>
+POST /admin/api/docs/42/share
+{ <span class="l-tok-2">"password"</span>: "d0cs", <span class="l-tok-2">"expire_at"</span>: "2026-12-31" }
+
+<span class="c">{{$.T "# 读者访问，无需登录"}}</span>
+GET  /s/8fj2KdQ1</pre>
+    </div>
+
+    <div class="l-step" data-reveal>
+      <div class="l-step-no">03</div>
+      <div>
+        <h3>{{$.T "连"}}</h3>
+        <p>{{$.T "把文档纳入 CI 或内部系统：申请 API 密钥，签名调用开放平台。"}}</p>
+      </div>
+      <pre class="l-code"><span class="c">{{$.T "# 控制台 → API 密钥 → 新建，得到 AppKey / Secret"}}</span>
+GET /openapi/v1/docs?project_id=1
+X-App-Key: ak_9f2c...
+X-Timestamp: 1777603200
+X-Nonce: 6a1f0c...
+X-Sign: ${<span class="l-tok-h">sign</span>}</pre>
+    </div>
+  </div>
+</section>
+
+<section class="l-section" id="openapi">
+  <div class="l-wrap">
+    <div class="l-head-row" data-reveal>
+      <div>
+        <div class="l-eyebrow">04 // OPEN API</div>
+        <h2 class="l-h2">{{$.T "签名规则一眼看完"}}</h2>
+      </div>
+      <p class="l-lead" style="margin:0">{{$.T "与控制台同一套权限模型：密钥属于谁，就以谁的身份读写。"}}</p>
+    </div>
+    <div class="l-grid l-grid-sign">
+      <pre class="l-code" data-reveal><span class="c">{{$.T "# 待签串以 LF 连接，body 为空时对空串取摘要"}}</span>
+base = AppKey + LF + METHOD + LF + path + LF
+     + timestamp + LF + nonce + LF + sha256hex(body)
+
+<span class="c">{{$.T "# 签名即 HMAC-SHA256 的十六进制小写"}}</span>
+sign = <span class="l-tok-h">HMAC-SHA256</span>(Secret, base)
+
+<span class="c">{{$.T "# 校验顺序：时间戳窗口 → nonce 去重 → 签名比对"}}</span></pre>
+      <div class="l-card" data-reveal>
+        <div class="l-card-tag">--endpoints</div>
+        <h3>{{$.T "接口清单"}}</h3>
+        <ul>
+          <li>GET/POST /openapi/v1/categories</li>
+          <li>PUT/DELETE /openapi/v1/categories/:id</li>
+          <li>GET/POST /openapi/v1/projects</li>
+          <li>PUT/DELETE /openapi/v1/projects/:id</li>
+          <li>GET /openapi/v1/docs</li>
+          <li>GET /openapi/v1/docs/:id</li>
+          <li>POST/PUT/DELETE /openapi/v1/docs/:id</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="l-stats" style="margin-top:44px">
+      <div class="l-stat" data-reveal><b data-count="5">0</b><span>{{$.T "界面语言"}}</span></div>
+      <div class="l-stat" data-reveal><b data-count="13">0</b><span>{{$.T "开放接口"}}</span></div>
+      <div class="l-stat" data-reveal><b data-count="1">0</b><span>{{$.T "单文件二进制"}}</span></div>
+      <div class="l-stat" data-reveal><b data-count="371">0</b><span>{{$.T "条词典文案"}}</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="l-section" id="faq">
+  <div class="l-wrap" style="max-width:840px">
+    <div class="l-eyebrow" data-reveal>05 // FAQ</div>
+    <h2 class="l-h2" data-reveal style="margin-bottom:26px">{{$.T "部署前你可能会问"}}</h2>
+    <div class="l-faq" data-reveal>
+      <details open>
+        <summary>{{$.T "需要哪些依赖？"}}</summary>
+        <div class="l-faq-a">{{$.T "只需要一个 MySQL 实例。模板、静态资源与语言词典都已内嵌进二进制，图片写入本地上传目录即可。"}}</div>
+      </details>
+      <details>
+        <summary>{{$.T "可以完全内网私有化部署吗？"}}</summary>
+        <div class="l-faq-a">{{$.T "可以。服务不请求任何外部地址，前端脚本与字体均使用系统栈，断网环境照常工作。"}}</div>
+      </details>
+      <details>
+        <summary>{{$.T "普通用户能建项目和分类吗？"}}</summary>
+        <div class="l-faq-a">{{$.T "能。项目、分类与 API 密钥都是个人归属，普通用户只能维护自己的空间；用户管理与全量统计仅管理员可见。"}}</div>
+      </details>
+      <details>
+        <summary>{{$.T "分享出去的页面能被搜索引擎抓到吗？"}}</summary>
+        <div class="l-faq-a">{{$.T "分享页只渲染单篇文档，可加访问密码；需要更严格的可见性时，不启用分享即可，链接随时可撤销。"}}</div>
+      </details>
+      <details>
+        <summary>{{$.T "界面语言是怎么确定的？"}}</summary>
+        <div class="l-faq-a">{{$.T "优先级为：手动切换的语言标记、浏览器 Accept-Language、简体中文。切换后一年有效，接口返回的提示文案也会同步翻译。"}}</div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="l-section" style="padding-top:20px">
+  <div class="l-wrap">
+    <div class="l-cta" data-reveal>
+      <pre>┌─ START WITH DOCSHARE ─</pre>
+      <h2>{{$.T "三分钟，把团队文档站跑起来"}}</h2>
+      <p class="l-lead" style="margin:14px auto 0;text-align:center">{{$.T "填好数据库配置，启动，注册第一个账号。"}}</p>
+      <div class="l-cta-btns">
+        {{if .user}}<a class="l-btn l-btn-primary l-btn-lg" href="/admin">{{$.T "进入控制台"}} →</a>{{else}}
+        <a class="l-btn l-btn-primary l-btn-lg" href="/register">{{$.T "免费注册"}} →</a>
+        <a class="l-btn l-btn-lg" href="/login">{{$.T "已有账号，登录"}}</a>{{end}}
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="l-foot">
+  <div class="l-wrap">
+    <div class="l-foot-grid">
+      <div>
+        <a class="l-logo" href="/"><b>D</b>DocShare</a>
+        <p class="l-foot-desc">{{$.T "轻量 Markdown 文档分享系统，Go 单二进制，内网可私有化部署。"}}</p>
+      </div>
+      <div>
+        <h4># {{$.T "产品"}}</h4>
+        <a href="/register">{{$.T "注册"}}</a>
+        <a href="/login">{{$.T "登录"}}</a>
+        <a href="/admin">{{$.T "控制台"}}</a>
+      </div>
+      <div>
+        <h4># {{$.T "能力"}}</h4>
+        <a href="#features">{{$.T "产品能力"}}</a>
+        <a href="#workflow">{{$.T "工作流"}}</a>
+        <a href="#openapi">{{$.T "开放平台"}}</a>
+      </div>
+      <div>
+        <h4># {{$.T "支持"}}</h4>
+        <a href="#faq">{{$.T "常见问题"}}</a>
+        <a href="/admin/apikeys">{{$.T "API 密钥"}}</a>
+        <a href="/admin/docs">{{$.T "文档列表"}}</a>
+      </div>
+    </div>
+    <div class="l-copy">
+      <span>© 2026 DocShare · {{$.T "保留所有权利"}}</span>
+      <span>built with Go · gin · GORM · MySQL</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/static/landing.js"></script>
+</body>
+</html>{{end}}
