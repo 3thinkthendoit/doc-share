@@ -45,7 +45,11 @@ func (a *App) render(c *gin.Context, name string, data gin.H) {
 		data["error"] = a.i18nText(lang, s)
 	}
 	// dev 模式：每次渲染从磁盘重新解析模板，改模板刷新浏览器即生效；
-	// 解析失败沿用上次成功的模板集合（a.Tmpl 不被覆盖），页面仍可用
+	// 解析失败沿用上次成功的模板集合（a.Tmpl 不被覆盖），页面仍可用。
+	// 同时禁用页面缓存：模板改了之后浏览器不会拿旧 HTML
+	if a.Cfg.Server.Dev {
+		c.Header("Cache-Control", "no-store")
+	}
 	tmpl := a.Tmpl
 	if a.Cfg.Server.Dev && a.TmplRoot != nil {
 		if t, err := ParseTemplates(a.TmplRoot); err == nil {

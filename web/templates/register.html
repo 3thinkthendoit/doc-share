@@ -17,7 +17,7 @@
       {{if ne .method "username"}}
       <label id="identifierLabel">
         <span id="identifierLabelText">{{if eq .method "email"}}{{$.T "reg.email"}}{{else}}{{$.T "reg.phone"}}{{end}}</span>
-        <input type="{{if eq .method "email"}}email{{else}}tel{{end}}" name="identifier" value="{{.identifier}}" required maxlength="255" autocomplete="off">
+        <input type="{{if eq .method "email"}}email{{else}}tel{{end}}" name="identifier" id="identifierInput" value="{{.identifier}}" required maxlength="255" autocomplete="off">
       </label>
       {{end}}
 
@@ -52,7 +52,7 @@
   {{if eq .method "email"}}
   {{/* 发送验证码前的图形验证码弹窗（一次性，错误自动刷新） */}}
   <div class="modal-overlay" id="mailCaptchaModal" hidden>
-    <div class="modal modal-sm">
+    <div class="modal modal-sm" style="width:320px">
       <div class="modal-head">
         <h2>{{$.T "login.captcha"}}</h2>
         <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
@@ -72,6 +72,12 @@
       </div>
     </div>
   </div>
+  <style>
+    /* 弹窗内验证码输入框与图片固定等高对齐（覆盖全局 stretch + aspect-ratio） */
+    #mailCaptchaModal .captcha-row{align-items:center;gap:8px;margin-top:0}
+    #mailCaptchaModal input[type=text]{flex:1;min-width:0;margin:0;height:40px;box-sizing:border-box;font-size:14px}
+    #mailCaptchaModal .captcha-img{width:120px;height:40px;flex:none;aspect-ratio:auto}
+  </style>
   {{end}}
 <script>
 (function () {
@@ -132,7 +138,11 @@
     }
 
     sendBtn.addEventListener('click', function () {
-      if (!idInput.value.trim()) { idInput.focus(); return; }
+      if (!idInput.value.trim()) {
+        UI.toast(UI.t('请先填写邮箱'), 'error');
+        idInput.focus();
+        return;
+      }
       refreshMailCaptcha();
       UI.openModal(captchaModal);
       setTimeout(function () { mailCaptchaInput.focus(); }, 100);

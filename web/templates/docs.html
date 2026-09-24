@@ -30,7 +30,7 @@
       <option value="mine" {{if eq .origin "mine"}}selected{{end}}>{{$.T "docs.originMine"}}</option>
       {{if and $.user (not $.user.IsAdmin)}}<option value="shared" {{if eq .origin "shared"}}selected{{end}}>{{$.T "docs.originShared"}}</option>{{end}}
     </select>
-    <button type="submit" class="btn">{{$.T "筛选"}}</button>
+    <button type="submit" class="btn">{{$.T "docs.query"}}</button>
     {{if or .project .category .origin}}<a href="/admin/docs{{if .q}}?q={{.q}}{{end}}" class="btn">{{$.T "重置"}}</a>{{end}}
   </form>
 
