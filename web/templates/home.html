@@ -21,7 +21,7 @@
 <div class="l-bgfx"></div>
 
 <nav class="l-nav">
-  <a class="l-logo" href="/"><b>D</b>DocShare</a>
+  <a class="l-logo" href="/">{{if .SiteLogo}}<img class="l-logo-img" src="{{.SiteLogo}}" alt="">{{else}}<b>D</b>{{end}}{{.SiteName}}</a>
   <div class="l-nav-links">
     <a href="#features">{{$.T "产品能力"}}</a>
     <a href="#workflow">{{$.T "工作流"}}</a>
@@ -292,7 +292,7 @@ sign = <span class="l-tok-h">HMAC-SHA256</span>(Secret, base)
   <div class="l-wrap">
     <div class="l-foot-grid">
       <div>
-        <a class="l-logo" href="/"><b>D</b>DocShare</a>
+        <a class="l-logo" href="/">{{if .SiteLogo}}<img class="l-logo-img" src="{{.SiteLogo}}" alt="">{{else}}<b>D</b>{{end}}{{.SiteName}}</a>
         <p class="l-foot-desc">{{$.T "轻量 Markdown 文档分享系统，Go 单二进制，内网可私有化部署。"}}</p>
       </div>
       <div>
@@ -310,7 +310,7 @@ sign = <span class="l-tok-h">HMAC-SHA256</span>(Secret, base)
       <div>
         <h4># {{$.T "支持"}}</h4>
         <a href="#faq">{{$.T "常见问题"}}</a>
-        <a href="/admin/apikeys">{{$.T "API 密钥"}}</a>
+        <a href="/admin/apikeys">{{$.T "nav.apikeys"}}</a>
         <a href="/admin/docs">{{$.T "文档列表"}}</a>
       </div>
     </div>

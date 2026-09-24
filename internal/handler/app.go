@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"doc-share/internal/config"
@@ -28,6 +29,9 @@ type App struct {
 	I18N       *i18n.Bundle
 	Limiter    *middleware.ShareLimiter
 	CaptchaMgr *base64Captcha.Captcha
+
+	setMu    sync.RWMutex   // 站点设置缓存锁
+	setCache *SiteSettings  // nil 表示未加载
 }
 
 // NewApp 构造 App

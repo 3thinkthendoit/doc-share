@@ -8,7 +8,7 @@
 <body class="reader-body">
   <header class="reader-header">
     <div class="reader-head-inner">
-      <div class="reader-brand"><a href="/admin">DocShare</a></div>
+      <div class="reader-brand"><a href="/">{{if .SiteLogo}}<img class="reader-logo" src="{{.SiteLogo}}" alt="">{{end}}{{.SiteName}}</a></div>
       <div class="reader-meta">{{if .doc}}{{$.T "share.meta" .doc.ViewCount (.doc.UpdatedAt.Format "2006-01-02 15:04")}}{{end}}</div>
       {{template "langSwitch" .}}
     </div>

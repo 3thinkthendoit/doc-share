@@ -163,6 +163,8 @@ html[data-theme="light"] {
 .l-btn.l-theme .i-moon { display: block; }
 html[data-theme="light"] .l-btn.l-theme .i-sun { display: block; }
 html[data-theme="light"] .l-btn.l-theme .i-moon { display: none; }
+/* 自定义 Logo 图：与渐变方块 D 同尺寸 */
+.l-logo-img { width: 26px; height: 26px; border-radius: 7px; object-fit: cover; display: block; }
 /* 切主题时不要逐块闪色 */
 html[data-theme-anim] .l-site,
 html[data-theme-anim] .l-nav,

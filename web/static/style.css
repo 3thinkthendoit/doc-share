@@ -20,9 +20,10 @@ h1,h2{letter-spacing:-.02em;font-weight:650}
 
 /* nav */
 .topnav{display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,.82);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:0 32px;height:60px;position:sticky;top:0;z-index:10}
-/* 品牌 logo 与首页 .l-logo 同款：渐变方块 D + 文字 */
+/* 品牌 logo 与首页 .l-logo 同款：渐变方块 D + 文字（或自定义 Logo 图） */
 .nav-brand a{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:16px;letter-spacing:-.4px;color:var(--text)}
 .nav-brand a b{display:grid;place-items:center;width:24px;height:24px;border-radius:6px;background:var(--grad);color:#fff;font-size:13px;letter-spacing:0}
+.nav-brand a img.nav-logo{width:24px;height:24px;border-radius:6px;object-fit:cover;display:block}
 .nav-links{display:flex;gap:6px;flex:1;justify-content:center}
 .nav-links a{color:var(--muted);font-weight:500;font-size:14px;padding:7px 16px;border-radius:999px;transition:all .15s}
 .nav-links a:hover{color:var(--text);background:var(--bg-soft);text-decoration:none}
@@ -44,6 +45,74 @@ h1,h2{letter-spacing:-.02em;font-weight:650}
 .api-doc code{background:var(--bg-soft);border:1px solid var(--border);border-radius:5px;padding:1px 6px;font-family:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;font-size:12.5px}
 .api-code{background:#1e1e2e;color:#d6d3f0;border-radius:var(--radius-sm);padding:14px 16px;overflow:auto;font-family:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;font-size:12.5px;line-height:1.6}
 .api-doc .table th,.api-doc .table td{padding:9px 14px}
+/* API 文档页：左侧目录 + 右侧分区内容（参考主流 API 文档站布局） */
+.doc-wrap{max-width:1200px}
+.doc-layout{display:flex;gap:28px;align-items:flex-start}
+.doc-side{position:sticky;top:84px;width:210px;flex:none;display:flex;flex-direction:column;gap:2px;padding:6px 0;max-height:calc(100vh - 108px);overflow:auto}
+.doc-side a{display:block;padding:7px 14px;border-radius:8px;color:var(--muted);font-size:13.5px;font-weight:500;transition:all .15s}
+.doc-side a:hover{color:var(--text);background:var(--bg-soft);text-decoration:none}
+.doc-side a.active{color:var(--primary-dark);background:var(--primary-soft)}
+.doc-side a.side-parent{color:var(--text);font-weight:600}
+/* 层级目录：分组名 + 逐接口条目（彩色方法圆点 + METHOD 路径） */
+.doc-side a.side-lv1{padding-left:22px;font-weight:600;color:var(--text)}
+.doc-side a.side-lv1.active{color:var(--primary-dark)}
+.doc-side a.side-lv2{display:flex;align-items:center;padding:5px 12px 5px 40px;font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:8px;flex:none}
+.m-dot.m-get{background:#30a46c}
+.m-dot.m-post{background:#615ced}
+.m-dot.m-put{background:#d97706}
+.m-dot.m-delete{background:#e5484d}
+.doc-main{flex:1;min-width:0}
+.doc-sec{padding:22px 26px}
+.doc-sec h2{margin:0 0 14px;font-size:19px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.doc-sec p{margin:10px 0;color:var(--text)}
+.doc-sec .table th,.doc-sec .table td{padding:9px 14px}
+/* Base URL 提示条：左侧主色竖线 */
+.doc-callout{border-left:3px solid var(--primary);background:var(--bg-soft);border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:10px 16px;margin:14px 0 4px;font-size:13.5px;color:var(--text)}
+/* 快速开始：数字圆点步骤 */
+.doc-steps{list-style:none;margin:14px 0 4px;padding:0;counter-reset:step}
+.doc-steps li{counter-increment:step;position:relative;padding-left:36px;margin:12px 0;color:var(--text)}
+.doc-steps li::before{content:counter(step);position:absolute;left:0;top:1px;width:23px;height:23px;border-radius:50%;background:var(--primary-soft);color:var(--primary-dark);font-size:12px;font-weight:600;display:grid;place-items:center}
+/* 窄屏隐藏侧边目录 */
+@media (max-width:960px){.doc-side{display:none}}
+/* 可用接口：分组标题 + 逐接口卡片 + 参数表 */
+.ep-group{margin:20px 0 10px;font-size:14.5px;font-weight:650;color:var(--text)}
+.ep{border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin:10px 0;background:var(--panel);transition:border-color .15s}
+.ep:hover{border-color:var(--border-strong)}
+.ep-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ep-method{flex:none;min-width:62px;text-align:center;padding:3px 0;border-radius:6px;font-family:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;font-size:11.5px;font-weight:700;color:#fff;letter-spacing:.3px}
+.m-get{background:#30a46c}
+.m-post{background:#615ced}
+.m-put{background:#d97706}
+.m-delete{background:#e5484d}
+.ep-path{font-family:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;font-size:12.5px;background:var(--bg-soft);border:1px solid var(--border);border-radius:6px;padding:2px 8px;word-break:break-all}
+.ep-desc{color:var(--muted);font-size:13px}
+.ep-params{margin-top:10px;border-top:1px dashed var(--border)}
+.ep-params th,.ep-params td{padding:6px 10px;font-size:12.5px}
+.ep-pname{font-family:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;font-size:12px;background:var(--bg-soft);border:1px solid var(--border);border-radius:5px;padding:1px 6px}
+.p-badge{font-family:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;font-size:10.5px;color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:0 5px;margin-left:6px}
+/* 接口卡片内请求/响应示例 */
+.ep-ex{margin-top:4px}
+.ep-ex-label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:12px 0 6px}
+.ep-ex .api-code{padding:12px 14px;font-size:12px}
+/* 错误码表：状态码徽章 */
+.err-table td.err-msg{font-family:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;font-size:12px}
+.st{display:inline-block;min-width:38px;text-align:center;padding:1px 8px;border-radius:6px;font-family:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;font-size:11.5px;font-weight:700;color:#fff}
+.st-400{background:#d97706}
+.st-401,.st-403{background:#e5484d}
+.st-404{background:#82828d}
+.st-500{background:#b91c1c}
+/* 面板内复用 .api-doc 作为分区正文，去掉独立面板时的外边距 */
+.panel .api-doc{margin-top:0;padding:18px 24px 22px}
+/* 请求头徽章 */
+.hdr-badge{display:inline-block;background:var(--bg-soft);border:1px solid var(--border);border-radius:6px;padding:2px 10px;font-weight:600;font-size:12px}
+/* 代码块：深色头部栏（语言标签 + 复制按钮） */
+.code-wrap{position:relative;margin:14px 0 4px;border-radius:var(--radius-sm);overflow:hidden;border:1px solid #2c2c40}
+.code-wrap .api-code{margin:0;border-radius:0;border:none}
+.code-bar{display:flex;align-items:center;justify-content:space-between;background:#26263a;padding:7px 14px}
+.code-lang{font-family:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;font-size:11px;color:#9a97c8;letter-spacing:.6px;text-transform:uppercase}
+.code-copy{border:1px solid #3a3a52;background:transparent;color:#d6d3f0;border-radius:6px;padding:3px 10px;font-size:11.5px;font-family:inherit;cursor:pointer;transition:all .15s}
+.code-copy:hover{background:rgba(255,255,255,.12);border-color:#565682}
 .secret-warn{background:var(--primary-soft);color:var(--primary-dark);border-radius:var(--radius-sm);padding:10px 14px;font-size:13px;margin-bottom:14px}
 .secret-row{display:flex;gap:8px;align-items:center;margin-top:6px}
 .secret-row input{flex:1;font-family:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;font-size:12.5px;background:var(--bg-soft)}
@@ -245,7 +314,8 @@ body.modal-open{overflow:hidden}
 .reader-body{background:var(--panel)}
 .reader-header{border-bottom:1px solid var(--border);position:sticky;top:0;background:rgba(255,255,255,.85);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);z-index:5}
 .reader-head-inner{max-width:840px;margin:0 auto;padding:16px 24px;display:flex;justify-content:space-between;align-items:center;gap:14px}
-.reader-brand a{font-weight:700;letter-spacing:-.02em;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.reader-brand a{display:inline-flex;align-items:center;gap:8px;font-weight:700;letter-spacing:-.02em;color:var(--text);text-decoration:none}
+.reader-brand a img.reader-logo{width:22px;height:22px;border-radius:5px;object-fit:cover;display:block}
 .reader-meta{color:var(--faint);font-size:12.5px;margin-left:auto}
 .reader{max-width:840px;margin:0 auto;padding:44px 24px 96px}
 .doc-title{font-size:34px;font-weight:700;letter-spacing:-.03em;margin:0 0 28px;padding:0;border:none}

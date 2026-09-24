@@ -6,7 +6,7 @@
 {{template "nav" .}}
 <main class="container">
   <div class="page-head">
-    <h1>{{$.T "API 密钥"}}</h1>
+    <h1>{{$.T "key.manage"}}</h1>
     <button class="btn btn-primary" id="btnNewKey">{{$.T "新建密钥"}}</button>
   </div>
 
@@ -37,27 +37,6 @@
     </table>
   </div>
 
-  <div class="panel api-doc">
-    <h2>{{$.T "对接说明"}}</h2>
-    <p>{{$.TH "apidoc.intro"}}</p>
-    <table class="table">
-      <thead><tr><th>{{$.T "请求头"}}</th><th>{{$.T "说明"}}</th></tr></thead>
-      <tbody>
-        <tr><td class="mono">X-App-Key</td><td>{{$.T "身份标识（创建密钥时生成）"}}</td></tr>
-        <tr><td class="mono">X-Timestamp</td><td>{{$.T "当前 Unix 秒，与服务器偏差须在 5 分钟内"}}</td></tr>
-        <tr><td class="mono">X-Nonce</td><td>{{$.T "8~64 位随机串，5 分钟内不可重复（防重放）"}}</td></tr>
-        <tr><td class="mono">X-Signature</td><td>{{$.T "按下述算法计算的 hex 签名"}}</td></tr>
-      </tbody>
-    </table>
-    <p>{{$.TH "apidoc.algo"}}</p>
-    <pre class="api-code"># {{$.T "apidoc.sampleComment"}}
-METHOD=GET  PATH=/openapi/v1/docs  BODY=
-sign=$(printf "%s\n%s\n%s\n%s\n%s\n%s" "$APP_KEY" "GET" "$PATH" "$TS" "$NONCE" \
-       "$(printf '' | sha256sum | cut -d' ' -f1)" | openssl dgst -sha256 -hmac "$SECRET" -hex | awk '{print $NF}')
-curl -H "X-App-Key: $APP_KEY" -H "X-Timestamp: $TS" -H "X-Nonce: $NONCE" -H "X-Signature: $sign" \
-     https://your-host/openapi/v1/docs?page=1&amp;size=20</pre>
-    <p>{{$.TH "apidoc.endpoints"}}</p>
-  </div>
 </main>
 
 <div class="modal-overlay" id="keyModal" hidden>

@@ -43,7 +43,7 @@
           <td>{{if .IsShared}}<span class="tag tag-green">{{$.T "已分享"}}</span>{{else}}<span class="tag">{{$.T "未分享"}}</span>{{end}}</td>
           <td>{{.UpdatedAt.Format "2006-01-02 15:04"}}</td>
           <td class="col-actions">
-            {{if and .IsShared .Share}}<a href="/s/{{.Share.ShareToken}}" target="_blank" class="btn btn-sm">{{$.T "预览"}}</a>{{end}}
+            <a href="/admin/docs/{{.ID}}/preview" target="_blank" class="btn btn-sm" title="{{$.T "以读者视图查看（不计浏览数）"}}">{{$.T "查看"}}</a>
             <a href="/admin/docs/{{.ID}}/edit" class="btn btn-sm">{{$.T "编辑"}}</a>
             <button class="btn btn-sm btn-danger" onclick="delDoc({{.ID}}, this)">{{$.T "删除"}}</button>
           </td>

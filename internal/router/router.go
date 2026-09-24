@@ -36,12 +36,17 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.GET("/docs", app.DocsPage)
 		admin.GET("/docs/new", app.NewDocPage)
 		admin.GET("/docs/:id/edit", app.EditDocPage)
+		admin.GET("/docs/:id/preview", app.PreviewDoc)
 
 		// 用户管理仅 admin
 		admin.GET("/users", middleware.RequireAdmin(), app.UsersPage)
 		admin.POST("/api/users", middleware.RequireAdmin(), app.CreateUser)
 		admin.PUT("/api/users/:id", middleware.RequireAdmin(), app.UpdateUser)
 		admin.DELETE("/api/users/:id", middleware.RequireAdmin(), app.DeleteUser)
+
+		// 系统设置仅 admin
+		admin.GET("/settings", middleware.RequireAdmin(), app.SettingsPage)
+		admin.PUT("/api/settings", middleware.RequireAdmin(), app.UpdateSettings)
 
 		// 项目管理（个人归属，viewer 管自己的）
 		admin.GET("/projects", app.ProjectsPage)
@@ -57,6 +62,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 
 		// API 密钥管理（个人归属，viewer 管自己的）
 		admin.GET("/apikeys", app.APIKeysPage)
+		admin.GET("/apidoc", app.APIDocPage)
 		admin.POST("/api/apikeys", app.CreateAPIKey)
 		admin.PUT("/api/apikeys/:id/reset", app.ResetAPIKeySecret)
 		admin.PUT("/api/apikeys/:id/status", app.UpdateAPIKeyStatus)

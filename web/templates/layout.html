@@ -1,7 +1,7 @@
 {{define "head"}}
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{if .title}}{{.title}} · {{end}}DocShare</title>
+<title>{{if .title}}{{.title}} · {{end}}{{.SiteName}}</title>
 <link rel="stylesheet" href="/static/style.css">
 {{/* “中文原文→译文”映射先于 ui.js 注入：脚本里的文案统一走 UI.t() */}}
 <script>window.__LANG={{.Lang}};window.__L10N={{.Dict}};</script>
@@ -19,14 +19,16 @@
 
 {{define "nav"}}
 <nav class="topnav">
-  <div class="nav-brand"><a href="/admin"><b>D</b>DocShare</a></div>
+  <div class="nav-brand"><a href="/admin">{{if .SiteLogo}}<img class="nav-logo" src="{{.SiteLogo}}" alt="">{{else}}<b>D</b>{{end}}{{.SiteName}}</a></div>
   <div class="nav-links">
     <a href="/admin">{{$.T "nav.dashboard"}}</a>
     <a href="/admin/docs">{{$.T "nav.docs"}}</a>
     <a href="/admin/projects">{{$.T "nav.projects"}}</a>
     <a href="/admin/categories">{{$.T "nav.categories"}}</a>
     <a href="/admin/apikeys">{{$.T "nav.apikeys"}}</a>
-    {{if and .user .user.IsAdmin}}<a href="/admin/users">{{$.T "nav.users"}}</a>{{end}}
+    <a href="/admin/apidoc">{{$.T "nav.apidoc"}}</a>
+    {{if and .user .user.IsAdmin}}<a href="/admin/users">{{$.T "nav.users"}}</a>
+    <a href="/admin/settings">{{$.T "nav.settings"}}</a>{{end}}
   </div>
   {{template "langSwitch" .}}
   {{if .user}}

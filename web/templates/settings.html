@@ -1,0 +1,103 @@
+{{define "settings.html"}}
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>{{template "head" .}}</head>
+<body>
+{{template "nav" .}}
+<main class="container">
+  <div class="page-head"><h1>{{$.T "set.title"}}</h1></div>
+
+  <div class="panel" style="max-width:640px">
+    <div class="panel-head"><h2>{{$.T "set.title"}}</h2></div>
+    <form id="settingsForm" class="share-body" novalidate style="padding:22px">
+      <label>{{$.T "set.siteName"}}
+        <input type="text" name="site_name" required maxlength="64" value="{{.set.SiteName}}" placeholder="DocShare">
+      </label>
+
+      <label>{{$.T "set.siteLogo"}}
+        <input type="hidden" name="site_logo" id="logoInput" value="{{.set.SiteLogo}}">
+        <div class="logo-pick">
+          <span class="logo-preview" id="logoPreview">
+            {{if .set.SiteLogo}}<img src="{{.set.SiteLogo}}" alt="">{{end}}
+          </span>
+          <div class="logo-actions">
+            <button type="button" class="btn btn-sm" id="logoUploadBtn">{{$.T "set.uploadLogo"}}</button>
+            <button type="button" class="btn btn-sm" id="logoClearBtn" {{if not .set.SiteLogo}}disabled{{end}}>{{$.T "set.clearLogo"}}</button>
+            <input type="file" id="logoFile" accept=".png,.jpg,.jpeg,.gif,.webp,.bmp" hidden>
+          </div>
+        </div>
+      </label>
+
+      <label>{{$.T "set.siteDomain"}}
+        <input type="text" name="site_domain" value="{{.set.SiteDomain}}" placeholder="https://docs.example.com">
+        <span class="muted" style="font-size:12.5px">{{$.T "set.siteDomainTip"}}</span>
+      </label>
+
+      <div class="modal-foot" style="border-top:none;background:none;padding:18px 0 0">
+        <button type="submit" class="btn btn-primary">{{$.T "common.save"}}</button>
+      </div>
+    </form>
+  </div>
+</main>
+<style>
+.logo-pick{display:flex;align-items:center;gap:14px;margin-top:8px}
+.logo-preview{display:grid;place-items:center;width:48px;height:48px;border-radius:10px;border:1px solid var(--border);background:var(--bg-soft);overflow:hidden;flex:none}
+.logo-preview img{width:100%;height:100%;object-fit:cover}
+.logo-preview:empty::after{content:"D";font-weight:700;color:var(--muted)}
+.logo-actions{display:flex;gap:8px}
+</style>
+<script>
+(function () {
+  var form = document.getElementById('settingsForm');
+  if (!form) return;
+  var logoInput = document.getElementById('logoInput');
+  var logoPreview = document.getElementById('logoPreview');
+  var logoFile = document.getElementById('logoFile');
+  var logoClearBtn = document.getElementById('logoClearBtn');
+
+  function setLogo(url) {
+    logoInput.value = url;
+    logoPreview.innerHTML = url ? '<img src="' + url + '" alt="">' : '';
+    logoClearBtn.disabled = !url;
+  }
+
+  document.getElementById('logoUploadBtn').addEventListener('click', function () { logoFile.click(); });
+  logoFile.addEventListener('change', async function () {
+    if (!logoFile.files.length) return;
+    var fd = new FormData();
+    fd.append('file', logoFile.files[0]);
+    try {
+      var res = await fetch('/admin/api/upload', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
+      var data = await res.json();
+      if (!res.ok) { UI.alert((data && data.error) || '上传失败'); return; }
+      setLogo(data.url);
+      UI.toast('Logo 已更新，保存后生效', 'success');
+    } catch (e) { UI.alert('上传失败：网络错误'); }
+    logoFile.value = '';
+  });
+  logoClearBtn.addEventListener('click', function () { setLogo(''); });
+
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var payload = {
+      site_name: form.site_name.value.trim(),
+      site_logo: logoInput.value,
+      site_domain: form.site_domain.value.trim()
+    };
+    try {
+      var res = await fetch('/admin/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify(payload)
+      });
+      var data = await res.json();
+      if (!res.ok) { UI.alert((data && data.error) || '保存失败'); return; }
+      UI.toast('已保存，刷新页面后全站生效', 'success');
+      setTimeout(function () { location.reload(); }, 700);
+    } catch (err) { UI.alert('保存失败：网络错误'); }
+  });
+})();
+</script>
+</body>
+</html>
+{{end}}

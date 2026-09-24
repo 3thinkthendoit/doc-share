@@ -29,6 +29,11 @@ func (a *App) render(c *gin.Context, name string, data gin.H) {
 	data["Path"] = c.Request.URL.RequestURI() // 语言切换后跳回当前页
 	data["Dict"] = template.JS(a.dictJSON(lang))
 	data[viewBundleKey] = a.I18N
+	// 站点设置：模板里 {{.SiteName}} / {{.SiteLogo}} / {{.SiteDomain}}
+	s := a.Settings()
+	data["SiteName"] = s.SiteName
+	data["SiteLogo"] = s.SiteLogo
+	data["SiteDomain"] = s.SiteDomain
 	// 部分页面直接拿 handler 传入的中文标题 / 表单错误文案，这里统一反查词典
 	for _, k := range []string{"title", "error"} {
 		if s, ok := data[k].(string); ok {

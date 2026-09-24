@@ -1,0 +1,183 @@
+{{define "apidoc.html"}}
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>{{template "head" .}}</head>
+<body>
+{{template "nav" .}}
+<main class="container doc-wrap">
+  <div class="page-head">
+    <h1>{{$.T "apidoc.title"}}</h1>
+    <a class="btn" href="/admin/apikeys">{{$.T "key.manage"}}</a>
+  </div>
+
+  <div class="doc-layout">
+    <aside class="doc-side">
+      <a href="#sec-overview" class="active">{{$.T "apidoc.secIntro"}}</a>
+      <a href="#sec-quickstart">{{$.T "apidoc.qsTitle"}}</a>
+      <a href="#sec-headers">{{$.T "apidoc.secHeaders"}}</a>
+      <a href="#sec-algo">{{$.T "apidoc.secAlgo"}}</a>
+      <a href="#sec-endpoints" class="side-parent">{{$.T "apidoc.secEndpoints"}}</a>
+      {{range .groups}}
+      <a class="side-lv1" href="#{{.Anchor}}">{{$.T .GroupKey}}</a>
+      {{range .Items}}<a class="side-lv2" href="#ep-{{.Anchor}}"><span class="m-dot m-{{.Class}}"></span>{{$.T .LabelKey}}</a>{{end}}
+      {{end}}
+      <a href="#sec-errors" class="side-parent">{{$.T "apidoc.secErrors"}}</a>
+    </aside>
+
+    <div class="doc-main">
+      <section class="panel doc-sec" id="sec-overview">
+        <h2>{{$.T "apidoc.secIntro"}}</h2>
+        <p>{{$.TH "apidoc.intro"}}</p>
+        <div class="doc-callout">{{$.T "apidoc.calloutPrefix"}} <code class="ep-path">{{$.BaseURL}}/openapi/v1</code>{{$.T "apidoc.calloutSuffix"}}</div>
+      </section>
+
+      <section class="panel doc-sec" id="sec-quickstart">
+        <h2>{{$.T "apidoc.qsTitle"}}</h2>
+        <p>{{$.T "apidoc.qsLead"}}</p>
+        <ol class="doc-steps">
+          <li>{{$.TH "apidoc.qs1"}}</li>
+          <li>{{$.TH "apidoc.qs2"}}</li>
+          <li>{{$.TH "apidoc.qs3"}}</li>
+        </ol>
+      </section>
+
+      <section class="panel doc-sec" id="sec-headers">
+        <h2>{{$.T "apidoc.secHeaders"}}</h2>
+        <table class="table">
+          <thead><tr><th>{{$.T "apidoc.thHeader"}}</th><th>{{$.T "apidoc.thDesc"}}</th></tr></thead>
+          <tbody>
+            <tr><td><span class="mono hdr-badge">X-App-Key</span></td><td>{{$.T "apidoc.appKeyDesc"}}</td></tr>
+            <tr><td><span class="mono hdr-badge">X-Timestamp</span></td><td>{{$.T "apidoc.tsDesc"}}</td></tr>
+            <tr><td><span class="mono hdr-badge">X-Nonce</span></td><td>{{$.T "apidoc.nonceDesc"}}</td></tr>
+            <tr><td><span class="mono hdr-badge">X-Signature</span></td><td>{{$.T "apidoc.sigDesc"}}</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="panel doc-sec" id="sec-algo">
+        <h2>{{$.T "apidoc.secAlgo"}}</h2>
+        <p>{{$.TH "apidoc.algo"}}</p>
+        <div class="code-wrap">
+          <div class="code-bar"><span class="code-lang">cURL</span><button type="button" class="code-copy">{{$.T "common.copy"}}</button></div>
+          <pre class="api-code"># {{$.T "apidoc.sampleComment"}}
+METHOD=GET  PATH=/openapi/v1/docs  BODY=
+sign=$(printf "%s\n%s\n%s\n%s\n%s\n%s" "$APP_KEY" "GET" "$PATH" "$TS" "$NONCE" \
+       "$(printf '' | sha256sum | cut -d' ' -f1)" | openssl dgst -sha256 -hmac "$SECRET" -hex | awk '{print $NF}')
+curl -H "X-App-Key: $APP_KEY" -H "X-Timestamp: $TS" -H "X-Nonce: $NONCE" -H "X-Signature: $sign" \
+     {{$.BaseURL}}/openapi/v1/docs?page=1&amp;size=20</pre>
+        </div>
+      </section>
+
+      <section class="panel doc-sec" id="sec-endpoints">
+        <h2>{{$.T "apidoc.secEndpoints"}}</h2>
+        <p class="muted">{{$.TH "apidoc.epCommon"}}</p>
+        {{range .groups}}
+        <h3 class="ep-group" id="{{.Anchor}}">{{$.T .GroupKey}}</h3>
+        {{range .Items}}
+        <div class="ep" id="ep-{{.Anchor}}">
+          <div class="ep-head">
+            <span class="ep-method m-{{.Class}}">{{.Method}}</span>
+            <code class="ep-path">{{.Path}}</code>
+            <span class="ep-desc">{{$.T .DescKey}}</span>
+          </div>
+          {{if .Params}}
+          <table class="table ep-params">
+            <thead><tr><th>{{$.T "apidoc.thParam"}}</th><th>{{$.T "apidoc.thDesc"}}</th></tr></thead>
+            <tbody>
+              {{range .Params}}
+              <tr>
+                <td><code class="ep-pname">{{.Name}}</code><span class="p-badge">{{.In}}</span></td>
+                <td>{{$.T .DescKey}}</td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+          {{end}}
+          {{if .ReqExample}}
+          <div class="ep-ex">
+            <span class="ep-ex-label">{{$.T "apidoc.reqExample"}}</span>
+            <div class="code-wrap">
+              <div class="code-bar"><span class="code-lang">JSON</span><button type="button" class="code-copy">{{$.T "common.copy"}}</button></div>
+              <pre class="api-code">{{.ReqExample}}</pre>
+            </div>
+          </div>
+          {{end}}
+          {{if .RespExample}}
+          <div class="ep-ex">
+            <span class="ep-ex-label">{{$.T "apidoc.respExample"}}</span>
+            <div class="code-wrap">
+              <div class="code-bar"><span class="code-lang">JSON</span><button type="button" class="code-copy">{{$.T "common.copy"}}</button></div>
+              <pre class="api-code">{{.RespExample}}</pre>
+            </div>
+          </div>
+          {{end}}
+        </div>
+        {{end}}
+        {{end}}
+      </section>
+
+      <section class="panel doc-sec" id="sec-errors">
+        <h2>{{$.T "apidoc.secErrors"}}</h2>
+        <p class="muted">{{$.T "apidoc.errNote"}}</p>
+        {{range .errGroups}}
+        <h3 class="ep-group">{{$.T .Key}}</h3>
+        <table class="table ep-params err-table">
+          <thead><tr><th>{{$.T "apidoc.thCode"}}</th><th>{{$.T "apidoc.thErrMsg"}}</th></tr></thead>
+          <tbody>
+            {{range .Rows}}
+            <tr>
+              <td><span class="st st-{{.Code}}">{{.Code}}</span></td>
+              <td class="err-msg">{{.Msg}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+        {{end}}
+      </section>
+    </div>
+  </div>
+</main>
+
+<script>
+(function(){
+  /* 代码块复制：页内所有 .code-wrap 的复制按钮通用 */
+  document.querySelectorAll('.code-copy').forEach(function(btn){
+    btn.addEventListener('click',async function(){
+      var wrap=btn.closest('.code-wrap');
+      var pre=wrap&&wrap.querySelector('pre');
+      if(!pre) return;
+      var text=pre.textContent;
+      try{
+        await navigator.clipboard.writeText(text);
+      }catch(e){
+        var ta=document.createElement('textarea');
+        ta.value=text;document.body.appendChild(ta);ta.select();
+        document.execCommand('copy');ta.remove();
+      }
+      if(window.UI&&UI.toast)UI.toast(UI.t('已复制到剪贴板'),'success');
+    });
+  });
+  /* 侧边目录滚动高亮 */
+  var links=[].slice.call(document.querySelectorAll('.doc-side a'));
+  var map={};
+  links.forEach(function(a){
+    var el=document.querySelector(a.getAttribute('href'));
+    if(el)map[el.id]=a;
+  });
+  if('IntersectionObserver' in window&&Object.keys(map).length){
+    var io=new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(en.isIntersecting){
+          links.forEach(function(l){l.classList.remove('active')});
+          var a=map[en.target.id];
+          if(a)a.classList.add('active');
+        }
+      });
+    },{rootMargin:'-15% 0px -70% 0px'});
+    Object.keys(map).forEach(function(id){io.observe(document.getElementById(id))});
+  }
+})();
+</script>
+</body>
+</html>
+{{end}}

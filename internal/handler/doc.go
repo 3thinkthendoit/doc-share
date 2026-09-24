@@ -334,6 +334,19 @@ type shareReq struct {
 	ExpireDays int    `json:"expire_days" form:"expire_days"` // 0 表示永不过期
 }
 
+// PreviewDoc 管理端阅读预览：作者或管理员以读者视图查看文档，
+// 不要求开启分享、不写分享凭证、不计浏览数
+func (a *App) PreviewDoc(c *gin.Context) {
+	doc := a.loadDoc(c)
+	if doc == nil {
+		return
+	}
+	a.render(c, "share_view.html", gin.H{
+		"title": doc.Title,
+		"doc":   doc,
+	})
+}
+
 // UpsertShare 开启/更新文档分享
 func (a *App) UpsertShare(c *gin.Context) {
 	doc := a.loadDoc(c)
@@ -388,7 +401,7 @@ func (a *App) UpsertShare(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"ok":          true,
 		"enabled":     true,
-		"url":         scheme(c) + "://" + c.Request.Host + "/s/" + share.ShareToken,
+		"url":         a.siteBaseURL(c) + "/s/" + share.ShareToken,
 		"hasPassword": share.HasPassword(),
 	})
 }

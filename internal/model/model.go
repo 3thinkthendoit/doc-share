@@ -108,3 +108,17 @@ func (s *Share) HasPassword() bool {
 func (s *Share) IsExpired() bool {
 	return s != nil && s.ExpireAt != nil && time.Now().After(*s.ExpireAt)
 }
+
+// 系统设置键名（管理员后台维护，站点级）
+const (
+	SettingSiteName   = "site_name"   // 网站名称
+	SettingSiteLogo   = "site_logo"   // 系统 Logo 图片 URL
+	SettingSiteDomain = "site_domain" // 系统域名（生成分享链接等绝对地址用，留空取访问域名）
+)
+
+// SystemSetting 站点级键值设置
+type SystemSetting struct {
+	Key       string    `gorm:"primaryKey;size:64" json:"key"`
+	Value     string    `gorm:"type:text" json:"value"`
+	UpdatedAt time.Time `json:"updated_at"`
+}

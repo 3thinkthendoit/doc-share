@@ -23,7 +23,7 @@ func (a *App) APIKeysPage(c *gin.Context) {
 	var keys []model.ApiKey
 	tx.Preload("Owner").Order("created_at desc").Find(&keys)
 	a.render(c, "apikeys.html", gin.H{
-		"title": "API 密钥",
+		"title": "密钥管理",
 		"keys":  keys,
 	})
 }
