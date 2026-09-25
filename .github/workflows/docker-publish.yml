@@ -15,7 +15,7 @@ on:
 #   ACR_USERNAME —— 阿里云账号全名
 #   ACR_PASSWORD —— ACR 访问凭证（固定密码）
 env:
-  ACR_REGISTRY: ACR_REGISTRY
+  ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
   ACR_NAMESPACE: 3thinkthendoit
   IMAGE_NAME: doc-share
 
