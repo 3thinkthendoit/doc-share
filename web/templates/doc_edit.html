@@ -98,6 +98,13 @@
             {{$.T "分享链接："}}<code id="shareURL">{{.shareURL}}</code>
             <button type="button" class="btn btn-sm" onclick="copyShare()">{{$.T "复制"}}</button>
           </div>
+          <div id="accessReqBox" class="share-access-box" {{if not .share}}hidden{{end}}>
+            <div class="share-access-head">
+              <strong>{{$.T "share.applyListTitle"}}</strong>
+              <button type="button" class="btn btn-sm" id="refreshAccessReq">{{$.T "docs.query"}}</button>
+            </div>
+            <div id="accessReqList" class="share-access-list"><div class="muted">{{$.T "share.applyListEmpty"}}</div></div>
+          </div>
         </div>
       </div>
       <div class="modal-foot">

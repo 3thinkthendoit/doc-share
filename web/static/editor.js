@@ -241,14 +241,20 @@
   var shareModal = document.getElementById('shareModal');
   var openShareBtn = document.getElementById('shareBtn');
   UI.bindModal(shareModal);
-  if (openShareBtn) openShareBtn.addEventListener('click', function () { UI.openModal(shareModal); });
+  if (openShareBtn) openShareBtn.addEventListener('click', function () {
+    UI.openModal(shareModal);
+    if (enabledEl && enabledEl.checked) loadAccessRequests();
+  });
 
   var enabledEl = document.getElementById('shareEnabled');
   var configEl = document.getElementById('shareConfig');
+  var accessReqBox = document.getElementById('accessReqBox');
   var saveShareBtn = document.getElementById('saveShareBtn');
   if (enabledEl) {
     enabledEl.addEventListener('change', function () {
       configEl.style.display = enabledEl.checked ? 'block' : 'none';
+      if (accessReqBox) accessReqBox.hidden = !enabledEl.checked;
+      if (enabledEl.checked) loadAccessRequests();
     });
   }
   if (saveShareBtn) {
@@ -275,8 +281,11 @@
       if (data.url) {
         document.getElementById('shareURL').textContent = data.url;
         document.getElementById('shareLink').style.display = 'flex';
+        if (accessReqBox) accessReqBox.hidden = false;
+        loadAccessRequests();
       } else if (!enabledEl.checked) {
         document.getElementById('shareLink').style.display = 'none';
+        if (accessReqBox) accessReqBox.hidden = true;
       }
       // 密码明文本机记忆（供复制用），关闭分享时清除
       var pwdKey = sharePwdKey(data.url || (document.getElementById('shareURL') || {}).textContent);
@@ -290,6 +299,119 @@
       UI.toast(enabledEl.checked ? '分享设置已更新' : '已关闭分享', 'success');
     });
   }
+
+  async function loadAccessRequests() {
+    var list = document.getElementById('accessReqList');
+    if (!list || !docID()) return;
+    list.innerHTML = '<div class="muted">' + UI.t('加载中…') + '</div>';
+    try {
+      var res = await fetch('/admin/api/docs/' + docID() + '/access-requests', {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      });
+      var data = await res.json();
+      if (!res.ok) {
+        list.innerHTML = '<div class="muted">' + UI.t((data && data.error) || '加载失败') + '</div>';
+        return;
+      }
+      var items = (data && data.data) || [];
+      if (!items.length) {
+        list.innerHTML = '';
+        var box = document.createElement('div');
+        box.className = 'empty-block';
+        var title = document.createElement('div');
+        title.className = 'empty-title';
+        title.textContent = UI.t('share.applyListEmpty');
+        box.appendChild(title);
+        var tip = document.createElement('div');
+        tip.className = 'empty-tip';
+        tip.textContent = UI.t('share.applyListEmptyTip');
+        box.appendChild(tip);
+        list.appendChild(box);
+        return;
+      }
+      var statusMap = { 0: UI.t('share.applyStatusPending'), 1: UI.t('share.applyStatusApproved'), 2: UI.t('share.applyStatusRejected') };
+      var table = document.createElement('table');
+      table.className = 'table';
+      table.innerHTML =
+        '<thead><tr>' +
+        '<th>' + UI.t('dash.pendingName') + '</th>' +
+        '<th>' + UI.t('dash.pendingTime') + '</th>' +
+        '<th>' + UI.t('common.status') + '</th>' +
+        '<th class="col-actions">' + UI.t('common.actions') + '</th>' +
+        '</tr></thead>';
+      var tbody = document.createElement('tbody');
+      items.forEach(function (r) {
+        var tr = document.createElement('tr');
+        var tdName = document.createElement('td');
+        tdName.textContent = r.name || '—';
+        tr.appendChild(tdName);
+        var tdTime = document.createElement('td');
+        tdTime.className = 'cell-muted';
+        tdTime.textContent = r.created_at || '—';
+        tr.appendChild(tdTime);
+        var tdStatus = document.createElement('td');
+        var tag = document.createElement('span');
+        tag.className = 'tag' + (r.status === 1 ? ' tag-green' : '');
+        tag.textContent = statusMap[r.status] || String(r.status);
+        tdStatus.appendChild(tag);
+        tr.appendChild(tdStatus);
+        var tdActs = document.createElement('td');
+        tdActs.className = 'col-actions';
+        if (r.status === 0) {
+          var ok = document.createElement('button');
+          ok.type = 'button';
+          ok.className = 'btn btn-sm btn-primary';
+          ok.textContent = UI.t('share.applyApprove');
+          ok.addEventListener('click', function () { reviewAccess(r.id, 'approve', tdActs); });
+          var no = document.createElement('button');
+          no.type = 'button';
+          no.className = 'btn btn-sm';
+          no.textContent = UI.t('share.applyReject');
+          no.addEventListener('click', function () { reviewAccess(r.id, 'reject', tdActs); });
+          tdActs.appendChild(ok);
+          tdActs.appendChild(no);
+        } else {
+          tdActs.textContent = '—';
+        }
+        tr.appendChild(tdActs);
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      list.innerHTML = '';
+      list.appendChild(table);
+    } catch (e) {
+      list.innerHTML = '<div class="muted">' + UI.t('加载失败') + '</div>';
+    }
+  }
+  async function reviewAccess(rid, action, acts) {
+    if (acts) {
+      acts.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+    }
+    try {
+      var res = await fetch('/admin/api/docs/' + docID() + '/access-requests/' + rid, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({ action: action })
+      });
+      var data = await res.json();
+      if (!res.ok) {
+        UI.toast(UI.t((data && data.error) || '操作失败'), 'error');
+        if (acts) {
+          acts.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+        }
+        return;
+      }
+      UI.toast(UI.t('操作成功'), 'success');
+      loadAccessRequests();
+    } catch (e) {
+      UI.toast(UI.t('网络错误'), 'error');
+      if (acts) {
+        acts.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+      }
+    }
+  }
+  var refreshAccessBtn = document.getElementById('refreshAccessReq');
+  if (refreshAccessBtn) refreshAccessBtn.addEventListener('click', loadAccessRequests);
 
   /* ---- 分享密码：生成 / 重置 / 勾选开启时自动填充 ---- */
   function genPassword() {

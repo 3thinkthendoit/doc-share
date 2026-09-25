@@ -36,7 +36,7 @@
           <td>
             {{if and $.user (eq .OwnerID $.user.ID)}}—{{/* 自己的项目无需查看归属信息 */}}
             {{else if .Owner.ID}}
-            <span class="owner-link" data-name="{{.Owner.DisplayName}}" data-username="{{.Owner.Username}}" data-avatar="{{.Owner.Avatar}}" data-email="{{.Owner.MaskedEmail}}" data-phone="{{.Owner.MaskedPhone}}">{{.Owner.DisplayName}}</span>
+            <span class="owner-link" data-name="{{.Owner.DisplayName}}" data-username="{{.Owner.Username}}" data-avatar="{{.Owner.Avatar}}" data-email="{{.Owner.MaskedEmail}}" data-phone="{{.Owner.MaskedPhone}}" data-active="{{if .Owner.LastActiveAt}}{{.Owner.LastActiveAt.Format "2006-01-02 15:04"}}{{end}}">{{.Owner.DisplayName}}</span>
             {{else}}—{{end}}
           </td>
           <td>{{.DocCount}}</td>
@@ -127,101 +127,7 @@
 .member-suggest{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--panel);border:1px solid var(--border-strong);border-radius:var(--radius-sm);box-shadow:var(--shadow);max-height:180px;overflow:auto;z-index:10}
 .member-suggest-item{padding:8px 12px;font-size:13.5px;cursor:pointer}
 .member-suggest-item:hover{background:var(--bg-soft)}
-.owner-link{cursor:pointer;color:var(--primary)}
-.owner-link:hover{color:var(--primary-dark);text-decoration:underline}
-.owner-pop{position:fixed;z-index:60;width:240px;padding:10px 12px;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);display:flex;gap:10px;align-items:flex-start}
-/* 顶部指向箭头：--arrow-x 由 JS 按触发元素水平中心计算 */
-.owner-pop::before{content:"";position:absolute;top:-5px;left:var(--arrow-x,24px);width:9px;height:9px;background:var(--panel);border-left:1px solid var(--border);border-top:1px solid var(--border);transform:rotate(45deg)}
-.owner-pop .owner-initial{width:40px;height:40px;border-radius:50%;overflow:hidden;flex:none;display:grid;place-items:center;background:var(--primary-soft);color:var(--primary-dark);font-weight:600;font-size:16px}
-.owner-pop .owner-initial img{width:100%;height:100%;object-fit:cover;display:block}
-.owner-pop .info{min-width:0;flex:1}
-.owner-pop .info .name{font-weight:600;font-size:13.5px;color:var(--text);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.owner-pop .info .username{font-size:11.5px;color:var(--muted);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.owner-pop .info .divider{height:1px;background:var(--border);margin:6px 0}
-.owner-pop .info .field{font-size:12px;line-height:1.8;display:flex;gap:8px;white-space:nowrap}
-.owner-pop .info .field .lbl{color:var(--muted);flex:none}
-.owner-pop .info .field .val{color:var(--text);overflow:hidden;text-overflow:ellipsis}
 </style>
-
-<script>
-// 用户悬停信息卡（手机号/邮箱为后端脱敏值）；window.bindOwnerHover 供动态列表复用
-(function () {
-  if (!window.UI) return;
-
-  var pop = document.createElement('div');
-  pop.className = 'owner-pop';
-  pop.hidden = true;
-  document.body.appendChild(pop);
-
-  function show(el) {
-    var name = el.dataset.name || '';
-    var av = el.dataset.avatar || '';
-    var initial = name.charAt(0) || '?';
-    var avNode = document.createElement('span');
-    avNode.className = 'owner-initial';
-    if (av) {
-      var img = document.createElement('img');
-      img.src = av;
-      img.alt = '';
-      avNode.appendChild(img);
-    } else {
-      avNode.textContent = initial;
-    }
-    var info = document.createElement('div');
-    info.className = 'info';
-    var nameRow = document.createElement('div');
-    nameRow.className = 'name';
-    nameRow.textContent = name;
-    var userRow = document.createElement('div');
-    userRow.className = 'username';
-    userRow.textContent = '@' + (el.dataset.username || '');
-    var divider = document.createElement('div');
-    divider.className = 'divider';
-    info.appendChild(nameRow);
-    info.appendChild(userRow);
-    info.appendChild(divider);
-    [['手机号', el.dataset.phone], ['邮箱', el.dataset.email]].forEach(function (p) {
-      var row = document.createElement('div');
-      row.className = 'field';
-      var lbl = document.createElement('span');
-      lbl.className = 'lbl';
-      lbl.textContent = UI.t(p[0]);
-      var val = document.createElement('span');
-      val.className = 'val';
-      val.textContent = p[1] || '—';
-      row.appendChild(lbl);
-      row.appendChild(val);
-      info.appendChild(row);
-    });
-
-    pop.innerHTML = '';
-    pop.appendChild(avNode);
-    pop.appendChild(info);
-
-    pop.hidden = false;
-    var rect = el.getBoundingClientRect();
-    var top = rect.bottom + 7;
-    var left = Math.min(rect.left, window.innerWidth - pop.offsetWidth - 8);
-    if (left < 8) left = 8;
-    pop.style.top = top + 'px';
-    pop.style.left = left + 'px';
-    // 箭头对准名字水平中心（限制在气泡内）
-    var arrowX = rect.left + rect.width / 2 - left;
-    arrowX = Math.max(14, Math.min(arrowX, pop.offsetWidth - 14));
-    pop.style.setProperty('--arrow-x', arrowX + 'px');
-  }
-
-  window.bindOwnerHover = function (root) {
-    (root || document).querySelectorAll('.owner-link').forEach(function (el) {
-      if (el.dataset.popBound) return; // 防止动态列表重复绑定
-      el.dataset.popBound = '1';
-      el.addEventListener('mouseenter', function () { show(el); });
-      el.addEventListener('mouseleave', function () { pop.hidden = true; });
-    });
-  };
-  window.bindOwnerHover(document);
-})();
-</script>
 
 <!-- 项目文档列表弹窗 -->
 <div class="modal-overlay" id="projDocsModal" hidden>

@@ -11,6 +11,10 @@
     {{if .isAdmin}}<div class="stat-card"><div class="stat-num">{{.userCount}}</div><div class="stat-label">{{$.T "用户总数"}}</div></div>{{end}}
     <div class="stat-card"><div class="stat-num">{{.shareCount}}</div><div class="stat-label">{{if .isAdmin}}{{$.T "分享链接"}}{{else}}{{$.T "我的分享"}}{{end}}</div></div>
     {{if not .isAdmin}}<div class="stat-card"><div class="stat-num">{{.projectCount}}</div><div class="stat-label">{{$.T "dash.projects"}}</div></div>{{end}}
+    <button type="button" class="stat-card stat-card-action" id="openPendingApply" aria-label="{{$.T "dash.pendingApply"}}">
+      <div class="stat-num" id="pendingApplyCount">{{.pendingApplyCount}}</div>
+      <div class="stat-label">{{$.T "dash.pendingApply"}}</div>
+    </button>
   </div>
 
   <div class="panel">
@@ -21,7 +25,7 @@
       {{range .recent}}
         <tr>
           <td><a href="/admin/docs/{{.ID}}/edit">{{.Title}}</a></td>
-          <td>{{.Owner.Nickname}}</td>
+          <td>{{if .Owner.ID}}<span class="owner-link" data-name="{{.Owner.DisplayName}}" data-username="{{.Owner.Username}}" data-avatar="{{.Owner.Avatar}}" data-email="{{.Owner.MaskedEmail}}" data-phone="{{.Owner.MaskedPhone}}" data-active="{{if .Owner.LastActiveAt}}{{.Owner.LastActiveAt.Format "2006-01-02 15:04"}}{{end}}">{{.Owner.DisplayName}}</span>{{else}}—{{end}}</td>
           <td>{{.ViewCount}}</td>
           <td>{{if .IsShared}}<span class="tag tag-green">{{$.T "已分享"}}</span>{{else}}<span class="tag">{{$.T "未分享"}}</span>{{end}}</td>
           <td>{{.UpdatedAt.Format "2006-01-02 15:04"}}</td>
@@ -37,6 +41,154 @@
     </table>
   </div>
 </main>
+
+<div class="modal-overlay" id="pendingApplyModal" hidden>
+  <div class="modal modal-lg" role="dialog" aria-modal="true" aria-label="{{$.T "dash.pendingApply"}}">
+    <div class="modal-head">
+      <h2>{{$.T "dash.pendingApply"}}</h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+    </div>
+    <div class="modal-body pending-apply-body">
+      <div id="pendingApplyList" class="pending-apply-scroll"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var modal = document.getElementById('pendingApplyModal');
+  var openBtn = document.getElementById('openPendingApply');
+  var list = document.getElementById('pendingApplyList');
+  var countEl = document.getElementById('pendingApplyCount');
+  if (!modal || !openBtn || !list || !window.UI) return;
+  UI.bindModal(modal);
+
+  function setCount(n) {
+    if (countEl) countEl.textContent = String(n);
+  }
+
+  function renderEmpty(titleKey, tipKey) {
+    var box = document.createElement('div');
+    box.className = 'empty-block';
+    var title = document.createElement('div');
+    title.className = 'empty-title';
+    title.textContent = UI.t(titleKey);
+    box.appendChild(title);
+    if (tipKey) {
+      var tip = document.createElement('div');
+      tip.className = 'empty-tip';
+      tip.textContent = UI.t(tipKey);
+      box.appendChild(tip);
+    }
+    list.innerHTML = '';
+    list.appendChild(box);
+  }
+
+  async function loadPending() {
+    list.innerHTML = '<div class="empty-block"><div class="empty-tip">' + UI.t('加载中…') + '</div></div>';
+    try {
+      var res = await fetch('/admin/api/access-requests?status=pending', {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      });
+      var data = await res.json();
+      if (!res.ok) {
+        renderEmpty((data && data.error) || '加载失败');
+        return;
+      }
+      var items = (data && data.data) || [];
+      if (typeof data.total === 'number') setCount(data.total);
+      else setCount(items.length);
+      if (!items.length) {
+        renderEmpty('dash.pendingApplyEmpty', 'dash.pendingApplyEmptyTip');
+        return;
+      }
+      var table = document.createElement('table');
+      table.className = 'table';
+      table.innerHTML =
+        '<thead><tr>' +
+        '<th>' + UI.t('dash.pendingName') + '</th>' +
+        '<th>' + UI.t('dash.colTitle') + '</th>' +
+        '<th>' + UI.t('dash.pendingTime') + '</th>' +
+        '<th class="col-actions">' + UI.t('common.actions') + '</th>' +
+        '</tr></thead>';
+      var tbody = document.createElement('tbody');
+      items.forEach(function (r) {
+        var tr = document.createElement('tr');
+        var tdName = document.createElement('td');
+        tdName.textContent = r.name || '—';
+        tr.appendChild(tdName);
+
+        var tdDoc = document.createElement('td');
+        var docLink = document.createElement('a');
+        docLink.href = '/admin/docs/' + r.document_id + '/edit';
+        docLink.textContent = r.doc_title || ('#' + r.document_id);
+        tdDoc.appendChild(docLink);
+        tr.appendChild(tdDoc);
+
+        var tdTime = document.createElement('td');
+        tdTime.className = 'cell-muted';
+        tdTime.textContent = r.created_at || '—';
+        tr.appendChild(tdTime);
+
+        var tdActs = document.createElement('td');
+        tdActs.className = 'col-actions';
+        var ok = document.createElement('button');
+        ok.type = 'button';
+        ok.className = 'btn btn-sm btn-primary';
+        ok.textContent = UI.t('share.applyApprove');
+        ok.addEventListener('click', function () { review(r.document_id, r.id, 'approve', tdActs); });
+        var no = document.createElement('button');
+        no.type = 'button';
+        no.className = 'btn btn-sm';
+        no.textContent = UI.t('share.applyReject');
+        no.addEventListener('click', function () { review(r.document_id, r.id, 'reject', tdActs); });
+        tdActs.appendChild(ok);
+        tdActs.appendChild(no);
+        tr.appendChild(tdActs);
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      list.innerHTML = '';
+      list.appendChild(table);
+    } catch (e) {
+      renderEmpty('加载失败');
+    }
+  }
+
+  async function review(docID, rid, action, acts) {
+    if (acts) {
+      acts.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+    }
+    try {
+      var res = await fetch('/admin/api/docs/' + docID + '/access-requests/' + rid, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({ action: action })
+      });
+      var data = await res.json();
+      if (!res.ok) {
+        UI.toast(UI.t((data && data.error) || '操作失败'), 'error');
+        if (acts) {
+          acts.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+        }
+        return;
+      }
+      UI.toast(UI.t('操作成功'), 'success');
+      loadPending();
+    } catch (e) {
+      UI.toast(UI.t('网络错误'), 'error');
+      if (acts) {
+        acts.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+      }
+    }
+  }
+
+  openBtn.addEventListener('click', function () {
+    UI.openModal(modal);
+    loadPending();
+  });
+})();
+</script>
 </body>
 </html>
 {{end}}

@@ -68,6 +68,9 @@ type SiteSettings struct {
 	RustFSAccessKey  string
 	RustFSSecretKey  string
 	RustFSBucket     string
+
+	// 有密码分享是否开放「申请查看」（站点级，默认开）
+	AllowShareApply bool
 }
 
 // 常用默认值
@@ -90,6 +93,8 @@ const (
 	keyRustFSAccessKey = "rustfs_access_key"
 	keyRustFSSecretKey = "rustfs_secret_key"
 	keyRustFSBucket    = "rustfs_bucket"
+
+	keyAllowShareApply = "allow_share_apply" // 有密码分享是否开放「申请查看」
 )
 
 func boolVal(s string) bool { return s == "1" || s == "true" }
@@ -112,12 +117,13 @@ func (a *App) Settings() SiteSettings {
 	a.setMu.RUnlock()
 
 	s := SiteSettings{
-		SiteName:      defaultSiteName,
-		RegMethod:     "username", // 默认用户名注册
-		SMTPPort:      465,
-		SMTPSSL:       true,
-		StorageDriver: storage.DriverLocal,
-		RustFSRegion:  "us-east-1",
+		SiteName:        defaultSiteName,
+		RegMethod:       "username", // 默认用户名注册
+		SMTPPort:        465,
+		SMTPSSL:         true,
+		StorageDriver:   storage.DriverLocal,
+		RustFSRegion:    "us-east-1",
+		AllowShareApply: true, // 默认开放申请查看
 	}
 	var rows []model.SystemSetting
 	if err := a.DB.Find(&rows).Error; err != nil {
@@ -169,6 +175,8 @@ func (a *App) Settings() SiteSettings {
 			s.RustFSSecretKey = r.Value
 		case keyRustFSBucket:
 			s.RustFSBucket = strings.TrimSpace(r.Value)
+		case keyAllowShareApply:
+			s.AllowShareApply = boolVal(r.Value)
 		}
 	}
 
@@ -218,6 +226,7 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		RustFSAccessKey string `json:"rustfs_access_key"`
 		RustFSSecretKey string `json:"rustfs_secret_key"`
 		RustFSBucket    string `json:"rustfs_bucket"`
+		AllowShareApply bool   `json:"allow_share_apply"`
 	}
 	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -313,6 +322,7 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		keyRustFSAccessKey:      accessKey,
 		keyRustFSSecretKey:      secretKey,
 		keyRustFSBucket:         bucket,
+		keyAllowShareApply:      boolStr(req.AllowShareApply),
 	}
 	// 单条批量 upsert（INSERT ... ON DUPLICATE KEY UPDATE）：
 	// 一次网络往返写完全部设置。逐条 SELECT+UPDATE 在远程 MySQL 上要 2N 次往返，保存明显变慢

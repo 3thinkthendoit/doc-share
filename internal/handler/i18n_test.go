@@ -112,7 +112,10 @@ func TestPagesRender(t *testing.T) {
 			v := base()
 			v["user"] = nil
 			v["token"] = "tok123"
-			v["error"] = "密码错误"
+			v["owner"] = "A*ice"
+			v["error"] = "share.pwdWrong"
+			v["applyStatus"] = ""
+			v["applyName"] = ""
 			return v
 		}},
 	}

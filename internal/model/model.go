@@ -144,9 +144,10 @@ type Share struct {
 	ID         uint       `gorm:"primaryKey" json:"id"`
 	DocumentID uint       `gorm:"uniqueIndex;not null" json:"document_id"`
 	ShareToken string     `gorm:"size:32;uniqueIndex;not null" json:"share_token"`
-	CanEdit    bool       `gorm:"not null;default:false" json:"can_edit"` // 登录用户可编辑
-	Password   string     `gorm:"size:255" json:"-"`                      // bcrypt 哈希，空表示无密码
-	ExpireAt   *time.Time `json:"expire_at"`         // nil 表示永不过期
+	CanEdit    bool       `gorm:"not null;default:false" json:"can_edit"`   // 登录用户可编辑
+	AllowApply bool       `gorm:"not null;default:true" json:"-"`           // 已废弃：改由站点设置 allow_share_apply 控制
+	Password   string     `gorm:"size:255" json:"-"`                        // bcrypt 哈希，空表示无密码
+	ExpireAt   *time.Time `json:"expire_at"`                                  // nil 表示永不过期
 	CreatedAt  time.Time  `json:"created_at"`
 	UpdatedAt  time.Time  `json:"updated_at"`
 }
@@ -159,6 +160,29 @@ func (s *Share) HasPassword() bool {
 // IsExpired 链接是否已过期
 func (s *Share) IsExpired() bool {
 	return s != nil && s.ExpireAt != nil && time.Now().After(*s.ExpireAt)
+}
+
+// 分享访问申请状态
+const (
+	AccessPending  = 0 // 待审批
+	AccessApproved = 1 // 已通过（可跳过密码）
+	AccessRejected = 2 // 已拒绝
+)
+
+// ShareAccessRequest 有密码分享下的「申请查看」：登录用户与游客均可提交，属主审批后凭 cookie 放行
+type ShareAccessRequest struct {
+	ID           uint       `gorm:"primaryKey" json:"id"`
+	DocumentID   uint       `gorm:"index;not null" json:"document_id"`
+	UserID       uint       `gorm:"index;not null;default:0" json:"user_id"` // 0=游客
+	GuestName    string     `gorm:"size:64" json:"guest_name"`               // 称呼（游客必填；登录可预填）
+	GuestContact string     `gorm:"size:128" json:"guest_contact"`           // 可选联系方式
+	Message      string     `gorm:"size:500" json:"message"`                 // 可选留言
+	ClientIP     string     `gorm:"size:64;index" json:"-"`                  // 游客防刷：同 IP 复用 pending
+	Status       int        `gorm:"not null;default:0;index" json:"status"`
+	RequestToken string     `gorm:"size:32;uniqueIndex;not null" json:"-"` // 浏览器 cookie 凭证
+	CreatedAt    time.Time  `json:"created_at"`
+	ReviewedAt   *time.Time `json:"reviewed_at"`
+	ReviewerID   uint       `gorm:"not null;default:0" json:"reviewer_id"`
 }
 
 // 系统设置键名（管理员后台维护，站点级）

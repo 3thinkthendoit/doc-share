@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -127,6 +128,22 @@ func (a *App) DocsPage(c *gin.Context) {
 	if origin != "" {
 		extra += "&origin=" + url.QueryEscape(origin)
 	}
+	// 侧栏切换项目时保留其它筛选（不含 project）；无前导 &
+	sideParts := []string{"size=" + strconv.Itoa(pg.Size)}
+	if q != "" {
+		sideParts = append(sideParts, "q="+url.QueryEscape(q))
+	}
+	if ct := c.Query("category"); ct != "" {
+		sideParts = append(sideParts, "category="+url.QueryEscape(ct))
+	}
+	if sh := c.Query("shared"); sh != "" {
+		sideParts = append(sideParts, "shared="+url.QueryEscape(sh))
+	}
+	if origin != "" {
+		sideParts = append(sideParts, "origin="+url.QueryEscape(origin))
+	}
+	sideQS := strings.Join(sideParts, "&")
+
 	data := gin.H{
 		"title":      "文档管理",
 		"docs":       docs,
@@ -138,6 +155,7 @@ func (a *App) DocsPage(c *gin.Context) {
 		"projects":   projects,
 		"categories": categories,
 		"canEdit":    canEdit,
+		"sideQS":     sideQS,
 	}
 	for k, v := range pagerFields(pg, "/admin/docs", extra) {
 		data[k] = v
@@ -454,6 +472,10 @@ func (a *App) DeleteDoc(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
 		return
 	}
+	if err := a.DB.Where("document_id = ?", doc.ID).Delete(&model.ShareAccessRequest{}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
+		return
+	}
 	if err := a.DB.Delete(&model.Document{}, doc.ID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
 		return
@@ -575,6 +597,7 @@ func (a *App) UpsertShare(c *gin.Context) {
 		// 关闭分享
 		if found {
 			a.DB.Delete(&share)
+			a.DB.Where("document_id = ?", doc.ID).Delete(&model.ShareAccessRequest{})
 		}
 		doc.IsShared = false
 		a.DB.Save(doc)
@@ -626,6 +649,7 @@ func (a *App) DeleteShare(c *gin.Context) {
 		return
 	}
 	a.DB.Where("document_id = ?", doc.ID).Delete(&model.Share{})
+	a.DB.Where("document_id = ?", doc.ID).Delete(&model.ShareAccessRequest{})
 	doc.IsShared = false
 	a.DB.Save(doc)
 	c.JSON(http.StatusOK, gin.H{"ok": true})

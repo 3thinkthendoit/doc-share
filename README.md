@@ -2,25 +2,68 @@
 
 [中文说明](README.zh-CN.md) | English
 
-A lightweight self-hosted documentation sharing platform built with Go and Gin. Write documents in Markdown, manage them with projects and categories, and share them publicly via tokenized links — with optional password protection.
+A lightweight self-hosted documentation sharing platform built with Go and Gin. Write documents in Markdown, organize them with projects and categories, and share them via tokenized links — with password protection, access requests, comments & revisions, plus Open API / MCP integration.
 
 ## Features
 
-- **Markdown documents** — create, edit and organize documents with a built-in editor and image uploads (stored locally, served at `/uploads`)
-- **Document import** — convert `PDF` / `doc` / `docx` files to Markdown in memory, no disk temp files
-- **Sharing links** — publish any document via `/s/:token`, optionally protected by a password
-- **Admin dashboard** — manage documents, projects, categories, users and API keys
-- **Open API** — full CRUD for documents/projects/categories authenticated by API keys (HMAC)
-- **MCP server** — built-in zero-dependency MCP server so AI clients (CodeBuddy / Claude / Cursor) can manage documents directly
-- **Multi-language UI** — English, 简体中文, 繁體中文, 日本語, Français
-- **Security** — session signing (HMAC), captcha on login/register, bcrypt password hashing
-- **Single binary** — templates, static assets and i18n dictionaries are embedded via `go:embed`
+### Documents
+
+- **Markdown editor** — toolbar (bold/lists/code/link/image/table, etc.), live preview, XSS-sanitized rendering
+- **Image upload** — paste or drag-and-drop; storage is either local disk (`/uploads`) or RustFS (S3-compatible)
+- **Import** — convert `PDF` / `doc` / `docx` to Markdown in memory (no temp files on disk)
+- **List & filters** — search by title; filter by project, category, share status, ownership (mine / project-shared); pagination
+- **Preview** — admin reader preview without incrementing view counts
+- **Edit presence** — heartbeat warns when someone else is editing the same document
+
+### Sharing & access
+
+- **Share links** — public `/s/:token`; revoke anytime
+- **Password** — optional; generate / reset; copy title + link + password together
+- **Expiry** — permanent / 1 / 7 / 30 days
+- **Request access** — on password-protected shares, guests or signed-in users can apply with a display name; owners approve from share settings or the dashboard; approved viewers skip the password (site-wide toggle in admin settings)
+- **Allow edit** — optionally let signed-in users edit the document on the share page
+- **View counts** — tracked on the reader page
+
+### Collaboration
+
+- **Comments** — on share pages for signed-in users and guests (rate-limited); owners/admins can delete
+- **Revisions** — automatic snapshots before share-page overwrites; list and roll back from the editor
+- **Approved request = unlocked** — same as entering the correct password: read and comment; save content if “allow edit” is on
+
+### Projects & categories
+
+- **Projects** — personal CRUD; attach documents; filter by name / owner (admins)
+- **Members** — invite users with **view** / **edit** roles; members see project docs; can leave; only the owner manages members
+- **Categories** — personal CRUD and sort order; deleting a category leaves documents uncategorized
+
+### Accounts & permissions
+
+- **Register / login** — captcha; registration mode is admin-configurable: username / email (SMTP verification code) / phone (format check only)
+- **Profile** — nickname, email, phone, avatar; change own password
+- **Roles** — `admin` (site-wide) / `viewer` (own workspace); enable/disable users
+- **User admin** — create, edit, delete, reset password, change role and status
+
+### Dashboard & console
+
+- **Dashboard** — counts for documents, shares, users (admin), linked projects; recent documents
+- **Pending access requests** — badge + modal list to approve/reject
+- **System settings** (admin) — site name, logo, public domain; allow access requests; registration method; SMTP (with test mail); storage local / RustFS (with connectivity test)
+- **i18n** — English, 简体中文, 繁體中文, 日本語, Français
+
+### Integrations
+
+- **API keys** — create personal keys; enable/disable, reset secret (shown once), delete
+- **Open API** — `/openapi/v1` with HMAC auth (AppKey + timestamp + nonce + signature); full CRUD for docs/projects/categories as the key owner
+- **In-app API docs** — `/admin/apidoc` for signing rules and endpoints
+- **MCP server** — zero-dependency Node stdio server for CodeBuddy / Claude / Cursor and similar clients
 
 ## Tech Stack
 
 - Go 1.26, [Gin](https://github.com/gin-gonic/gin)
 - MySQL via [GORM](https://gorm.io)
 - Server-rendered HTML templates + vanilla JS/CSS (no frontend build step)
+- Templates, static assets, and locale files embedded with `go:embed` (single binary)
+- Session HMAC signing, bcrypt passwords, signed share credentials
 
 ## Quick Start
 
@@ -51,6 +94,8 @@ All settings live in `config.yaml` and can be overridden via environment variabl
 
 > For local debugging only, `DOC_SHARE_ALLOW_INSECURE_DEFAULTS=true` temporarily bypasses the mandatory session secret.
 
+Site name, logo, registration mode, SMTP, RustFS, and similar options are managed in **System Settings** (`/admin/settings`) after login — no config file edits required.
+
 ### 3. Run
 
 ```bash
@@ -76,6 +121,7 @@ internal/
   model/                GORM models
   router/               route registration
   session/              HMAC session signer
+  storage/              local / RustFS storage
   i18n/                 locale bundle loader
   convert/              PDF / doc / docx → Markdown converters
   util/                 helpers
@@ -91,16 +137,20 @@ mcp/
 
 Set `DOC_SHARE_DEV=true` to read templates and static files directly from the `web/` directory — front-end changes take effect on browser refresh without recompiling or restarting. Keep it `false` in production (embedded assets).
 
-## API Overview
+## Main Pages & APIs
 
-| Area | Endpoints |
+| Area | Paths |
 |---|---|
-| Auth | `GET/POST /login`, `GET/POST /register`, `GET /captcha`, `GET /logout` |
-| Admin pages | `/admin`, `/admin/docs`, `/admin/projects`, `/admin/categories`, `/admin/apikeys`, `/admin/users` |
-| Documents | `POST/PUT/DELETE /api/docs`, `POST /api/docs/:id/share` |
-| Share view | `GET/POST /s/:token` |
-| Open API (API key) | `/open/docs`, `/open/projects`, `/open/categories` (full CRUD) |
-| Upload / Convert | `POST /api/upload`, `POST /api/convert` |
+| Landing | `GET /` |
+| Auth | `GET/POST /login`, `GET/POST /register`, `POST /register/email-code`, `GET /captcha`, `GET/POST /logout` |
+| Admin pages | `/admin`, `/admin/docs`, `/admin/projects`, `/admin/categories`, `/admin/apikeys`, `/admin/apidoc`, `/admin/users`, `/admin/settings` |
+| Document APIs | `POST/PUT/DELETE /admin/api/docs`, share `POST/DELETE /admin/api/docs/:id/share` |
+| Access requests | `POST /s/:token/access-request`; list/review `/admin/api/access-requests`, `/admin/api/docs/:id/access-requests` |
+| Share | `GET/POST /s/:token`; comments `GET/POST /s/:token/comments`; save `PUT /s/:token/content` |
+| Open API | `/openapi/v1/docs`, `/projects`, `/categories` (full CRUD, HMAC) |
+| Upload / Convert | `POST /admin/api/upload`, `POST /admin/api/convert` |
+
+Full signing rules and error codes: in-app **API docs** at `/admin/apidoc`.
 
 ## MCP Server (AI Client Integration)
 

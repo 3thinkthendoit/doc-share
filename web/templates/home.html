@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{$.T "DocShare · 把 Markdown 变成能分享的文档站"}}</title>
-  <meta name="description" content="{{$.T "单二进制部署的 Markdown 文档分享系统：实时预览、密码分享、项目分类、HMAC 签名开放 API、五语界面。"}}">
+  <meta name="description" content="{{$.T "单二进制部署的 Markdown 文档分享系统：实时预览、密码分享与申请查看、项目协作、HMAC 开放 API、五语界面。"}}">
   <link rel="icon" type="image/svg+xml" href="/static/logo-mark.svg">
   <link rel="stylesheet" href="/static/landing.css">
   <script>
@@ -124,8 +124,8 @@
       <div class="l-card" data-reveal>
         <div class="l-card-no">02<span class="l-card-tag">  --share</span></div>
         <h3>{{$.T "一键分享链接"}}</h3>
-        <p>{{$.T "为任意文档生成独立链接，读者无需登录即可查看。"}}</p>
-        <ul><li>{{$.T "可设置访问密码"}}</li><li>{{$.T "浏览计数与更新时间回显"}}</li></ul>
+        <p>{{$.T "为任意文档生成独立链接；可设密码，也可让访客申请查看。"}}</p>
+        <ul><li>{{$.T "可设置访问密码与有效期"}}</li><li>{{$.T "访客申请查看，属主审批后免密阅读"}}</li><li>{{$.T "分享页评论；可选允许登录用户编辑"}}</li></ul>
       </div>
       <div class="l-card" data-reveal>
         <div class="l-card-no">03<span class="l-card-tag">  --project</span></div>
@@ -137,7 +137,7 @@
         <div class="l-card-no">04<span class="l-card-tag">  --upload</span></div>
         <h3>{{$.T "图片拖拽上传"}}</h3>
         <p>{{$.T "编辑器里直接贴图，文件名随机化，扩展名与大小服务端校验。"}}</p>
-        <ul><li>{{$.T "大小上限可在配置中调整"}}</li><li>{{$.T "上传目录映射到 /uploads"}}</li></ul>
+        <ul><li>{{$.T "大小上限可在配置中调整"}}</li><li>{{$.T "本地磁盘或 RustFS（S3 兼容）存储"}}</li></ul>
       </div>
       <div class="l-card" data-reveal>
         <div class="l-card-no">05<span class="l-card-tag">  --openapi</span></div>
@@ -195,7 +195,7 @@ POST /admin/api/docs
       <div class="l-step-no">02</div>
       <div>
         <h3>{{$.T "发"}}</h3>
-        <p>{{$.T "勾选分享即可得到公开链接，可叠加访问密码；随时可撤销。"}}</p>
+        <p>{{$.T "勾选分享得到公开链接；可叠加密码、有效期，或开放访客申请查看。"}}</p>
       </div>
       <pre class="l-code"><span class="c">{{$.T "# 生成分享"}}</span>
 POST /admin/api/docs/42/share
@@ -270,7 +270,7 @@ sign = <span class="l-tok-h">HMAC-SHA256</span>(Secret, base)
     <div class="l-faq" data-reveal>
       <details open>
         <summary>{{$.T "需要哪些依赖？"}}</summary>
-        <div class="l-faq-a">{{$.T "只需要一个 MySQL 实例。模板、静态资源与语言词典都已内嵌进二进制，图片写入本地上传目录即可。"}}</div>
+        <div class="l-faq-a">{{$.T "只需要一个 MySQL 实例。模板、静态资源与语言词典都已内嵌进二进制；图片可存本地或 RustFS。"}}</div>
       </details>
       <details>
         <summary>{{$.T "可以完全内网私有化部署吗？"}}</summary>
@@ -282,7 +282,7 @@ sign = <span class="l-tok-h">HMAC-SHA256</span>(Secret, base)
       </details>
       <details>
         <summary>{{$.T "分享出去的页面能被搜索引擎抓到吗？"}}</summary>
-        <div class="l-faq-a">{{$.T "分享页只渲染单篇文档，可加访问密码；需要更严格的可见性时，不启用分享即可，链接随时可撤销。"}}</div>
+        <div class="l-faq-a">{{$.T "分享页只渲染单篇文档；可加密码，也可开放「申请查看」。需要更严格的可见性时不启用分享即可，链接随时可撤销。"}}</div>
       </details>
       <details>
         <summary>{{$.T "界面语言是怎么确定的？"}}</summary>

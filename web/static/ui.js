@@ -369,6 +369,95 @@ window.UI = (function () {
     el.appendChild(wrap);
   }
 
+  // 用户信息悬停卡：.owner-link[data-name|username|avatar|email|phone|active]
+  var ownerPop = null;
+  function ensureOwnerPop() {
+    if (ownerPop) return ownerPop;
+    ownerPop = document.createElement('div');
+    ownerPop.className = 'owner-pop';
+    ownerPop.hidden = true;
+    document.body.appendChild(ownerPop);
+    return ownerPop;
+  }
+  function showOwnerPop(el) {
+    var pop = ensureOwnerPop();
+    var name = el.dataset.name || '';
+    var av = el.dataset.avatar || '';
+    var avNode = document.createElement('span');
+    avNode.className = 'owner-initial';
+    if (av) {
+      var img = document.createElement('img');
+      img.src = av;
+      img.alt = '';
+      avNode.appendChild(img);
+    } else {
+      avNode.textContent = name.charAt(0) || '?';
+    }
+    var info = document.createElement('div');
+    info.className = 'info';
+    var nameRow = document.createElement('div');
+    nameRow.className = 'name';
+    nameRow.textContent = name || '—';
+    var userRow = document.createElement('div');
+    userRow.className = 'username';
+    userRow.textContent = '@' + (el.dataset.username || '—');
+    info.appendChild(nameRow);
+    info.appendChild(userRow);
+
+    var head = document.createElement('div');
+    head.className = 'owner-pop-head';
+    head.appendChild(avNode);
+    head.appendChild(info);
+
+    var body = document.createElement('div');
+    body.className = 'owner-pop-body';
+    [
+      [t('owner.phone'), el.dataset.phone],
+      [t('owner.email'), el.dataset.email],
+      [t('owner.active'), el.dataset.active]
+    ].forEach(function (p) {
+      var row = document.createElement('div');
+      row.className = 'field';
+      var lbl = document.createElement('span');
+      lbl.className = 'lbl';
+      lbl.textContent = p[0];
+      var val = document.createElement('span');
+      val.className = 'val';
+      val.textContent = p[1] || '—';
+      row.appendChild(lbl);
+      row.appendChild(val);
+      body.appendChild(row);
+    });
+
+    pop.innerHTML = '';
+    pop.appendChild(head);
+    pop.appendChild(body);
+    pop.hidden = false;
+    var rect = el.getBoundingClientRect();
+    var top = rect.bottom + 8;
+    var left = Math.min(rect.left, window.innerWidth - pop.offsetWidth - 8);
+    if (left < 8) left = 8;
+    // 贴近视口底部时改到触发元素上方
+    if (top + pop.offsetHeight > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - pop.offsetHeight - 8);
+    }
+    pop.style.top = top + 'px';
+    pop.style.left = left + 'px';
+    var arrowX = rect.left + rect.width / 2 - left;
+    arrowX = Math.max(16, Math.min(arrowX, pop.offsetWidth - 16));
+    pop.style.setProperty('--arrow-x', arrowX + 'px');
+  }
+  function bindOwnerHover(root) {
+    (root || document).querySelectorAll('.owner-link').forEach(function (el) {
+      if (el.dataset.popBound) return;
+      el.dataset.popBound = '1';
+      el.addEventListener('mouseenter', function () { showOwnerPop(el); });
+      el.addEventListener('mouseleave', function () {
+        if (ownerPop) ownerPop.hidden = true;
+      });
+    });
+  }
+
   return {
     t: t,
     lang: window.__LANG || 'zh-CN',
@@ -382,6 +471,7 @@ window.UI = (function () {
     skinSelect: skinSelect,
     avatarPicker: avatarPicker,
     renderPager: renderPager,
+    bindOwnerHover: bindOwnerHover,
     alert: function (message) {
       return dialog({ message: message, buttons: [{ label: '知道了', primary: true, value: true }] });
     },
@@ -415,6 +505,9 @@ document.addEventListener('DOMContentLoaded', function () {
   if (!window.UI) return;
   // 全站升级自定义下拉
   document.querySelectorAll('select').forEach(function (sel) { UI.skinSelect ? UI.skinSelect(sel) : null; });
+  // 所有者 / 成员悬停信息卡
+  UI.bindOwnerHover(document);
+  window.bindOwnerHover = UI.bindOwnerHover;
   var chip = document.getElementById('userMenuBtn');
   var dropdown = document.getElementById('userDropdown');
   if (chip && dropdown) {

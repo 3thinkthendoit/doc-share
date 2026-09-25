@@ -331,14 +331,15 @@ func (a *App) UserOptions(c *gin.Context) {
 // ---- 项目成员 ----
 
 type memberView struct {
-	ID       uint   `json:"id"`     // 成员记录 ID
-	UserID   uint   `json:"user_id"`
-	Username string `json:"username"`
-	Nickname string `json:"nickname"`
-	Avatar   string `json:"avatar"`
-	Email    string `json:"email"` // 后端脱敏
-	Phone    string `json:"phone"` // 后端脱敏
-	Role     string `json:"role"`
+	ID         uint   `json:"id"` // 成员记录 ID
+	UserID     uint   `json:"user_id"`
+	Username   string `json:"username"`
+	Nickname   string `json:"nickname"`
+	Avatar     string `json:"avatar"`
+	Email      string `json:"email"`       // 后端脱敏
+	Phone      string `json:"phone"`       // 后端脱敏
+	LastActive string `json:"last_active"` // 最近活跃，空表示无
+	Role       string `json:"role"`
 }
 
 // ListProjectMembers 成员列表（属主/管理员/项目成员均可读；增删改仍属主/管理员）
@@ -404,6 +405,9 @@ func (a *App) ListProjectMembers(c *gin.Context) {
 			v.Avatar = u.Avatar
 			v.Email = u.MaskedEmail()
 			v.Phone = u.MaskedPhone()
+			if u.LastActiveAt != nil {
+				v.LastActive = u.LastActiveAt.Format("2006-01-02 15:04")
+			}
 		}
 	}
 	views := make([]memberView, 0, pg.Size)

@@ -28,7 +28,7 @@
           <td>{{.Name}}</td>
           <td>{{.Sort}}</td>
           <td>{{.DocCount}}</td>
-          {{if and $.user $.user.IsAdmin}}<td>{{if .Owner.Nickname}}{{.Owner.Nickname}}{{else}}{{.Owner.Username}}{{end}}</td>{{end}}
+          {{if and $.user $.user.IsAdmin}}<td>{{if .Owner.ID}}<span class="owner-link" data-name="{{.Owner.DisplayName}}" data-username="{{.Owner.Username}}" data-avatar="{{.Owner.Avatar}}" data-email="{{.Owner.MaskedEmail}}" data-phone="{{.Owner.MaskedPhone}}" data-active="{{if .Owner.LastActiveAt}}{{.Owner.LastActiveAt.Format "2006-01-02 15:04"}}{{end}}">{{.Owner.DisplayName}}</span>{{else}}—{{end}}</td>{{end}}
           <td class="col-actions">
             <button class="btn btn-sm" data-id="{{.ID}}" data-name="{{.Name}}" data-sort="{{.Sort}}" onclick="editCategory(this)">{{$.T "编辑"}}</button>
             <button class="btn btn-sm btn-danger" data-id="{{.ID}}" data-name="{{.Name}}" onclick="delCategory(this)">{{$.T "删除"}}</button>

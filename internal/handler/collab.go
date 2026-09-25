@@ -140,18 +140,20 @@ func (a *App) listCommentViews(docID uint) []commentView {
 	return views
 }
 
-// shareUnlocked 带密码的分享必须先通过密码校验（持有签发的免密凭证），
-// 防止绕过密码直接访问公开 API（评论读写、内容保存）；未通过时写 403 响应并返回 false
+// shareUnlocked 带密码的分享须已解锁：密码凭证 cookie，或已批准的「申请查看」。
+// 防止绕过密码直接访问公开 API（评论读写、内容保存）；未通过时写 403 并返回 false。
 func (a *App) shareUnlocked(c *gin.Context, token string, share *model.Share) bool {
 	if !share.HasPassword() {
 		return true
 	}
-	cred, err := c.Cookie(CookieShare)
-	if err != nil || !a.Signer.VerifyShareToken(cred, token) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "请先通过分享页密码验证"})
-		return false
+	if cred, err := c.Cookie(CookieShare); err == nil && a.Signer.VerifyShareToken(cred, token) {
+		return true
 	}
-	return true
+	if req := a.findAccessRequest(c, share.DocumentID); req != nil && req.Status == model.AccessApproved {
+		return true
+	}
+	c.JSON(http.StatusForbidden, gin.H{"error": "share.needUnlock"})
+	return false
 }
 
 // ShareListComments 分享页评论列表（公开，分享有效即可读）
@@ -365,7 +367,7 @@ func (a *App) ShareSaveContent(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "该分享未开启编辑权限"})
 		return
 	}
-	// 带密码的分享必须先通过密码校验（持有签发的免密凭证），防止绕过密码直接改内容
+	// 带密码的分享须已解锁（密码凭证或已批准的申请查看），防止绕过密码直接改内容
 	if !a.shareUnlocked(c, token, share) {
 		return
 	}

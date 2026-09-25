@@ -88,6 +88,9 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.POST("/api/docs/:id/editing", app.MarkEditing)
 		admin.POST("/api/docs/:id/share", app.UpsertShare)
 		admin.DELETE("/api/docs/:id/share", app.DeleteShare)
+		admin.GET("/api/docs/:id/access-requests", app.ListAccessRequests)
+		admin.POST("/api/docs/:id/access-requests/:rid", app.ReviewAccessRequest)
+		admin.GET("/api/access-requests", app.ListPendingAccessRequests)
 
 		// 文档评论（作者/管理员，登录身份）
 		admin.GET("/api/docs/:id/comments", app.DocListComments)
@@ -142,6 +145,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 	// 分享
 	r.GET("/s/:token", app.ShareView)
 	r.POST("/s/:token", app.ShareSubmit)
+	r.POST("/s/:token/access-request", app.ShareAccessApply)
 	// 分享页公开协作接口：评论（游客可发，限流）与登录用户的编辑保存
 	r.GET("/s/:token/comments", app.ShareListComments)
 	r.POST("/s/:token/comments", app.ShareAddComment)

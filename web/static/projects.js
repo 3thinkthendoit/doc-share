@@ -194,6 +194,7 @@ function memberRow(m) {
   nameSpan.dataset.avatar = m.avatar || '';
   nameSpan.dataset.email = m.email || '';
   nameSpan.dataset.phone = m.phone || '';
+  nameSpan.dataset.active = m.last_active || '';
   nameSpan.textContent = m.nickname + ' (' + m.username + ')';
   row.appendChild(nameSpan);
   // 只读模式（非属主查看）与属主行：展示角色文本，无操作按钮

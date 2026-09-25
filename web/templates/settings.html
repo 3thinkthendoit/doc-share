@@ -33,6 +33,10 @@
         <span class="muted" style="font-size:12.5px">{{$.T "set.siteDomainTip"}}</span>
       </label>
 
+      <div class="settings-section">{{$.T "set.shareTitle"}}</div>
+      <label class="check"><input type="checkbox" name="allow_share_apply" {{if .set.AllowShareApply}}checked{{end}}> {{$.T "set.allowShareApply"}}</label>
+      <p class="muted" style="font-size:12.5px;margin:-4px 0 10px">{{$.T "set.allowShareApplyTip"}}</p>
+
       <div class="settings-section">{{$.T "set.regTitle"}}</div>
       <label class="check"><input type="radio" name="reg_method" value="username" {{if eq .set.RegMethod "username"}}checked{{end}}> {{$.T "reg.methodUsername"}}</label>
       <label class="check"><input type="radio" name="reg_method" value="email" {{if eq .set.RegMethod "email"}}checked{{end}}> {{$.T "reg.methodEmail"}}</label>
@@ -246,7 +250,8 @@
       rustfs_region: form.rustfs_region.value.trim(),
       rustfs_access_key: form.rustfs_access_key.value.trim(),
       rustfs_secret_key: form.rustfs_secret_key.value,
-      rustfs_bucket: form.rustfs_bucket.value.trim()
+      rustfs_bucket: form.rustfs_bucket.value.trim(),
+      allow_share_apply: form.allow_share_apply.checked
     };
     try {
       var res = await fetch('/admin/api/settings', {
