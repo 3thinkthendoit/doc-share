@@ -22,7 +22,7 @@ func TestParseTemplates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseTemplates: %v", err)
 	}
-	for _, name := range []string{"head", "nav", "langSwitch"} {
+	for _, name := range []string{"head", "nav", "langSwitch", "pager"} {
 		if tmpl.Lookup(name) == nil {
 			t.Errorf("公共片段 %s 未定义", name)
 		}
@@ -59,6 +59,11 @@ func TestPagesRender(t *testing.T) {
 	base := func() View {
 		return View{"user": user, "Lang": "en-US", "Langs": i18n.Supported, "Path": "/admin", "Dict": "", viewBundleKey: bundle}
 	}
+	withPager := func(v View, path string) View {
+		v["page"], v["size"], v["total"], v["totalPages"] = 1, 15, int64(1), 1
+		v["pageSizes"], v["pagerPath"], v["pagerExtra"] = []int{15, 30, 50}, path, ""
+		return v
+	}
 	cases := []struct {
 		name string
 		data func() View
@@ -72,8 +77,8 @@ func TestPagesRender(t *testing.T) {
 			return v
 		}},
 		{"docs.html", func() View {
-			v := base()
-			v["docs"], v["q"], v["page"], v["total"], v["totalPages"] = []model.Document{doc}, "", 1, int64(1), 1
+			v := withPager(base(), "/admin/docs")
+			v["docs"], v["q"] = []model.Document{doc}, ""
 			v["project"], v["category"], v["projects"], v["categories"] = "", "", []model.Project{pj}, []model.Category{ct}
 			return v
 		}},
@@ -82,10 +87,26 @@ func TestPagesRender(t *testing.T) {
 			v["doc"], v["share"], v["shareURL"], v["projects"], v["categories"] = &doc, doc.Share, "/s/tok123", []model.Project{pj}, []model.Category{ct}
 			return v
 		}},
-		{"projects.html", func() View { v := base(); v["projects"] = []model.Project{pj}; return v }},
-		{"categories.html", func() View { v := base(); v["categories"] = []model.Category{ct}; return v }},
-		{"apikeys.html", func() View { v := base(); v["keys"] = []model.ApiKey{key}; return v }},
-		{"users.html", func() View { v := base(); v["users"] = []model.User{*user}; return v }},
+		{"projects.html", func() View {
+			v := withPager(base(), "/admin/projects")
+			v["projects"], v["q"], v["owner"], v["scope"] = []model.Project{pj}, "", "", ""
+			return v
+		}},
+		{"categories.html", func() View {
+			v := withPager(base(), "/admin/categories")
+			v["categories"] = []model.Category{ct}
+			return v
+		}},
+		{"apikeys.html", func() View {
+			v := withPager(base(), "/admin/apikeys")
+			v["keys"], v["owner"] = []model.ApiKey{key}, ""
+			return v
+		}},
+		{"users.html", func() View {
+			v := withPager(base(), "/admin/users")
+			v["users"] = []model.User{*user}
+			return v
+		}},
 		{"share_view.html", func() View { v := base(); v["user"] = nil; v["doc"] = &doc; return v }},
 		{"share_password.html", func() View {
 			v := base()

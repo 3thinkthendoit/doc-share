@@ -16,12 +16,21 @@ import (
 
 // UsersPage 用户管理页（仅 admin）
 func (a *App) UsersPage(c *gin.Context) {
+	pg := parseWebPage(c)
+	tx := a.DB.Model(&model.User{})
+	var total int64
+	tx.Count(&total)
+	pg = pg.withTotal(total)
 	var users []model.User
-	a.DB.Order("id asc").Find(&users)
-	a.render(c, "users.html", gin.H{
+	tx.Order("id asc").Offset(pg.Offset).Limit(pg.Size).Find(&users)
+	data := gin.H{
 		"title": "用户管理",
 		"users": users,
-	})
+	}
+	for k, v := range pagerFields(pg, "/admin/users", "") {
+		data[k] = v
+	}
+	a.render(c, "users.html", data)
 }
 
 type userReq struct {

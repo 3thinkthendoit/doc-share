@@ -113,3 +113,34 @@
 </div>
 {{end}}
 {{end}}
+
+{{/* 数字分页 + 每页条数：需注入 page/size/total/totalPages/pagerPath/pagerExtra/pageSizes */}}
+{{define "pager"}}
+{{if or (gt .totalPages 1) (gt .total 0)}}
+<div class="pager">
+  {{if gt .totalPages 1}}
+  <div class="pager-pages">
+    {{if gt .page 1}}
+    <a class="btn btn-sm" href="{{.pagerPath}}?page={{sub .page 1}}&size={{.size}}{{.pagerExtra}}" aria-label="{{$.T "docs.prevPage"}}">‹</a>
+    {{end}}
+    {{range pageNums .page .totalPages}}
+      {{if eqInt . $.page}}
+      <span class="btn btn-sm btn-primary" aria-current="page">{{.}}</span>
+      {{else}}
+      <a class="btn btn-sm" href="{{$.pagerPath}}?page={{.}}&size={{$.size}}{{$.pagerExtra}}">{{.}}</a>
+      {{end}}
+    {{end}}
+    {{if lt .page .totalPages}}
+    <a class="btn btn-sm" href="{{.pagerPath}}?page={{add .page 1}}&size={{.size}}{{.pagerExtra}}" aria-label="{{$.T "docs.nextPage"}}">›</a>
+    {{end}}
+  </div>
+  {{end}}
+  <select class="pager-size" aria-label="{{$.T "pager.size"}}" onchange="location.href='{{.pagerPath}}?page=1&size='+encodeURIComponent(this.value)+'{{.pagerExtra}}'">
+    {{range .pageSizes}}
+    <option value="{{.}}" {{if eqInt . $.size}}selected{{end}}>{{.}} {{$.T "pager.perPage"}}</option>
+    {{end}}
+  </select>
+  <span class="muted">{{$.T "pager.info" .page .totalPages .total}}</span>
+</div>
+{{end}}
+{{end}}

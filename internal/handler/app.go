@@ -102,6 +102,8 @@ func funcMap() template.FuncMap {
 		"now": time.Now,
 		"add": func(a, b int) int { return a + b },
 		"sub": func(a, b int) int { return a - b },
+		"pageNums": pageNums,
+		"eqInt":    func(a, b int) bool { return a == b },
 		// avatar 返回首个非空字符串的首字符（按 rune 切，中文安全），全空时返回 "U"
 		"avatar": func(names ...string) string {
 			for _, n := range names {

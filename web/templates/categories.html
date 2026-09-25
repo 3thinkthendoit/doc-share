@@ -10,6 +10,13 @@
     <button class="btn btn-primary" id="btnNewCategory">{{$.T "新建分类"}}</button>
   </div>
 
+  <form method="get" action="/admin/categories" class="search-bar filter-bar">
+    <input type="hidden" name="size" value="{{.size}}">
+    <input type="text" name="q" placeholder="{{$.T "cat.filterName"}}" value="{{.q}}">
+    <button type="submit" class="btn">{{$.T "docs.query"}}</button>
+    <a href="/admin/categories?size={{.size}}" class="btn">{{$.T "重置"}}</a>
+  </form>
+
   <div class="panel">
     <table class="table" id="categoryTable">
       <thead>
@@ -22,7 +29,7 @@
           <td>{{.Sort}}</td>
           <td>{{.DocCount}}</td>
           {{if and $.user $.user.IsAdmin}}<td>{{if .Owner.Nickname}}{{.Owner.Nickname}}{{else}}{{.Owner.Username}}{{end}}</td>{{end}}
-          <td>
+          <td class="col-actions">
             <button class="btn btn-sm" data-id="{{.ID}}" data-name="{{.Name}}" data-sort="{{.Sort}}" onclick="editCategory(this)">{{$.T "编辑"}}</button>
             <button class="btn btn-sm btn-danger" data-id="{{.ID}}" data-name="{{.Name}}" onclick="delCategory(this)">{{$.T "删除"}}</button>
           </td>
@@ -33,6 +40,8 @@
       </tbody>
     </table>
   </div>
+
+  {{template "pager" .}}
 </main>
 
 <div class="modal-overlay" id="categoryModal" hidden>

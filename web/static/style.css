@@ -158,7 +158,7 @@ h1,h2{letter-spacing:-.02em;font-weight:650}
 .btn-block{width:100%;justify-content:center}
 
 /* panel / card */
-.panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:24px;overflow:hidden}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:24px;overflow-x:auto}
 .panel-head{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--border)}
 .panel-head h2{margin:0;font-size:15px}
 
@@ -170,24 +170,31 @@ h1,h2{letter-spacing:-.02em;font-weight:650}
 .stat-num{font-size:34px;font-weight:700;letter-spacing:-.03em;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 .stat-label{color:var(--muted);font-size:13px;margin-top:2px}
 
-/* table */
-.table{width:100%;border-collapse:collapse}
-.table th,.table td{padding:13px 18px;text-align:left;border-bottom:1px solid var(--border);vertical-align:middle}
+/* table：单元格不换行，按内容撑开列宽；过宽时由 .panel 横向滚动 */
+.table{width:100%;min-width:max-content;border-collapse:collapse}
+.table th,.table td{padding:12px 14px;text-align:left;border-bottom:1px solid var(--border);vertical-align:middle;white-space:nowrap}
 .table th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.04em;background:var(--bg-soft)}
 .table tbody tr{transition:background .12s}
 .table tbody tr:hover{background:#fbfbfd}
 .table tr:last-child td{border-bottom:none}
 .col-actions{white-space:nowrap;text-align:right}
 .col-actions .btn{margin-left:6px}
+.table td.cell-muted{color:var(--muted)}
+.table td.empty,.table .empty-row td{white-space:normal}
+/* API 文档说明表仍需换行 */
+.api-doc .table{min-width:0;width:100%}
+.api-doc .table th,.api-doc .table td{white-space:normal}
 .empty{text-align:center;color:var(--faint);padding:40px}
 .cell-input{width:100%;padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;transition:border-color .15s}
 .cell-input:focus{outline:none;border-color:var(--primary)}
 .table select{padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;font-family:inherit;font-size:13px}
 
 /* search */
-.search-bar{display:flex;gap:10px;margin-bottom:16px}
+.search-bar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
 .search-bar input{flex:1;padding:9px 14px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:inherit;font-size:14px;transition:all .15s}
 .search-bar input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+/* 筛选栏关键词框固定短宽，不随行拉满（文档/项目/密钥等） */
+.search-bar.filter-bar input{flex:0 1 220px;width:220px;max-width:100%}
 /* 文档列表筛选栏：项目/分类下拉 */
 .filter-bar select{padding:9px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:inherit;font-size:14px;background:var(--panel);color:var(--text);max-width:180px}
 .filter-bar select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
@@ -196,7 +203,15 @@ h1,h2{letter-spacing:-.02em;font-weight:650}
 .meta-select{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);font-weight:500;flex:none}
 .meta-select select{padding:8px 10px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:inherit;font-size:13px;background:var(--panel);color:var(--text);min-width:110px;cursor:pointer;transition:all .15s}
 .meta-select select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
-.pager{display:flex;align-items:center;justify-content:center;gap:16px;margin:20px 0}
+.pager{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin:20px 0}
+.pager .pager-pages{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.pager .pager-pages .btn{min-width:36px;padding:6px 10px}
+.pager .muted{font-size:13px;line-height:1.4}
+.pager .pager-size{padding:2px 8px;border:1px solid var(--border-strong);border-radius:6px;font-family:inherit;font-size:12.5px;line-height:1.4;background:var(--panel);color:var(--text);cursor:pointer;height:auto}
+.pager .pager-size:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+/* skinSelect 后可见的是 .xsel-btn，需单独压矮，与旁侧页码文案对齐 */
+.pager .xsel{min-width:0}
+.pager .xsel-btn{padding:2px 8px;font-size:12.5px;line-height:1.4;min-width:0;border-radius:6px}
 
 /* 自定义下拉（UI.skinSelect）：原生 select 隐藏但保留在表单内，叠按钮触发器 + 自绘面板 */
 .xsel{position:relative;display:inline-flex}
@@ -398,7 +413,7 @@ body.modal-open{overflow:hidden}
 .markdown-body hr{border:none;border-top:1px solid var(--border);margin:2em 0}
 
 /* tag */
-.tag{display:inline-flex;align-items:center;padding:2px 10px;border-radius:999px;background:var(--bg-soft);border:1px solid var(--border);color:var(--muted);font-size:12px;font-weight:500}
+.tag{display:inline-flex;align-items:center;padding:2px 10px;border-radius:999px;background:var(--bg-soft);border:1px solid var(--border);color:var(--muted);font-size:12px;font-weight:500;white-space:nowrap;flex:none}
 .tag-green{background:#ecf9f2;border-color:#c9ecda;color:var(--green)}
 
 @media(max-width:900px){.edit-grid{grid-template-columns:1fr}.nav-links{display:none}.container{padding:0 16px}}

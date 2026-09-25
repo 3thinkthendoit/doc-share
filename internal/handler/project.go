@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -20,6 +21,7 @@ func (a *App) ProjectsPage(c *gin.Context) {
 	q := strings.TrimSpace(c.Query("q"))
 	owner := strings.TrimSpace(c.Query("owner"))
 	scope := c.Query("scope") // "" | mine | joined
+	pg := parseWebPage(c)
 
 	// 参与的项目及角色（admin 天然全可见，无需回填角色）
 	roleByPid := make(map[uint]string)
@@ -60,40 +62,51 @@ func (a *App) ProjectsPage(c *gin.Context) {
 			tx = tx.Where("1 = 0")
 		}
 	}
-	var projects []model.Project
-	tx.Preload("Owner").Order("updated_at desc").Find(&projects)
+	var total int64
+	tx.Count(&total)
+	pg = pg.withTotal(total)
 
-	// 回填每个项目的文档数与成员角色（与文档列表可见范围一致：自己的 ∪ 参与项目内的）
-	var counts []struct {
-		K   uint
-		Cnt int64
+	var projects []model.Project
+	tx.Preload("Owner").Order("updated_at desc").Offset(pg.Offset).Limit(pg.Size).Find(&projects)
+
+	// 回填当前页项目的文档数与成员角色（与文档列表可见范围一致：自己的 ∪ 参与项目内的）
+	pageIDs := make([]uint, len(projects))
+	for i := range projects {
+		pageIDs[i] = projects[i].ID
 	}
-	cntTx := a.DB.Model(&model.Document{}).Select("project_id AS k, COUNT(*) AS cnt")
-	if user != nil && !user.IsAdmin() {
-		if len(roleByPid) > 0 {
-			pids := make([]uint, 0, len(roleByPid))
-			for pid := range roleByPid {
-				pids = append(pids, pid)
-			}
-			cntTx = cntTx.Where("owner_id = ? OR project_id IN ?", user.ID, pids)
-		} else {
-			cntTx = cntTx.Where("owner_id = ?", user.ID)
+	countMap := make(map[uint]int64, len(pageIDs))
+	memberMap := make(map[uint]int64, len(pageIDs))
+	if len(pageIDs) > 0 {
+		var counts []struct {
+			K   uint
+			Cnt int64
 		}
-	}
-	cntTx.Group("project_id").Scan(&counts)
-	countMap := make(map[uint]int64, len(counts))
-	for _, row := range counts {
-		countMap[row.K] = row.Cnt
-	}
-	// 成员数统计
-	var mcounts []struct {
-		K   uint
-		Cnt int64
-	}
-	a.DB.Model(&model.ProjectMember{}).Select("project_id AS k, COUNT(*) AS cnt").Group("project_id").Scan(&mcounts)
-	memberMap := make(map[uint]int64, len(mcounts))
-	for _, row := range mcounts {
-		memberMap[row.K] = row.Cnt
+		cntTx := a.DB.Model(&model.Document{}).Select("project_id AS k, COUNT(*) AS cnt").
+			Where("project_id IN ?", pageIDs)
+		if user != nil && !user.IsAdmin() {
+			if len(roleByPid) > 0 {
+				pids := make([]uint, 0, len(roleByPid))
+				for pid := range roleByPid {
+					pids = append(pids, pid)
+				}
+				cntTx = cntTx.Where("owner_id = ? OR project_id IN ?", user.ID, pids)
+			} else {
+				cntTx = cntTx.Where("owner_id = ?", user.ID)
+			}
+		}
+		cntTx.Group("project_id").Scan(&counts)
+		for _, row := range counts {
+			countMap[row.K] = row.Cnt
+		}
+		var mcounts []struct {
+			K   uint
+			Cnt int64
+		}
+		a.DB.Model(&model.ProjectMember{}).Select("project_id AS k, COUNT(*) AS cnt").
+			Where("project_id IN ?", pageIDs).Group("project_id").Scan(&mcounts)
+		for _, row := range mcounts {
+			memberMap[row.K] = row.Cnt
+		}
 	}
 	for i := range projects {
 		projects[i].DocCount = countMap[projects[i].ID]
@@ -102,13 +115,27 @@ func (a *App) ProjectsPage(c *gin.Context) {
 		projects[i].Role = roleByPid[projects[i].ID]
 	}
 
-	a.render(c, "projects.html", gin.H{
+	extra := ""
+	if q != "" {
+		extra += "&q=" + url.QueryEscape(q)
+	}
+	if owner != "" {
+		extra += "&owner=" + url.QueryEscape(owner)
+	}
+	if scope != "" {
+		extra += "&scope=" + url.QueryEscape(scope)
+	}
+	data := gin.H{
 		"title":    "项目管理",
 		"projects": projects,
 		"q":        q,
 		"owner":    owner,
 		"scope":    scope,
-	})
+	}
+	for k, v := range pagerFields(pg, "/admin/projects", extra) {
+		data[k] = v
+	}
+	a.render(c, "projects.html", data)
 }
 
 type projectReq struct {
@@ -170,11 +197,17 @@ func (a *App) ListProjectDocs(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "无权查看该项目"})
 		return
 	}
+	pg := parseWebPage(c)
+	tx := a.DB.Model(&model.Document{}).Where("project_id = ?", project.ID)
+	var total int64
+	tx.Count(&total)
+	pg = pg.withTotal(total)
 	var docs []model.Document
-	a.DB.Where("project_id = ?", project.ID).
-		Select("id", "title", "is_shared", "updated_at").
-		Order("updated_at desc").Find(&docs)
-	c.JSON(http.StatusOK, gin.H{"docs": docs})
+	tx.Select("id", "title", "is_shared", "updated_at").
+		Order("updated_at desc").Offset(pg.Offset).Limit(pg.Size).Find(&docs)
+	c.JSON(http.StatusOK, gin.H{
+		"docs": docs, "page": pg.Page, "size": pg.Size, "total": pg.Total, "total_pages": pg.TotalPages,
+	})
 }
 
 // CreateProject 新建项目
@@ -308,7 +341,6 @@ type memberView struct {
 	Role     string `json:"role"`
 }
 
-// ListProjectMembers 成员列表（属主/管理员）
 // ListProjectMembers 成员列表（属主/管理员/项目成员均可读；增删改仍属主/管理员）
 func (a *App) ListProjectMembers(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
@@ -328,14 +360,36 @@ func (a *App) ListProjectMembers(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "无权查看该项目"})
 		return
 	}
+	pg := parseWebPage(c)
+
+	var memberCount int64
+	a.DB.Model(&model.ProjectMember{}).
+		Where("project_id = ? AND user_id <> ?", project.ID, project.OwnerID).Count(&memberCount)
+	total := memberCount + 1 // 属主固定占一行
+	pg = pg.withTotal(total)
+
+	// 整表逻辑：offset=0 时首行属主 + 后续成员；否则从成员表 Offset(offset-1)
+	needOwner := pg.Offset == 0
+	memberLimit := pg.Size
+	memberOffset := pg.Offset
+	if needOwner {
+		memberLimit = pg.Size - 1
+		memberOffset = 0
+	} else {
+		memberOffset = pg.Offset - 1
+	}
+
 	var ms []model.ProjectMember
-	a.DB.Where("project_id = ?", project.ID).Order("created_at asc").Find(&ms)
+	if memberLimit > 0 {
+		a.DB.Where("project_id = ? AND user_id <> ?", project.ID, project.OwnerID).
+			Order("created_at asc").Offset(memberOffset).Limit(memberLimit).Find(&ms)
+	}
 
 	ids := make([]uint, 0, len(ms)+1)
 	for _, m := range ms {
 		ids = append(ids, m.UserID)
 	}
-	ids = append(ids, project.OwnerID) // 属主信息也用于展示
+	ids = append(ids, project.OwnerID)
 	users := map[uint]model.User{}
 	if len(ids) > 0 {
 		var us []model.User
@@ -352,23 +406,22 @@ func (a *App) ListProjectMembers(c *gin.Context) {
 			v.Phone = u.MaskedPhone()
 		}
 	}
-	views := make([]memberView, 0, len(ms)+1)
-	// 属主列为只读首行（Role=owner，前端据此隐藏改角色/移除操作）
-	var owner model.User
-	if a.DB.First(&owner, project.OwnerID).Error == nil {
-		v := memberView{UserID: owner.ID, Role: "owner"}
-		fillView(&v, owner.ID)
-		views = append(views, v)
+	views := make([]memberView, 0, pg.Size)
+	if needOwner {
+		if u, ok := users[project.OwnerID]; ok {
+			v := memberView{UserID: u.ID, Role: "owner"}
+			fillView(&v, u.ID)
+			views = append(views, v)
+		}
 	}
 	for _, m := range ms {
-		if m.UserID == project.OwnerID {
-			continue // 兼容历史脏数据：属主不重复展示
-		}
 		v := memberView{ID: m.ID, UserID: m.UserID, Role: m.Role}
 		fillView(&v, m.UserID)
 		views = append(views, v)
 	}
-	c.JSON(http.StatusOK, gin.H{"members": views})
+	c.JSON(http.StatusOK, gin.H{
+		"members": views, "page": pg.Page, "size": pg.Size, "total": pg.Total, "total_pages": pg.TotalPages,
+	})
 }
 
 // AddProjectMember 添加成员 {user_id, role}

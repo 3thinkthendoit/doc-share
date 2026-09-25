@@ -118,7 +118,7 @@ const TOOLS = [
       type: 'object',
       properties: {
         page: { type: 'number', description: '页码，从 1 开始，默认 1' },
-        size: { type: 'number', description: '每页条数，1~100，默认 20' },
+        size: { type: 'number', description: '每页条数，1~100，默认 15' },
         project_id: { type: 'number', description: '按项目 ID 过滤' },
         category_id: { type: 'number', description: '按分类 ID 过滤' },
       },
@@ -176,10 +176,16 @@ const TOOLS = [
   },
   {
     name: 'docshare_list_projects',
-    description: '列出密钥属主的项目',
-    schema: { type: 'object', properties: {} },
-    async run() {
-      return apiCall('GET', '/openapi/v1/projects');
+    description: '列出密钥属主的项目（分页）',
+    schema: {
+      type: 'object',
+      properties: {
+        page: { type: 'number', description: '页码，从 1 开始，默认 1' },
+        size: { type: 'number', description: '每页条数，1~100，默认 15' },
+      },
+    },
+    async run(args) {
+      return apiCall('GET', '/openapi/v1/projects', args);
     },
   },
   {
@@ -225,10 +231,16 @@ const TOOLS = [
   },
   {
     name: 'docshare_list_categories',
-    description: '列出密钥属主的分类',
-    schema: { type: 'object', properties: {} },
-    async run() {
-      return apiCall('GET', '/openapi/v1/categories');
+    description: '列出密钥属主的分类（分页）',
+    schema: {
+      type: 'object',
+      properties: {
+        page: { type: 'number', description: '页码，从 1 开始，默认 1' },
+        size: { type: 'number', description: '每页条数，1~100，默认 15' },
+      },
+    },
+    async run(args) {
+      return apiCall('GET', '/openapi/v1/categories', args);
     },
   },
   {

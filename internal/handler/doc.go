@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"net/url"
 	"strconv"
 	"sync"
 	"time"
@@ -19,11 +20,7 @@ import (
 func (a *App) DocsPage(c *gin.Context) {
 	q := c.Query("q")
 	origin := c.Query("origin") // ""=全部 mine=我创建的 shared=项目共享
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	if page < 1 {
-		page = 1
-	}
-	const size = 15
+	pg := parseWebPage(c)
 
 	user := middleware.CurrentUser(c)
 	// 当前用户参与的项目（成员路径的可见范围依据）
@@ -80,12 +77,11 @@ func (a *App) DocsPage(c *gin.Context) {
 	}
 	var total int64
 	tx.Count(&total)
+	pg = pg.withTotal(total)
 
 	var docs []model.Document
 	tx.Preload("Owner").Preload("Share").Preload("Project").Preload("Category").Order("updated_at desc").
-		Offset((page - 1) * size).Limit(size).Find(&docs)
-
-	totalPages := int((total + int64(size) - 1) / int64(size))
+		Offset(pg.Offset).Limit(pg.Size).Find(&docs)
 
 	// 逐行编辑权限（批量取成员角色，避免逐条查询）：
 	// 属主/管理员可编辑；edit 角色成员可编辑所参与项目内的他人文档
@@ -115,21 +111,38 @@ func (a *App) DocsPage(c *gin.Context) {
 		a.DB.Where("id IN ? AND owner_id <> ?", memberPids, user.ID).Order("name asc").Find(&extra)
 		projects = append(projects, extra...)
 	}
-	a.render(c, "docs.html", gin.H{
+	extra := ""
+	if q != "" {
+		extra += "&q=" + url.QueryEscape(q)
+	}
+	if p := c.Query("project"); p != "" {
+		extra += "&project=" + url.QueryEscape(p)
+	}
+	if ct := c.Query("category"); ct != "" {
+		extra += "&category=" + url.QueryEscape(ct)
+	}
+	if sh := c.Query("shared"); sh != "" {
+		extra += "&shared=" + url.QueryEscape(sh)
+	}
+	if origin != "" {
+		extra += "&origin=" + url.QueryEscape(origin)
+	}
+	data := gin.H{
 		"title":      "文档管理",
 		"docs":       docs,
 		"q":          q,
 		"origin":     origin,
-		"page":       page,
-		"total":      total,
-		"totalPages": totalPages,
 		"project":    c.Query("project"),
 		"category":   c.Query("category"),
 		"shared":     c.Query("shared"),
 		"projects":   projects,
 		"categories": categories,
 		"canEdit":    canEdit,
-	})
+	}
+	for k, v := range pagerFields(pg, "/admin/docs", extra) {
+		data[k] = v
+	}
+	a.render(c, "docs.html", data)
 }
 
 // filterOptions 当前用户自己的项目与分类（个人所有，admin 亦然；

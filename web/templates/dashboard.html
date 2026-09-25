@@ -10,7 +10,7 @@
     <div class="stat-card"><div class="stat-num">{{.docCount}}</div><div class="stat-label">{{if .isAdmin}}{{$.T "文档总数"}}{{else}}{{$.T "我的文档"}}{{end}}</div></div>
     {{if .isAdmin}}<div class="stat-card"><div class="stat-num">{{.userCount}}</div><div class="stat-label">{{$.T "用户总数"}}</div></div>{{end}}
     <div class="stat-card"><div class="stat-num">{{.shareCount}}</div><div class="stat-label">{{if .isAdmin}}{{$.T "分享链接"}}{{else}}{{$.T "我的分享"}}{{end}}</div></div>
-    <div class="stat-card"><div class="stat-num">{{.projectCount}}</div><div class="stat-label">{{$.T "dash.projects"}}</div></div>
+    {{if not .isAdmin}}<div class="stat-card"><div class="stat-num">{{.projectCount}}</div><div class="stat-label">{{$.T "dash.projects"}}</div></div>{{end}}
   </div>
 
   <div class="panel">

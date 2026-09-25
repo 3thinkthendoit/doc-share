@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -13,19 +14,40 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// APIKeysPage API 密钥管理页：viewer 只看自己的，admin 看全部
+// APIKeysPage API 密钥管理页：viewer 只看自己的，admin 看全部并可按所有者筛选
 func (a *App) APIKeysPage(c *gin.Context) {
 	user := middleware.CurrentUser(c)
+	owner := strings.TrimSpace(c.Query("owner"))
+	pg := parseWebPage(c)
+
 	tx := a.DB.Model(&model.ApiKey{})
 	if user != nil && !user.IsAdmin() {
 		tx = tx.Where("owner_id = ?", user.ID)
+		owner = "" // 非管理员忽略所有者筛选
+	} else if owner != "" {
+		like := "%" + owner + "%"
+		tx = tx.Where("owner_id IN (SELECT id FROM users WHERE username LIKE ? OR nickname LIKE ?)", like, like)
 	}
+	var total int64
+	tx.Count(&total)
+	pg = pg.withTotal(total)
+
 	var keys []model.ApiKey
-	tx.Preload("Owner").Order("created_at desc").Find(&keys)
-	a.render(c, "apikeys.html", gin.H{
+	tx.Preload("Owner").Order("created_at desc").Offset(pg.Offset).Limit(pg.Size).Find(&keys)
+
+	extra := ""
+	if owner != "" {
+		extra += "&owner=" + url.QueryEscape(owner)
+	}
+	data := gin.H{
 		"title": "密钥管理",
 		"keys":  keys,
-	})
+		"owner": owner,
+	}
+	for k, v := range pagerFields(pg, "/admin/apikeys", extra) {
+		data[k] = v
+	}
+	a.render(c, "apikeys.html", data)
 }
 
 // randHex 生成 n 字节随机数的 hex 串

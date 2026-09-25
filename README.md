@@ -1,4 +1,4 @@
-# DocShare
+# <img src="web/static/logo-mark.svg" height="36" alt="DocShare logo"/> DocShare
 
 [中文说明](README.zh-CN.md) | English
 
@@ -83,6 +83,8 @@ web/
   templates/            HTML templates
   static/               CSS / JS
   locales/              en-US, zh-CN, zh-TW, ja-JP, fr-FR
+mcp/
+  mcp-server.js         zero-dependency MCP server (Node, stdio) wrapping the Open API
 ```
 
 ## Development Mode

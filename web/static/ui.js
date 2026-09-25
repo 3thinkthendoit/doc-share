@@ -306,6 +306,69 @@ window.UI = (function () {
     };
   }
 
+  // 弹窗内数字分页：el 为容器；opts={page,totalPages,size,total,sizes,onPage,onSize}
+  function renderPager(el, opts) {
+    if (!el) return;
+    el.innerHTML = '';
+    opts = opts || {};
+    var page = opts.page || 1;
+    var totalPages = opts.totalPages || 1;
+    var size = opts.size || 15;
+    var total = opts.total || 0;
+    var sizes = opts.sizes || [15, 30, 50];
+    if (total <= 0) return;
+
+    var wrap = document.createElement('div');
+    wrap.className = 'pager';
+    if (totalPages > 1) {
+      var pages = document.createElement('div');
+      pages.className = 'pager-pages';
+      function addBtn(label, p, active) {
+        if (active) {
+          var span = document.createElement('span');
+          span.className = 'btn btn-sm btn-primary';
+          span.textContent = label;
+          pages.appendChild(span);
+          return;
+        }
+        var a = document.createElement('button');
+        a.type = 'button';
+        a.className = 'btn btn-sm';
+        a.textContent = label;
+        a.addEventListener('click', function () {
+          if (typeof opts.onPage === 'function') opts.onPage(p);
+        });
+        pages.appendChild(a);
+      }
+      if (page > 1) addBtn('‹', page - 1, false);
+      var start = Math.max(1, page - 3);
+      var end = Math.min(totalPages, start + 6);
+      start = Math.max(1, end - 6);
+      for (var i = start; i <= end; i++) addBtn(String(i), i, i === page);
+      if (page < totalPages) addBtn('›', page + 1, false);
+      wrap.appendChild(pages);
+    }
+    var sel = document.createElement('select');
+    sel.className = 'pager-size';
+    sel.setAttribute('aria-label', t('pager.size'));
+    sizes.forEach(function (s) {
+      var o = document.createElement('option');
+      o.value = s;
+      o.textContent = s + ' ' + t('pager.perPage');
+      if (s === size) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.addEventListener('change', function () {
+      if (typeof opts.onSize === 'function') opts.onSize(parseInt(sel.value, 10) || 15);
+    });
+    wrap.appendChild(sel);
+    var info = document.createElement('span');
+    info.className = 'muted';
+    info.textContent = t('pager.info', page, totalPages, total);
+    wrap.appendChild(info);
+    el.appendChild(wrap);
+  }
+
   return {
     t: t,
     lang: window.__LANG || 'zh-CN',
@@ -318,6 +381,7 @@ window.UI = (function () {
     syncSelect: syncXs,
     skinSelect: skinSelect,
     avatarPicker: avatarPicker,
+    renderPager: renderPager,
     alert: function (message) {
       return dialog({ message: message, buttons: [{ label: '知道了', primary: true, value: true }] });
     },

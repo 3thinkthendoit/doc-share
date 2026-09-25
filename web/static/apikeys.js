@@ -39,7 +39,7 @@
       'Secret: ' + secret,
       'Created: ' + new Date().toISOString(),
       '',
-      UI.t('Secret 仅显示这一次，离开后无法再次查看；遗失请使用「重置密钥」重新生成。'),
+      UI.t('key.warn'),
     ];
     var blob = new Blob([lines.join('\r\n') + '\r\n'], { type: 'text/plain;charset=utf-8' });
     var a = document.createElement('a');

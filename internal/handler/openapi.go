@@ -134,73 +134,93 @@ func (a *App) RequireAppKey() gin.HandlerFunc {
 
 // ---------- openapi 专用查询接口（写接口直接复用后台 handler） ----------
 
-// OpenListCategories 分类列表（密钥属主自己的）
+// OpenListCategories 分类列表（密钥属主自己的，分页）
 func (a *App) OpenListCategories(c *gin.Context) {
 	user := middleware.CurrentUser(c)
-	var items []model.Category
-	a.DB.Preload("Owner").Where("owner_id = ?", user.ID).Order("sort asc, id asc").Find(&items)
+	pg := parseOpenPage(c)
+	tx := a.DB.Model(&model.Category{}).Where("owner_id = ?", user.ID)
+	var total int64
+	tx.Count(&total)
+	pg = pg.withTotal(total)
 
-	// 回填文档数（与 Web 端分类页一致：viewer 只算自己的文档）
-	var counts []struct {
-		K   uint
-		Cnt int64
+	var items []model.Category
+	tx.Preload("Owner").Order("sort asc, id asc").Offset(pg.Offset).Limit(pg.Size).Find(&items)
+
+	// 回填当前页分类的文档数（与 Web 端一致：viewer 只算自己的文档）
+	pageIDs := make([]uint, len(items))
+	for i := range items {
+		pageIDs[i] = items[i].ID
 	}
-	a.DB.Model(&model.Document{}).Select("category_id AS k, COUNT(*) AS cnt").
-		Where("owner_id = ?", user.ID).Group("category_id").Scan(&counts)
-	countMap := make(map[uint]int64, len(counts))
-	for _, row := range counts {
-		countMap[row.K] = row.Cnt
+	countMap := make(map[uint]int64, len(pageIDs))
+	if len(pageIDs) > 0 {
+		var counts []struct {
+			K   uint
+			Cnt int64
+		}
+		a.DB.Model(&model.Document{}).Select("category_id AS k, COUNT(*) AS cnt").
+			Where("owner_id = ? AND category_id IN ?", user.ID, pageIDs).
+			Group("category_id").Scan(&counts)
+		for _, row := range counts {
+			countMap[row.K] = row.Cnt
+		}
 	}
 	for i := range items {
 		items[i].DocCount = countMap[items[i].ID]
 	}
-	c.JSON(http.StatusOK, gin.H{"data": items})
+	c.JSON(http.StatusOK, gin.H{"data": items, "total": pg.Total, "page": pg.Page, "size": pg.Size})
 }
 
-// OpenListProjects 项目列表（密钥属主自己的）
+// OpenListProjects 项目列表（密钥属主自己的，分页）
 func (a *App) OpenListProjects(c *gin.Context) {
 	user := middleware.CurrentUser(c)
-	var items []model.Project
-	a.DB.Preload("Owner").Where("owner_id = ?", user.ID).Order("updated_at desc").Find(&items)
+	pg := parseOpenPage(c)
+	tx := a.DB.Model(&model.Project{}).Where("owner_id = ?", user.ID)
+	var total int64
+	tx.Count(&total)
+	pg = pg.withTotal(total)
 
-	// 回填文档数与成员数（与 Web 端项目页一致，属主固定 +1）
-	var counts []struct {
-		K   uint
-		Cnt int64
+	var items []model.Project
+	tx.Preload("Owner").Order("updated_at desc").Offset(pg.Offset).Limit(pg.Size).Find(&items)
+
+	// 回填当前页项目的文档数与成员数（与 Web 端一致，属主固定 +1）
+	pageIDs := make([]uint, len(items))
+	for i := range items {
+		pageIDs[i] = items[i].ID
 	}
-	a.DB.Model(&model.Document{}).Select("project_id AS k, COUNT(*) AS cnt").
-		Where("owner_id = ?", user.ID).Group("project_id").Scan(&counts)
-	countMap := make(map[uint]int64, len(counts))
-	for _, row := range counts {
-		countMap[row.K] = row.Cnt
-	}
-	var mcounts []struct {
-		K   uint
-		Cnt int64
-	}
-	a.DB.Model(&model.ProjectMember{}).Select("project_id AS k, COUNT(*) AS cnt").Group("project_id").Scan(&mcounts)
-	memberMap := make(map[uint]int64, len(mcounts))
-	for _, row := range mcounts {
-		memberMap[row.K] = row.Cnt
+	countMap := make(map[uint]int64, len(pageIDs))
+	memberMap := make(map[uint]int64, len(pageIDs))
+	if len(pageIDs) > 0 {
+		var counts []struct {
+			K   uint
+			Cnt int64
+		}
+		a.DB.Model(&model.Document{}).Select("project_id AS k, COUNT(*) AS cnt").
+			Where("owner_id = ? AND project_id IN ?", user.ID, pageIDs).
+			Group("project_id").Scan(&counts)
+		for _, row := range counts {
+			countMap[row.K] = row.Cnt
+		}
+		var mcounts []struct {
+			K   uint
+			Cnt int64
+		}
+		a.DB.Model(&model.ProjectMember{}).Select("project_id AS k, COUNT(*) AS cnt").
+			Where("project_id IN ?", pageIDs).Group("project_id").Scan(&mcounts)
+		for _, row := range mcounts {
+			memberMap[row.K] = row.Cnt
+		}
 	}
 	for i := range items {
 		items[i].DocCount = countMap[items[i].ID]
 		items[i].MemberCount = memberMap[items[i].ID] + 1
 	}
-	c.JSON(http.StatusOK, gin.H{"data": items})
+	c.JSON(http.StatusOK, gin.H{"data": items, "total": pg.Total, "page": pg.Page, "size": pg.Size})
 }
 
 // OpenListDocs 文档分页列表；可按 project_id / category_id 过滤；不返回正文
 func (a *App) OpenListDocs(c *gin.Context) {
 	user := middleware.CurrentUser(c)
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 || size > 100 {
-		size = 20
-	}
+	pg := parseOpenPage(c)
 	tx := a.DB.Model(&model.Document{})
 	if !user.IsAdmin() {
 		tx = tx.Where("owner_id = ?", user.ID)
@@ -217,10 +237,11 @@ func (a *App) OpenListDocs(c *gin.Context) {
 	}
 	var total int64
 	tx.Count(&total)
+	pg = pg.withTotal(total)
 	var docs []model.Document
 	tx.Select("id, title, slug, owner_id, project_id, category_id, is_shared, view_count, created_at, updated_at").
-		Order("updated_at desc").Offset((page - 1) * size).Limit(size).Find(&docs)
-	c.JSON(http.StatusOK, gin.H{"data": docs, "total": total, "page": page, "size": size})
+		Order("updated_at desc").Offset(pg.Offset).Limit(pg.Size).Find(&docs)
+	c.JSON(http.StatusOK, gin.H{"data": docs, "total": pg.Total, "page": pg.Page, "size": pg.Size})
 }
 
 // OpenGetDoc 文档详情（含正文）；loadDoc 自带所有权校验

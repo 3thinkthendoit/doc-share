@@ -10,6 +10,15 @@
     <button class="btn btn-primary" id="btnNewKey">{{$.T "新建密钥"}}</button>
   </div>
 
+  {{if and .user .user.IsAdmin}}
+  <form method="get" action="/admin/apikeys" class="search-bar filter-bar">
+    <input type="hidden" name="size" value="{{.size}}">
+    <input type="text" name="owner" placeholder="{{$.T "key.filterOwner"}}" value="{{.owner}}">
+    <button type="submit" class="btn">{{$.T "docs.query"}}</button>
+    <a href="/admin/apikeys?size={{.size}}" class="btn">{{$.T "重置"}}</a>
+  </form>
+  {{end}}
+
   <div class="panel">
     <style>
       /* AppKey 列字号与正文一致，消除同一行基线错位 */
@@ -29,8 +38,8 @@
           <td>{{if .LastUsedAt}}{{.LastUsedAt.Format "2006-01-02 15:04:05"}}{{else}}—{{end}}</td>
           <td>{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
           {{if and $.user $.user.IsAdmin}}<td>{{if .Owner.Nickname}}{{.Owner.Nickname}}{{else}}{{.Owner.Username}}{{end}}</td>{{end}}
-          <td>
-            <button class="btn btn-sm" data-id="{{.ID}}" data-name="{{.Name}}" onclick="resetKey(this)">{{$.T "重置密钥"}}</button>
+          <td class="col-actions">
+            <button class="btn btn-sm" data-id="{{.ID}}" data-name="{{.Name}}" onclick="resetKey(this)">{{$.T "key.btnReset"}}</button>
             <button class="btn btn-sm" data-id="{{.ID}}" data-name="{{.Name}}" data-status="{{if eq .Status 1}}0{{else}}1{{end}}" onclick="toggleKey(this)">{{if eq .Status 1}}{{$.T "禁用"}}{{else}}{{$.T "启用"}}{{end}}</button>
             <button class="btn btn-sm btn-danger" data-id="{{.ID}}" data-name="{{.Name}}" onclick="delKey(this)">{{$.T "删除"}}</button>
           </td>
@@ -42,6 +51,7 @@
     </table>
   </div>
 
+  {{template "pager" .}}
 </main>
 
 <div class="modal-overlay" id="keyModal" hidden>
@@ -71,7 +81,7 @@
       <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
     </div>
     <div class="modal-body share-body">
-      <div class="secret-warn">{{$.T "Secret 仅显示这一次，离开后无法再次查看；遗失请使用「重置密钥」重新生成。"}}</div>
+      <div class="secret-warn">{{$.T "key.warn"}}</div>
       <label>AppKey
         <div class="secret-row"><input type="text" id="outAppKey" readonly><button type="button" class="btn btn-sm" data-copy="outAppKey">{{$.T "复制"}}</button></div>
       </label>

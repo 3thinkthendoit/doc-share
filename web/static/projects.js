@@ -73,6 +73,9 @@ var memberAddBtn = document.getElementById('memberAddBtn');
 var memberAddRow = document.querySelector('.members-modal .member-add') || document.querySelector('.member-add');
 var memberProjectId = 0;
 var membersReadonly = false; // 非属主查看成员列表：只读模式
+var membersPage = 1;
+var membersSize = 15;
+var memberPager = document.getElementById('memberPager');
 
 if (membersModal) UI.bindModal(membersModal);
 
@@ -80,6 +83,7 @@ if (membersModal) UI.bindModal(membersModal);
 window.openMembers = function (btn) {
   memberProjectId = btn.dataset.id;
   membersReadonly = btn.dataset.readonly === '1';
+  membersPage = 1;
   memberAddRow.style.display = membersReadonly ? 'none' : 'flex';
   UI.openModal(membersModal);
   loadMembers();
@@ -145,18 +149,29 @@ function searchMemberUsers(q) {
 async function loadMembers() {
   memberList.innerHTML = '<div class="muted">' + UI.t('加载中…') + '</div>';
   try {
-    var res = await fetch('/admin/api/projects/' + memberProjectId + '/members', {
+    var res = await fetch('/admin/api/projects/' + memberProjectId + '/members?page=' + membersPage + '&size=' + membersSize, {
       headers: { 'X-Requested-With': 'XMLHttpRequest' }
     });
     var data = await res.json();
+    // 服务端可能钳制越界 page/size，回写本地状态避免下次请求继续带旧值
+    if (data && data.page) membersPage = data.page;
+    if (data && data.size) membersSize = data.size;
     var ms = (data && data.members) || [];
     memberList.innerHTML = '';
     if (!ms.length) {
       memberList.appendChild(mEl('div', 'muted', UI.t('暂无成员')));
-      return;
+    } else {
+      ms.forEach(function (m) { memberList.appendChild(memberRow(m)); });
+      if (window.bindOwnerHover) window.bindOwnerHover(memberList);
     }
-    ms.forEach(function (m) { memberList.appendChild(memberRow(m)); });
-    if (window.bindOwnerHover) window.bindOwnerHover(memberList);
+    UI.renderPager(memberPager, {
+      page: membersPage,
+      totalPages: data.total_pages || 1,
+      size: membersSize,
+      total: data.total || 0,
+      onPage: function (p) { membersPage = p; loadMembers(); },
+      onSize: function (s) { membersSize = s; membersPage = 1; loadMembers(); }
+    });
   } catch (e) {
     memberList.innerHTML = '<div class="muted">' + UI.t('加载失败') + '</div>';
   }

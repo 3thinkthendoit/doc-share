@@ -1,4 +1,4 @@
-# DocShare
+# <img src="web/static/logo-mark.svg" height="36" alt="DocShare logo"/> DocShare
 
 中文说明 | [English](README.md)
 
@@ -83,6 +83,8 @@ web/
   templates/            HTML 模板
   static/               CSS / JS
   locales/              en-US, zh-CN, zh-TW, ja-JP, fr-FR
+mcp/
+  mcp-server.js         零依赖 MCP 服务器（Node，stdio），包装开放 API 供 AI 客户端调用
 ```
 
 ## 开发模式

@@ -11,6 +11,7 @@
   </div>
 
   <form method="get" action="/admin/projects" class="search-bar filter-bar">
+    <input type="hidden" name="size" value="{{.size}}">
     <input type="text" name="q" placeholder="{{$.T "proj.filterName"}}" value="{{.q}}">
     <input type="text" name="owner" placeholder="{{$.T "proj.filterOwner"}}" value="{{.owner}}">
     <select name="scope">
@@ -19,7 +20,7 @@
       <option value="joined" {{if eq .scope "joined"}}selected{{end}}>{{$.T "docs.originShared"}}</option>
     </select>
     <button type="submit" class="btn">{{$.T "docs.query"}}</button>
-    {{if or .q .owner .scope}}<a href="/admin/projects" class="btn">{{$.T "重置"}}</a>{{end}}
+    <a href="/admin/projects?size={{.size}}" class="btn">{{$.T "重置"}}</a>
   </form>
 
   <div class="panel">
@@ -41,7 +42,7 @@
           <td>{{.DocCount}}</td>
           <td>{{.MemberCount}}</td>
           <td>{{.UpdatedAt.Format "2006-01-02 15:04"}}</td>
-          <td>
+          <td class="col-actions">
             {{if and $.user (or $.user.IsAdmin (eq .OwnerID $.user.ID))}}
             <button class="btn btn-sm" data-id="{{.ID}}" onclick="openMembers(this)">{{$.T "proj.members"}}</button>
             <button class="btn btn-sm" data-id="{{.ID}}" data-name="{{.Name}}" data-desc="{{.Description}}" onclick="editProject(this)">{{$.T "编辑"}}</button>
@@ -59,6 +60,8 @@
       </tbody>
     </table>
   </div>
+
+  {{template "pager" .}}
 </main>
 
 <div class="modal-overlay" id="projectModal" hidden>
@@ -106,6 +109,7 @@
         <button type="button" id="memberAddBtn" class="btn btn-sm btn-primary">{{$.T "proj.addMember"}}</button>
       </div>
       <div id="memberList" class="member-list"></div>
+      <div id="memberPager"></div>
     </div>
   </div>
 </div>
@@ -228,6 +232,7 @@
     </div>
     <div class="modal-body share-body">
       <div id="projDocsList" style="max-height:320px;overflow:auto"></div>
+      <div id="projDocsPager"></div>
     </div>
   </div>
 </div>
@@ -237,22 +242,23 @@
   if (!docsModal || !window.UI) return;
   UI.bindModal(docsModal);
   var list = document.getElementById('projDocsList');
+  var pagerEl = document.getElementById('projDocsPager');
+  var docsProjectId = 0;
+  var docsPage = 1;
+  var docsSize = 15;
 
-  window.openProjectDocs = function (btn) {
-    list.innerHTML = '<div class="muted">加载中…</div>';
-    UI.openModal(docsModal);
-    fetch('/admin/api/projects/' + btn.dataset.id + '/docs', {
-      headers: { 'X-Requested-With': 'XMLHttpRequest' }
-    }).then(function (r) { return r.json(); }).then(function (data) {
-      var docs = (data && data.docs) || [];
-      list.innerHTML = '';
-      if (!docs.length) {
-        var empty = document.createElement('div');
-        empty.className = 'muted';
-        empty.textContent = UI.t('项目内暂无文档');
-        list.appendChild(empty);
-        return;
-      }
+  function renderDocs(data) {
+    // 服务端可能钳制越界 page/size，回写本地状态避免下次请求继续带旧值
+    if (data && data.page) docsPage = data.page;
+    if (data && data.size) docsSize = data.size;
+    var docs = (data && data.docs) || [];
+    list.innerHTML = '';
+    if (!docs.length) {
+      var empty = document.createElement('div');
+      empty.className = 'muted';
+      empty.textContent = UI.t('项目内暂无文档');
+      list.appendChild(empty);
+    } else {
       docs.forEach(function (d) {
         var row = document.createElement('div');
         row.className = 'member-row';
@@ -275,9 +281,31 @@
         row.appendChild(t);
         list.appendChild(row);
       });
-    }).catch(function () {
-      list.innerHTML = '<div class="muted">加载失败</div>';
+    }
+    UI.renderPager(pagerEl, {
+      page: docsPage,
+      totalPages: data.total_pages || 1,
+      size: docsSize,
+      total: data.total || 0,
+      onPage: function (p) { docsPage = p; loadProjDocs(); },
+      onSize: function (s) { docsSize = s; docsPage = 1; loadProjDocs(); }
     });
+  }
+
+  function loadProjDocs() {
+    list.innerHTML = '<div class="muted">' + UI.t('加载中…') + '</div>';
+    fetch('/admin/api/projects/' + docsProjectId + '/docs?page=' + docsPage + '&size=' + docsSize, {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    }).then(function (r) { return r.json(); }).then(renderDocs).catch(function () {
+      list.innerHTML = '<div class="muted">' + UI.t('加载失败') + '</div>';
+    });
+  }
+
+  window.openProjectDocs = function (btn) {
+    docsProjectId = btn.dataset.id;
+    docsPage = 1;
+    UI.openModal(docsModal);
+    loadProjDocs();
   };
 })();
 </script>

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -15,35 +16,60 @@ import (
 // CategoriesPage 分类管理页：viewer 只看自己的，admin 看全部
 func (a *App) CategoriesPage(c *gin.Context) {
 	user := middleware.CurrentUser(c)
+	q := strings.TrimSpace(c.Query("q"))
+	pg := parseWebPage(c)
 	tx := a.DB.Model(&model.Category{})
 	if user != nil && !user.IsAdmin() {
 		tx = tx.Where("owner_id = ?", user.ID)
 	}
-	var categories []model.Category
-	tx.Preload("Owner").Order("sort asc, id asc").Find(&categories)
+	if q != "" {
+		tx = tx.Where("name LIKE ?", "%"+q+"%")
+	}
+	var total int64
+	tx.Count(&total)
+	pg = pg.withTotal(total)
 
-	// 回填每个分类的文档数（与列表可见范围一致，viewer 只算自己的文档）
-	var counts []struct {
-		K   uint
-		Cnt int64
+	var categories []model.Category
+	tx.Preload("Owner").Order("sort asc, id asc").Offset(pg.Offset).Limit(pg.Size).Find(&categories)
+
+	// 回填当前页分类的文档数（与列表可见范围一致，viewer 只算自己的文档）
+	pageIDs := make([]uint, len(categories))
+	for i := range categories {
+		pageIDs[i] = categories[i].ID
 	}
-	cntTx := a.DB.Model(&model.Document{}).Select("category_id AS k, COUNT(*) AS cnt")
-	if user != nil && !user.IsAdmin() {
-		cntTx = cntTx.Where("owner_id = ?", user.ID)
-	}
-	cntTx.Group("category_id").Scan(&counts)
-	countMap := make(map[uint]int64, len(counts))
-	for _, row := range counts {
-		countMap[row.K] = row.Cnt
+	countMap := make(map[uint]int64, len(pageIDs))
+	if len(pageIDs) > 0 {
+		var counts []struct {
+			K   uint
+			Cnt int64
+		}
+		cntTx := a.DB.Model(&model.Document{}).Select("category_id AS k, COUNT(*) AS cnt").
+			Where("category_id IN ?", pageIDs)
+		if user != nil && !user.IsAdmin() {
+			cntTx = cntTx.Where("owner_id = ?", user.ID)
+		}
+		cntTx.Group("category_id").Scan(&counts)
+		for _, row := range counts {
+			countMap[row.K] = row.Cnt
+		}
 	}
 	for i := range categories {
 		categories[i].DocCount = countMap[categories[i].ID]
 	}
 
-	a.render(c, "categories.html", gin.H{
+	extra := ""
+	if q != "" {
+		extra += "&q=" + url.QueryEscape(q)
+	}
+	data := gin.H{
 		"title":      "分类管理",
 		"categories": categories,
-	})
+		"q":          q,
+	}
+	for k, v := range pagerFields(pg, "/admin/categories", extra) {
+		data[k] = v
+	}
+	a.render(c, "categories.html", data)
 }
 
 type categoryReq struct {
