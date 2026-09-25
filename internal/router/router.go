@@ -48,6 +48,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.GET("/settings", middleware.RequireAdmin(), app.SettingsPage)
 		admin.PUT("/api/settings", middleware.RequireAdmin(), app.UpdateSettings)
 		admin.POST("/api/settings/test-mail", middleware.RequireAdmin(), app.TestMail)
+		admin.POST("/api/settings/test-rustfs", middleware.RequireAdmin(), app.TestRustFS)
 
 			// 项目内文档列表（属主/管理员/成员）：项目弹窗用
 		admin.GET("/api/projects/:id/docs", app.ListProjectDocs)

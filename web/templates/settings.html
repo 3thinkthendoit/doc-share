@@ -38,6 +38,7 @@
       <label class="check"><input type="radio" name="reg_method" value="email" {{if eq .set.RegMethod "email"}}checked{{end}}> {{$.T "reg.methodEmail"}}</label>
       <label class="check"><input type="radio" name="reg_method" value="phone" {{if eq .set.RegMethod "phone"}}checked{{end}}> {{$.T "reg.methodPhone"}}</label>
 
+      <div id="smtpFields" {{if ne .set.RegMethod "email"}}hidden{{end}}>
       <div class="settings-section">{{$.T "set.smtpTitle"}}</div>
       <div class="smtp-grid">
         <label>{{$.T "set.smtpHost"}}
@@ -66,6 +67,38 @@
       <div style="display:flex;align-items:center;gap:12px;margin:14px 0 6px">
         <label class="check" style="margin:0"><input type="checkbox" name="smtp_ssl" {{if .set.SMTPSSL}}checked{{end}}> {{$.T "set.smtpSsl"}}</label>
         <button type="button" class="btn btn-sm" id="testMailBtn">{{$.T "set.testMail"}}</button>
+      </div>
+      </div>
+
+      <div class="settings-section">{{$.T "set.storageTitle"}}</div>
+      <label class="check"><input type="radio" name="storage_driver" value="local" {{if ne .set.StorageDriver "rustfs"}}checked{{end}}> {{$.T "set.storageLocal"}}</label>
+      <label class="check"><input type="radio" name="storage_driver" value="rustfs" {{if eq .set.StorageDriver "rustfs"}}checked{{end}}> {{$.T "set.storageRustFS"}}</label>
+      <p class="muted" style="font-size:12.5px;margin:4px 0 10px">{{$.T "set.storageTip"}}</p>
+      <div id="rustfsFields" class="rustfs-fields" {{if ne .set.StorageDriver "rustfs"}}hidden{{end}}>
+        <div class="smtp-grid">
+          <label>{{$.T "set.rustfsEndpoint"}}
+            <input type="text" name="rustfs_endpoint" value="{{.set.RustFSEndpoint}}" placeholder="http://localhost:9000" autocomplete="off">
+          </label>
+          <label>{{$.T "set.rustfsRegion"}}
+            <input type="text" name="rustfs_region" value="{{.set.RustFSRegion}}" placeholder="us-east-1" autocomplete="off">
+          </label>
+        </div>
+        <div class="smtp-grid">
+          <label>{{$.T "set.rustfsAccessKey"}}
+            <input type="text" name="rustfs_access_key" value="{{.set.RustFSAccessKey}}" autocomplete="off">
+          </label>
+          <label>{{$.T "set.rustfsSecretKey"}}
+            <input type="password" name="rustfs_secret_key" value="" placeholder="{{$.T "set.rustfsSecretKeep"}}" autocomplete="new-password">
+          </label>
+        </div>
+        <div class="smtp-grid">
+          <label>{{$.T "set.rustfsBucket"}}
+            <input type="text" name="rustfs_bucket" value="{{.set.RustFSBucket}}" autocomplete="off">
+          </label>
+          <div style="display:flex;align-items:flex-end;padding-bottom:2px">
+            <button type="button" class="btn btn-sm" id="testRustFSBtn">{{$.T "set.testRustFS"}}</button>
+          </div>
+        </div>
       </div>
 
       <div class="modal-foot" style="border-top:none;background:none;padding:18px 0 0">
@@ -124,6 +157,16 @@
   });
   logoClearBtn.addEventListener('click', function () { setLogo(''); });
 
+  function syncSmtpFields() {
+    var email = form.querySelector('input[name=reg_method][value=email]');
+    var box = document.getElementById('smtpFields');
+    if (box) box.hidden = !(email && email.checked);
+  }
+  form.querySelectorAll('input[name=reg_method]').forEach(function (el) {
+    el.addEventListener('change', syncSmtpFields);
+  });
+  syncSmtpFields();
+
   document.getElementById('testMailBtn').addEventListener('click', async function () {
     var to = await UI.prompt(UI.t('set.testMailTo'), 'email', 'name@example.com');
     if (to === null) return; // 取消
@@ -147,6 +190,41 @@
     }
   });
 
+  function syncRustFSFields() {
+    var rust = form.querySelector('input[name=storage_driver][value=rustfs]');
+    var box = document.getElementById('rustfsFields');
+    if (box) box.hidden = !(rust && rust.checked);
+  }
+  form.querySelectorAll('input[name=storage_driver]').forEach(function (el) {
+    el.addEventListener('change', syncRustFSFields);
+  });
+  syncRustFSFields();
+
+  document.getElementById('testRustFSBtn').addEventListener('click', async function () {
+    var btn = this;
+    btn.disabled = true;
+    try {
+      var res = await fetch('/admin/api/settings/test-rustfs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({
+          rustfs_endpoint: form.rustfs_endpoint.value.trim(),
+          rustfs_region: form.rustfs_region.value.trim(),
+          rustfs_access_key: form.rustfs_access_key.value.trim(),
+          rustfs_secret_key: form.rustfs_secret_key.value,
+          rustfs_bucket: form.rustfs_bucket.value.trim()
+        })
+      });
+      var data = await res.json();
+      if (!res.ok) { UI.alert((data && data.error) || UI.t('set.testRustFSFail')); return; }
+      UI.toast(UI.t('set.testRustFSOk'), 'success');
+    } catch (e) {
+      UI.alert(UI.t('set.testRustFSFail'));
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
     var saveBtn = form.querySelector('button[type=submit]');
@@ -162,7 +240,13 @@
       smtp_pass: form.smtp_pass.value,
       smtp_from: form.smtp_from.value.trim(),
       smtp_from_name: form.smtp_from_name.value.trim(),
-      smtp_ssl: form.smtp_ssl.checked
+      smtp_ssl: form.smtp_ssl.checked,
+      storage_driver: form.storage_driver.value,
+      rustfs_endpoint: form.rustfs_endpoint.value.trim(),
+      rustfs_region: form.rustfs_region.value.trim(),
+      rustfs_access_key: form.rustfs_access_key.value.trim(),
+      rustfs_secret_key: form.rustfs_secret_key.value,
+      rustfs_bucket: form.rustfs_bucket.value.trim()
     };
     try {
       var res = await fetch('/admin/api/settings', {
@@ -175,6 +259,7 @@
       UI.toast(UI.t('已保存，刷新页面后全站生效'), 'success');
       setTimeout(function () { location.reload(); }, 700);
     } catch (err) { UI.alert(UI.t('保存失败：网络错误或服务不可用')); }
+    finally { saveBtn.disabled = false; }
   });
 })();
 </script>

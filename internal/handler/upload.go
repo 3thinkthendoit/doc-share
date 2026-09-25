@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"bytes"
+	"io"
+	"log"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -17,7 +19,7 @@ var allowedImageExts = map[string]bool{
 	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".bmp": true,
 }
 
-// Upload 图片上传：保存到本地 uploads 目录，返回可直接插入 Markdown 的 URL
+// Upload 图片上传：按系统设置写入本地或 RustFS，返回可直接插入 Markdown 的 URL
 func (a *App) Upload(c *gin.Context) {
 	maxBytes := int64(a.Cfg.Upload.MaxSizeMB) << 20
 	// 预留 multipart 边界开销，超限时立即报错而非挂起
@@ -39,30 +41,40 @@ func (a *App) Upload(c *gin.Context) {
 		return
 	}
 
-	// 魔数校验：内容必须真是图片，防止改扩展名伪装
 	src, err := fh.Open()
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "读取文件失败"})
 		return
 	}
 	defer src.Close()
-	head := make([]byte, 512)
-	n, _ := src.Read(head)
-	if n == 0 || !strings.HasPrefix(http.DetectContentType(head[:n]), "image/") {
+
+	// 读入内存：魔数校验 + 交给存储后端（RustFS Put 需要可 seek/完整 body）
+	data, err := io.ReadAll(io.LimitReader(src, maxBytes+1))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "读取文件失败"})
+		return
+	}
+	if int64(len(data)) > maxBytes {
+		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "err.imgTooBig", a.Cfg.Upload.MaxSizeMB)})
+		return
+	}
+	if len(data) == 0 || !strings.HasPrefix(http.DetectContentType(data), "image/") {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "文件内容不是有效图片"})
 		return
 	}
 
-	sub := time.Now().Format("200601") // 按月分目录：uploads/202609/
-	if err := os.MkdirAll(filepath.Join(a.Cfg.Upload.Dir, sub), 0o755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建存储目录失败"})
+	backend, err := a.fileStorage()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	name := util.RandomSlug(16) + ext // 随机命名，防猜测/防原始文件名注入
-	if err := c.SaveUploadedFile(fh, filepath.Join(a.Cfg.Upload.Dir, sub, name)); err != nil {
+	key := time.Now().Format("200601") + "/" + util.RandomSlug(16) + ext
+	ctype := http.DetectContentType(data)
+	res, err := backend.Put(c.Request.Context(), key, bytes.NewReader(data), int64(len(data)), ctype)
+	if err != nil {
+		log.Printf("[upload] 保存失败: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存文件失败"})
 		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{"url": "/uploads/" + sub + "/" + name})
+	c.JSON(http.StatusOK, gin.H{"url": res.URL})
 }
