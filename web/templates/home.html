@@ -22,8 +22,13 @@
 <div class="l-bgfx"></div>
 
 <nav class="l-nav">
+  <button type="button" class="l-nav-toggle" id="lNavToggle" aria-label="{{$.T "nav.menu"}}" aria-expanded="false" aria-controls="lNavDrawer">
+    <span class="l-nav-toggle-bar" aria-hidden="true"></span>
+    <span class="l-nav-toggle-bar" aria-hidden="true"></span>
+    <span class="l-nav-toggle-bar" aria-hidden="true"></span>
+  </button>
   <a class="l-logo" href="/">{{if .SiteLogo}}<img class="l-logo-img" src="{{.SiteLogo}}" alt="">{{else}}<img class="l-logo-img" src="/static/logo-mark.svg" alt="">{{end}}{{.SiteName}}</a>
-  <div class="l-nav-links">
+  <div class="l-nav-links" id="lNavLinks">
     <a href="#features">{{$.T "产品能力"}}</a>
     <a href="#workflow">{{$.T "工作流"}}</a>
     <a href="#openapi">{{$.T "开放平台"}}</a>
@@ -44,6 +49,15 @@
     {{else}}<a class="l-btn l-btn-ghost" href="/login">{{$.T "登录"}}</a>{{end}}
   </div>
 </nav>
+<div class="l-nav-drawer-overlay" id="lNavDrawer" hidden>
+  <div class="l-nav-drawer" role="dialog" aria-modal="true" aria-label="{{$.T "nav.menu"}}">
+    <div class="l-nav-drawer-head">
+      <span class="l-nav-drawer-title">{{.SiteName}}</span>
+      <button type="button" class="l-nav-drawer-close" data-close-lnav aria-label="{{$.T "common.close"}}">✕</button>
+    </div>
+    <div class="l-nav-drawer-links" id="lNavDrawerLinks"></div>
+  </div>
+</div>
 
 <header class="l-hero">
   <div class="l-wrap l-hero-grid">

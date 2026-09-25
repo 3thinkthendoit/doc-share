@@ -33,6 +33,7 @@
   "nav.changePwd": "パスワード変更",
   "nav.logout": "ログアウト",
   "nav.langTip": "言語切替",
+  "nav.menu": "メニューを開く",
 
   "page.login": "ログイン",
   "page.register": "登録",
@@ -93,7 +94,7 @@
   "docs.query": "検索",
   "docs.sideProjects": "プロジェクト",
   "docs.sideAll": "すべての文書",
-  "docs.shareAll": "すべての共有状態",
+  "docs.shareAll": "すべての状態",
   "docs.permHeader": "ドキュメント権限",
   "docs.permPublic": "公開",
   "docs.permBrowse": "閲覧",
@@ -329,6 +330,7 @@
   "key.confirmDel": "削除するとこのキーは直ちに無効になり復元できません。「{0}」を削除しますか？",
 
   "apidoc.title": "連携ガイド",
+  "apidoc.tocPick": "セクションへ移動",
   "apidoc.secIntro": "概要",
   "apidoc.secHeaders": "署名ヘッダー",
   "apidoc.secAlgo": "署名アルゴリズム",

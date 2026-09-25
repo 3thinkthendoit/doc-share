@@ -3,13 +3,13 @@
 <html lang="{{.Lang}}">
 <head>
 {{template "head" .}}
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github.min.css">
+{{template "hljsTheme" .}}
 </head>
 <body class="reader-body">
   <header class="reader-header">
     <div class="reader-head-inner">
       <div class="reader-brand"><a href="/">{{if .SiteLogo}}<img class="reader-logo" src="{{.SiteLogo}}" alt="">{{else}}<img class="reader-logo" src="/static/logo-mark.svg" alt="">{{end}}{{.SiteName}}</a></div>
-      {{template "langSwitch" .}}
+      <div class="reader-tools">{{template "themeToggle" .}}{{template "langSwitch" .}}</div>
     </div>
   </header>
   <article class="reader">

@@ -3,26 +3,28 @@
 <html lang="{{.Lang}}">
 <head>
 {{template "head" .}}
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github.min.css">
+{{template "hljsTheme" .}}
 </head>
 <body>
 {{template "nav" .}}
 <main class="container wide">
-  <div class="page-head">
+  <div class="page-head page-head-edit">
     <div class="head-title">
       <h1>{{if .doc}}{{$.T "编辑文档"}}{{else}}{{$.T "新建文档"}}{{end}}</h1>
-      <label class="meta-select">{{$.T "项目"}}
-        <select id="docProject">
-          <option value="0">{{$.T "未分组"}}</option>
-          {{range .projects}}<option value="{{.ID}}" {{if and $.doc (eq $.doc.ProjectID .ID)}}selected{{end}}>{{.Name}}</option>{{end}}
-        </select>
-      </label>
-      <label class="meta-select">{{$.T "分类"}}
-        <select id="docCategory">
-          <option value="0">{{$.T "未分类"}}</option>
-          {{range .categories}}<option value="{{.ID}}" {{if and $.doc (eq $.doc.CategoryID .ID)}}selected{{end}}>{{.Name}}</option>{{end}}
-        </select>
-      </label>
+      <div class="head-meta">
+        <label class="meta-select">{{$.T "项目"}}
+          <select id="docProject">
+            <option value="0">{{$.T "未分组"}}</option>
+            {{range .projects}}<option value="{{.ID}}" {{if and $.doc (eq $.doc.ProjectID .ID)}}selected{{end}}>{{.Name}}</option>{{end}}
+          </select>
+        </label>
+        <label class="meta-select">{{$.T "分类"}}
+          <select id="docCategory">
+            <option value="0">{{$.T "未分类"}}</option>
+            {{range .categories}}<option value="{{.ID}}" {{if and $.doc (eq $.doc.CategoryID .ID)}}selected{{end}}>{{.Name}}</option>{{end}}
+          </select>
+        </label>
+      </div>
     </div>
     <div class="head-side">
       <a href="/admin/docs" class="btn">{{$.T "返回列表"}}</a>
@@ -33,6 +35,10 @@
   </div>
 
   <div id="editingBanner" class="editing-banner" hidden></div>
+  <div class="edit-pane-tabs" role="tablist" aria-label="{{$.T "edit.preview"}}">
+    <button type="button" class="edit-pane-tab active" role="tab" aria-selected="true" data-edit-pane="write">{{$.T "docs.edit"}}</button>
+    <button type="button" class="edit-pane-tab" role="tab" aria-selected="false" data-edit-pane="preview">{{$.T "edit.preview"}}</button>
+  </div>
   <div class="edit-grid">
     <div class="edit-left">
       <input type="text" id="docTitle" class="input-title" placeholder="{{$.T "文档标题"}}" value="{{if .doc}}{{.doc.Title}}{{end}}">

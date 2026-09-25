@@ -33,6 +33,7 @@
   "nav.changePwd": "Changer le mot de passe",
   "nav.logout": "Déconnexion",
   "nav.langTip": "Changer de langue",
+  "nav.menu": "Ouvrir le menu",
 
   "page.login": "Connexion",
   "page.register": "Inscription",
@@ -93,7 +94,7 @@
   "docs.query": "Rechercher",
   "docs.sideProjects": "Projets",
   "docs.sideAll": "Tous les documents",
-  "docs.shareAll": "Tous les statuts de partage",
+  "docs.shareAll": "Tous les statuts",
   "docs.permHeader": "Permission",
   "docs.permPublic": "Public",
   "docs.permBrowse": "Consulter",
@@ -329,6 +330,7 @@
   "key.confirmDel": "La suppression révoque immédiatement cette clé de façon irréversible. Supprimer « {0} » ?",
 
   "apidoc.title": "Guide d'intégration",
+  "apidoc.tocPick": "Aller à la section",
   "apidoc.secIntro": "Aperçu",
   "apidoc.secHeaders": "En-têtes de signature",
   "apidoc.secAlgo": "Algorithme de signature",

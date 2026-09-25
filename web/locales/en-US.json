@@ -33,6 +33,7 @@
   "nav.changePwd": "Change password",
   "nav.logout": "Sign out",
   "nav.langTip": "Switch language",
+  "nav.menu": "Open menu",
 
   "page.login": "Sign in",
   "page.register": "Sign up",
@@ -93,7 +94,7 @@
   "docs.query": "Search",
   "docs.sideProjects": "Projects",
   "docs.sideAll": "All documents",
-  "docs.shareAll": "All share statuses",
+  "docs.shareAll": "All statuses",
   "docs.permHeader": "Permission",
   "docs.permPublic": "Public",
   "docs.permBrowse": "View",
@@ -329,6 +330,7 @@
   "key.confirmDel": "Deleting revokes this key immediately and cannot be undone. Delete \"{0}\"?",
 
   "apidoc.title": "Integration guide",
+  "apidoc.tocPick": "Jump to section",
   "apidoc.secIntro": "Overview",
   "apidoc.secHeaders": "Signature headers",
   "apidoc.secAlgo": "Signature algorithm",

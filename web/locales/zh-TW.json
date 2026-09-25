@@ -33,6 +33,7 @@
   "nav.changePwd": "修改密碼",
   "nav.logout": "登出系統",
   "nav.langTip": "切換語言",
+  "nav.menu": "開啟選單",
 
   "page.login": "登入",
   "page.register": "註冊",
@@ -93,7 +94,7 @@
   "docs.query": "查詢",
   "docs.sideProjects": "專案",
   "docs.sideAll": "全部文件",
-  "docs.shareAll": "全部分享狀態",
+  "docs.shareAll": "全部狀態",
   "docs.permHeader": "文件權限",
   "docs.permPublic": "公開",
   "docs.permBrowse": "瀏覽",
@@ -329,6 +330,7 @@
   "key.confirmDel": "刪除後該金鑰立即失效且無法復原，確認刪除「{0}」？",
 
   "apidoc.title": "串接說明",
+  "apidoc.tocPick": "選擇目錄章節",
   "apidoc.secIntro": "總覽",
   "apidoc.secHeaders": "簽名請求標頭",
   "apidoc.secAlgo": "簽名演算法",

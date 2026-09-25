@@ -8,6 +8,27 @@
 
   if (previewEl) previewEl.classList.add('edit-preview');
 
+  // 窄屏：编辑 / 预览 Tab 切换（桌面 CSS 强制双栏）
+  (function bindEditPaneTabs() {
+    var grid = document.querySelector('.edit-grid');
+    var tabs = document.querySelectorAll('.edit-pane-tab');
+    if (!grid || !tabs.length) return;
+    grid.classList.add('is-write');
+    tabs.forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        var pane = tab.getAttribute('data-edit-pane') || 'write';
+        grid.classList.toggle('is-write', pane === 'write');
+        grid.classList.toggle('is-preview', pane === 'preview');
+        tabs.forEach(function (t) {
+          var on = t === tab;
+          t.classList.toggle('active', on);
+          t.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        if (pane === 'preview') doPreview();
+      });
+    });
+  })();
+
   function doPreview() {
     if (!previewEl) return;
     if (window.marked && window.DOMPurify) {

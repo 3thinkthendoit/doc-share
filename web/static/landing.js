@@ -82,4 +82,40 @@
       try { localStorage.setItem('ds_theme', next); } catch (e) { /* 隐私模式下忽略 */ }
     });
   }
+
+  // 窄屏导航抽屉：从桌面链接克隆，点击锚点后关闭
+  var toggle = document.getElementById('lNavToggle');
+  var drawer = document.getElementById('lNavDrawer');
+  var drawerLinks = document.getElementById('lNavDrawerLinks');
+  var srcLinks = document.getElementById('lNavLinks');
+  function closeLNav() {
+    if (!drawer || !toggle) return;
+    drawer.hidden = true;
+    toggle.setAttribute('aria-expanded', 'false');
+    document.body.classList.remove('l-nav-open');
+  }
+  function openLNav() {
+    if (!drawer || !toggle || !drawerLinks || !srcLinks) return;
+    drawerLinks.innerHTML = '';
+    srcLinks.querySelectorAll('a').forEach(function (a) {
+      drawerLinks.appendChild(a.cloneNode(true));
+    });
+    drawer.hidden = false;
+    toggle.setAttribute('aria-expanded', 'true');
+    document.body.classList.add('l-nav-open');
+  }
+  if (toggle && drawer) {
+    toggle.addEventListener('click', function () {
+      if (drawer.hidden) openLNav(); else closeLNav();
+    });
+    drawer.addEventListener('click', function (e) {
+      if (e.target === drawer || e.target.closest('[data-close-lnav]')) closeLNav();
+    });
+    drawerLinks && drawerLinks.addEventListener('click', function (e) {
+      if (e.target.closest('a')) closeLNav();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeLNav();
+    });
+  }
 })();

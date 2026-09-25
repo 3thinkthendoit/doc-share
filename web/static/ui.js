@@ -503,6 +503,40 @@ window.UI = (function () {
 // 导航栏用户菜单与修改密码弹窗（ui.js 在 head 加载，需等 DOM 就绪）
 document.addEventListener('DOMContentLoaded', function () {
   if (!window.UI) return;
+
+  // 明暗主题：与官网共用 localStorage ds_theme；按钮由模板注入 .theme-toggle
+  (function initThemeToggles() {
+    var root = document.documentElement;
+    var btns = document.querySelectorAll('.theme-toggle');
+    if (!btns.length) return;
+    function syncPressed() {
+      var isLight = root.getAttribute('data-theme') === 'light';
+      btns.forEach(function (btn) {
+        btn.setAttribute('aria-pressed', isLight ? 'true' : 'false');
+      });
+    }
+    function syncHljs(theme) {
+      var link = document.getElementById('hljs-theme') ||
+        document.querySelector('link[href*="highlight.js"][href*="/styles/"]');
+      if (!link) return;
+      var base = 'https://cdn.jsdelivr.net/npm/highlight.js@11/styles/';
+      link.href = base + (theme === 'dark' ? 'github-dark.min.css' : 'github.min.css');
+    }
+    var cur = root.getAttribute('data-theme') || 'light';
+    syncPressed();
+    syncHljs(cur);
+    btns.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+        root.setAttribute('data-theme', next);
+        root.setAttribute('data-theme-anim', '');
+        try { localStorage.setItem('ds_theme', next); } catch (e) { /* 隐私模式忽略 */ }
+        syncPressed();
+        syncHljs(next);
+      });
+    });
+  })();
+
   // 全站升级自定义下拉
   document.querySelectorAll('select').forEach(function (sel) { UI.skinSelect ? UI.skinSelect(sel) : null; });
   // 所有者 / 成员悬停信息卡
@@ -611,4 +645,97 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     });
   }
+
+  // 后台窄屏导航抽屉
+  (function bindNavDrawer() {
+    var toggle = document.getElementById('navToggle');
+    var drawer = document.getElementById('navDrawer');
+    var drawerLinks = document.getElementById('navDrawerLinks');
+    var srcLinks = document.getElementById('navLinks');
+    if (!toggle || !drawer || !drawerLinks || !srcLinks) return;
+    function markActive(root) {
+      var path = location.pathname;
+      root.querySelectorAll('a').forEach(function (a) {
+        var href = a.getAttribute('href') || '';
+        var on = href === path;
+        if (!on && href !== '/' && href !== '/admin') {
+          on = path === href || path.indexOf(href + '/') === 0;
+        }
+        a.classList.toggle('active', on);
+      });
+    }
+    function closeNav() {
+      drawer.hidden = true;
+      toggle.setAttribute('aria-expanded', 'false');
+      document.body.classList.remove('nav-drawer-open');
+    }
+    function openNav() {
+      drawerLinks.innerHTML = '';
+      srcLinks.querySelectorAll('a').forEach(function (a) {
+        drawerLinks.appendChild(a.cloneNode(true));
+      });
+      markActive(drawerLinks);
+      drawer.hidden = false;
+      toggle.setAttribute('aria-expanded', 'true');
+      document.body.classList.add('nav-drawer-open');
+    }
+    toggle.addEventListener('click', function () {
+      if (drawer.hidden) openNav(); else closeNav();
+    });
+    drawer.addEventListener('click', function (e) {
+      if (e.target === drawer || e.target.closest('[data-close-nav]')) closeNav();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !drawer.hidden) closeNav();
+    });
+  })();
+
+  // 列表窄屏卡片：从 thead 注入 data-label；空行/合并格跳过
+  (function enhanceTableCards() {
+    document.querySelectorAll('.panel > table.table').forEach(function (table) {
+      if (table.closest('.api-doc, .share-access-list, .pending-apply-scroll')) return;
+      var ths = Array.prototype.map.call(table.querySelectorAll('thead th'), function (th) {
+        return (th.textContent || '').replace(/\s+/g, ' ').trim();
+      });
+      if (!ths.length) return;
+      table.querySelectorAll('tbody tr').forEach(function (tr) {
+        if (tr.classList.contains('empty-row') || tr.querySelector('td[colspan]')) return;
+        Array.prototype.forEach.call(tr.children, function (td, i) {
+          if (ths[i]) td.setAttribute('data-label', ths[i]);
+        });
+      });
+      table.classList.add('table-cards');
+      if (table.parentElement && table.parentElement.classList.contains('panel')) {
+        table.parentElement.classList.add('panel-cards');
+      }
+    });
+  })();
+
+  // API 文档：窄屏用下拉代替左侧目录
+  (function bindDocTocMobile() {
+    var side = document.querySelector('.doc-layout > .doc-side');
+    var main = document.querySelector('.doc-layout > .doc-main');
+    if (!side || !main) return;
+    var links = side.querySelectorAll('a[href^="#"]');
+    if (!links.length) return;
+    var sel = document.createElement('select');
+    sel.className = 'doc-toc-mobile';
+    sel.setAttribute('aria-label', (window.UI && UI.t) ? UI.t('nav.menu') : 'Menu');
+    var opt0 = document.createElement('option');
+    opt0.value = '';
+    opt0.textContent = (window.UI && UI.t) ? UI.t('apidoc.tocPick') : '目录';
+    sel.appendChild(opt0);
+    links.forEach(function (a) {
+      var o = document.createElement('option');
+      o.value = a.getAttribute('href');
+      o.textContent = (a.textContent || '').replace(/\s+/g, ' ').trim();
+      sel.appendChild(o);
+    });
+    sel.addEventListener('change', function () {
+      if (!sel.value) return;
+      var el = document.querySelector(sel.value);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    main.insertBefore(sel, main.firstChild);
+  })();
 });

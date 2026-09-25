@@ -3,7 +3,7 @@
 <html lang="{{.Lang}}">
 <head>{{template "head" .}}</head>
 <body class="auth-body">
-  <div class="auth-lang">{{template "langSwitch" .}}</div>
+  <div class="auth-tools">{{template "themeToggle" .}}{{template "langSwitch" .}}</div>
   <div class="auth-card">
     <h1 class="auth-title">DocShare</h1>
     <p class="auth-sub">{{$.T "page.brand"}}</p>

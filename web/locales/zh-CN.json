@@ -33,6 +33,7 @@
   "nav.changePwd": "修改密码",
   "nav.logout": "退出系统",
   "nav.langTip": "切换语言",
+  "nav.menu": "打开菜单",
 
   "page.login": "登录",
   "page.register": "注册",
@@ -93,7 +94,7 @@
   "docs.query": "查询",
   "docs.sideProjects": "项目",
   "docs.sideAll": "全部文档",
-  "docs.shareAll": "全部分享状态",
+  "docs.shareAll": "全部状态",
   "docs.permHeader": "文档权限",
   "docs.permPublic": "公开",
   "docs.permBrowse": "浏览",
@@ -329,6 +330,7 @@
   "key.confirmDel": "删除后该密钥立即失效且不可恢复，确认删除「{0}」？",
 
   "apidoc.title": "对接说明",
+  "apidoc.tocPick": "选择目录章节",
   "apidoc.secIntro": "概述",
   "apidoc.secHeaders": "签名请求头",
   "apidoc.secAlgo": "签名算法",
