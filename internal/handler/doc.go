@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 // DocsPage 文档列表页（搜索 + 分页 + 来源筛选）
@@ -81,8 +82,11 @@ func (a *App) DocsPage(c *gin.Context) {
 	pg = pg.withTotal(total)
 
 	var docs []model.Document
-	tx.Preload("Owner").Preload("Share").Preload("Project").Preload("Category").Order("updated_at desc").
-		Offset(pg.Offset).Limit(pg.Size).Find(&docs)
+	// 列表不拉 Content（longtext）；嵌入标签另用 LIKE 只取 id
+	tx.Omit("Content").Preload("Owner").Preload("Share").Preload("Project").Preload("Category").
+		Order("updated_at desc").Offset(pg.Offset).Limit(pg.Size).Find(&docs)
+
+	embedTags := detectEmbedTags(a.DB, docs)
 
 	// 逐行编辑权限（批量取成员角色，避免逐条查询）：
 	// 属主/管理员可编辑；edit 角色成员可编辑所参与项目内的他人文档
@@ -155,6 +159,7 @@ func (a *App) DocsPage(c *gin.Context) {
 		"projects":   projects,
 		"categories": categories,
 		"canEdit":    canEdit,
+		"embedTags":  embedTags,
 		"sideQS":     sideQS,
 	}
 	for k, v := range pagerFields(pg, "/admin/docs", extra) {
@@ -657,4 +662,52 @@ func (a *App) DeleteShare(c *gin.Context) {
 	doc.IsShared = false
 	a.DB.Save(doc)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// contentHasFence 判断 Markdown 是否含指定语言的围栏块（行首 ```lang）
+func contentHasFence(content, lang string) bool {
+	if content == "" || lang == "" {
+		return false
+	}
+	needle := "```" + lang
+	for i := 0; i < len(content); {
+		j := strings.Index(content[i:], needle)
+		if j < 0 {
+			return false
+		}
+		abs := i + j
+		atLineStart := abs == 0 || content[abs-1] == '\n'
+		rest := abs + len(needle)
+		okTail := rest >= len(content) || content[rest] == '\n' || content[rest] == '\r' || content[rest] == ' ' || content[rest] == '\t'
+		if atLineStart && okTail {
+			return true
+		}
+		i = abs + 1
+	}
+	return false
+}
+
+// detectEmbedTags 按当前页文档 ID 用 LIKE 探测围栏，不把 Content 拉进列表实体
+func detectEmbedTags(db *gorm.DB, docs []model.Document) map[uint][]string {
+	out := make(map[uint][]string, len(docs))
+	if db == nil || len(docs) == 0 {
+		return out
+	}
+	ids := make([]uint, len(docs))
+	for i, d := range docs {
+		ids[i] = d.ID
+	}
+	mark := func(lang, tag string) {
+		var hit []uint
+		// 只取 id：LIKE 在服务端过滤，避免 SELECT content
+		db.Model(&model.Document{}).
+			Where("id IN ? AND (content LIKE ? OR content LIKE ?)", ids, "```"+lang+"%", "%\n```"+lang+"%").
+			Pluck("id", &hit)
+		for _, id := range hit {
+			out[id] = append(out[id], tag)
+		}
+	}
+	mark("mindmap", "docs.tagMindmap")
+	mark("excalidraw", "docs.tagBoard")
+	return out
 }

@@ -35,12 +35,31 @@
     if (previewEl.contains(document.activeElement) && document.activeElement.isContentEditable) {
       return;
     }
-    if (window.marked && window.DOMPurify) {
+    if (window.Embeds && Embeds.parseMarkdown) {
+      var html = Embeds.parseMarkdown(contentEl.value || '');
+      if (html != null) previewEl.innerHTML = html;
+      else previewEl.textContent = contentEl.value || '';
+    } else if (window.marked && window.DOMPurify) {
       previewEl.innerHTML = DOMPurify.sanitize(marked.parse(contentEl.value || ''));
     } else {
       previewEl.textContent = contentEl.value || '';
     }
     bindPreviewTables();
+    bindPreviewEmbeds();
+  }
+
+  function bindPreviewEmbeds() {
+    if (!previewEl || !window.Embeds) return;
+    Embeds.hydrate(previewEl, {
+      editable: !!saveBtn,
+      getSource: function () { return contentEl.value; },
+      setSource: function (next) {
+        contentEl.value = next;
+        markDirty();
+        doPreview();
+      },
+      onSaved: function () { markDirty(); }
+    });
   }
   var dirty = false;
   var saving = false;
@@ -109,12 +128,25 @@
       case 'link': wrapSel('[', '](https://)', UI.t('链接文字')); break;
       case 'hr': insertAtCursor('\n---\n'); return;
       case 'table': insertTableInteractive(); return;
+      case 'mindmap': insertEmbed('mindmap'); return;
+      case 'excalidraw': insertEmbed('excalidraw'); return;
       case 'image': if (uploadInput) uploadInput.click(); return;
       case 'import': if (importInput) importInput.click(); return;
       default: return;
     }
     doPreview();
     contentEl.focus();
+  }
+
+  function insertEmbed(kind) {
+    if (!window.Embeds) return;
+    Embeds.insertEmbed(contentEl, kind, function () {
+      markDirty();
+      doPreview();
+      contentEl.focus();
+    });
+    markDirty();
+    doPreview();
   }
 
   // 插入表格：单框内「列数 × 行数」一并填写

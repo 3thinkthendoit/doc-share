@@ -60,10 +60,16 @@
               <td>
                 {{/* 有编辑权限点标题进编辑页；否则进阅读预览页 */}}
                 {{if and $.canEdit (index $.canEdit .ID)}}
-                <a href="/admin/docs/{{.ID}}/edit">{{.Title}}</a><div class="muted mono">{{.Slug}}</div>
+                <a href="/admin/docs/{{.ID}}/edit">{{.Title}}</a>
                 {{else}}
-                <a href="/admin/docs/{{.ID}}/preview" target="_blank">{{.Title}}</a><div class="muted mono">{{.Slug}}</div>
+                <a href="/admin/docs/{{.ID}}/preview" target="_blank">{{.Title}}</a>
                 {{end}}
+                {{if $.embedTags}}{{with index $.embedTags .ID}}
+                <div class="doc-embed-tags">
+                  {{range .}}<span class="tag tag-embed">{{$.T .}}</span>{{end}}
+                </div>
+                {{end}}{{end}}
+                <div class="muted mono">{{.Slug}}</div>
               </td>
               <td>{{if .Project}}{{.Project.Name}}{{else}}<span class="muted">—</span>{{end}}</td>
               <td>{{if .Category}}{{.Category.Name}}{{else}}<span class="muted">—</span>{{end}}</td>

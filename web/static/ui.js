@@ -128,15 +128,24 @@ window.UI = (function () {
   }
 
   /* ---- 静态弹窗（页面内预置的 .modal-overlay）---- */
+  // 按页面上可见 overlay 同步 body 滚动锁，避免多层弹窗互相拆掉 modal-open
+  function syncBodyLock() {
+    var locked = false;
+    document.querySelectorAll('.modal-overlay').forEach(function (el) {
+      if (el.hidden || !el.isConnected) return;
+      locked = true;
+    });
+    document.body.classList.toggle('modal-open', locked);
+  }
   function openModal(el) {
     if (!el) return;
     el.hidden = false;
-    document.body.classList.add('modal-open');
+    syncBodyLock();
   }
   function closeModal(el) {
     if (!el) return;
     el.hidden = true;
-    document.body.classList.remove('modal-open');
+    syncBodyLock();
   }
   // 绑定 [data-close-modal] 按钮关闭（✕ / 取消）。
   // 注意：表单弹窗故意不响应遮罩点击和 ESC，防误触丢失填写内容；
@@ -467,6 +476,7 @@ window.UI = (function () {
     bindFormValidation: bindFormValidation,
     openModal: openModal,
     closeModal: closeModal,
+    syncBodyLock: syncBodyLock,
     bindModal: bindModal,
     syncSelect: syncXs,
     skinSelect: skinSelect,

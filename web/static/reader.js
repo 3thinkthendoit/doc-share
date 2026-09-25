@@ -48,6 +48,10 @@
         editBtn.hidden = false;
         saveBtn.hidden = true;
         cancelBtn.hidden = true;
+        if (window.DocRender) {
+          DocRender.renderMarkdown(raw.value, previewEl);
+          DocRender.hydrateEmbeds(previewEl);
+        }
       });
       saveBtn.addEventListener('click', async function () {
         var content = editArea.value;
@@ -62,7 +66,19 @@
           var data = await res.json();
           if (!res.ok) { UI.alert((data && data.error) || '保存失败'); saveBtn.disabled = false; return; }
           UI.toast('已保存', 'success');
-          setTimeout(function () { location.reload(); }, 600);
+          raw.value = content;
+          previewEl.hidden = false;
+          editArea.hidden = true;
+          editBtn.hidden = false;
+          saveBtn.hidden = true;
+          cancelBtn.hidden = true;
+          saveBtn.disabled = false;
+          if (window.DocRender) {
+            DocRender.renderMarkdown(content, previewEl);
+            DocRender.hydrateEmbeds(previewEl);
+          } else {
+            setTimeout(function () { location.reload(); }, 600);
+          }
         } catch (e) {
           UI.alert('保存失败：网络错误');
           saveBtn.disabled = false;

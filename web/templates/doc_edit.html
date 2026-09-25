@@ -60,6 +60,8 @@
         <button type="button" data-md="link" title="{{$.T "链接 Ctrl+K"}}">{{$.T "edit.btnLink"}}</button>
         <button type="button" data-md="image" title="{{$.T "插入图片"}}">{{$.T "edit.btnImage"}}</button>
         <button type="button" data-md="table" title="{{$.T "插入表格"}}">{{$.T "edit.btnTable"}}</button>
+        <button type="button" data-md="mindmap" title="{{$.T "edit.embedMindmap"}}">{{$.T "edit.btnMindmap"}}</button>
+        <button type="button" data-md="excalidraw" title="{{$.T "edit.embedBoard"}}">{{$.T "edit.btnBoard"}}</button>
         <button type="button" data-md="hr" title="{{$.T "分隔线"}}">―</button>
         <span class="tb-sep"></span>
         <button type="button" data-md="import" title="{{$.T "导入 PDF / doc / docx 并转为 Markdown"}}">{{$.T "导入文档"}}</button>
@@ -143,6 +145,7 @@
 <script>
   window.DOC_ID = {{if .doc}}{{.doc.ID}}{{else}}0{{end}};
 </script>
+<script src="/static/embeds.js"></script>
 <script src="/static/editor.js"></script>
 </body>
 </html>

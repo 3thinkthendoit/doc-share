@@ -101,8 +101,9 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.GET("/api/docs/:id/revisions", app.ListRevisions)
 		admin.POST("/api/docs/:id/revisions/:rid/rollback", app.RollbackRevision)
 
-		// 图片上传
+		// 图片上传 / 异步删除（嵌入预览覆盖）
 		admin.POST("/api/upload", app.Upload)
+		admin.DELETE("/api/upload", app.DeleteUpload)
 
 		// 文档转换：pdf / doc / docx → Markdown
 		admin.POST("/api/convert", app.Convert)

@@ -7,9 +7,21 @@
 <main class="container">
   <div class="page-head"><h1>{{$.T "set.title"}}</h1></div>
 
+  <div class="docs-layout">
+  <aside class="doc-side docs-side" aria-label="{{$.T "set.title"}}">
+    <div class="docs-side-label">{{$.T "set.title"}}</div>
+    <a href="#sec-basic" class="active">{{$.T "set.navBasic"}}</a>
+    <a href="#sec-share">{{$.T "set.shareTitle"}}</a>
+    <a href="#sec-reg">{{$.T "set.regTitle"}}</a>
+    <a href="#sec-mail">{{$.T "set.smtpTitle"}}</a>
+    <a href="#sec-storage">{{$.T "set.storageTitle"}}</a>
+  </aside>
+
+  <div class="docs-main">
   <div class="panel">
     <div class="panel-head"><h2>{{$.T "set.title"}}</h2></div>
     <form id="settingsForm" class="share-body" novalidate style="padding:22px 22px 22px;max-width:960px">
+      <section id="sec-basic" class="set-sec">
       <label>{{$.T "set.siteName"}}
         <input type="text" name="site_name" required maxlength="64" value="{{.set.SiteName}}" placeholder="DocShare">
       </label>
@@ -32,17 +44,22 @@
         <input type="text" name="site_domain" value="{{.set.SiteDomain}}" placeholder="https://docs.example.com">
         <span class="muted" style="font-size:12.5px">{{$.T "set.siteDomainTip"}}</span>
       </label>
+      </section>
 
+      <section id="sec-share" class="set-sec">
       <div class="settings-section">{{$.T "set.shareTitle"}}</div>
       <label class="check"><input type="checkbox" name="allow_share_apply" {{if .set.AllowShareApply}}checked{{end}}> {{$.T "set.allowShareApply"}}</label>
       <p class="muted" style="font-size:12.5px;margin:-4px 0 10px">{{$.T "set.allowShareApplyTip"}}</p>
+      </section>
 
+      <section id="sec-reg" class="set-sec">
       <div class="settings-section">{{$.T "set.regTitle"}}</div>
       <label class="check"><input type="radio" name="reg_method" value="username" {{if eq .set.RegMethod "username"}}checked{{end}}> {{$.T "reg.methodUsername"}}</label>
       <label class="check"><input type="radio" name="reg_method" value="email" {{if eq .set.RegMethod "email"}}checked{{end}}> {{$.T "reg.methodEmail"}}</label>
       <label class="check"><input type="radio" name="reg_method" value="phone" {{if eq .set.RegMethod "phone"}}checked{{end}}> {{$.T "reg.methodPhone"}}</label>
+      </section>
 
-      <div id="smtpFields" {{if ne .set.RegMethod "email"}}hidden{{end}}>
+      <section id="sec-mail" class="set-sec" {{if ne .set.RegMethod "email"}}hidden{{end}}>
       <div class="settings-section">{{$.T "set.smtpTitle"}}</div>
       <div class="smtp-grid">
         <label>{{$.T "set.smtpHost"}}
@@ -72,8 +89,9 @@
         <label class="check" style="margin:0"><input type="checkbox" name="smtp_ssl" {{if .set.SMTPSSL}}checked{{end}}> {{$.T "set.smtpSsl"}}</label>
         <button type="button" class="btn btn-sm" id="testMailBtn">{{$.T "set.testMail"}}</button>
       </div>
-      </div>
+      </section>
 
+      <section id="sec-storage" class="set-sec">
       <div class="settings-section">{{$.T "set.storageTitle"}}</div>
       <label class="check"><input type="radio" name="storage_driver" value="local" {{if ne .set.StorageDriver "rustfs"}}checked{{end}}> {{$.T "set.storageLocal"}}</label>
       <label class="check"><input type="radio" name="storage_driver" value="rustfs" {{if eq .set.StorageDriver "rustfs"}}checked{{end}}> {{$.T "set.storageRustFS"}}</label>
@@ -104,11 +122,14 @@
           </div>
         </div>
       </div>
+      </section>
 
       <div class="modal-foot" style="border-top:none;background:none;padding:18px 0 0">
         <button type="submit" class="btn btn-primary">{{$.T "common.save"}}</button>
       </div>
     </form>
+  </div>
+  </div>
   </div>
 </main>
 <style>
@@ -123,6 +144,10 @@
 .settings-section:first-of-type{margin-top:0}
 .smtp-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .smtp-grid label{margin-bottom:0}
+/* 分组区块 Tab 切换：一次只显示一组；hidden（邮件服务未启用）优先级最高 */
+.set-sec{display:none}
+.set-sec.active{display:block}
+.set-sec[hidden]{display:none!important}
 </style>
 <script>
 (function () {
@@ -163,8 +188,14 @@
 
   function syncSmtpFields() {
     var email = form.querySelector('input[name=reg_method][value=email]');
-    var box = document.getElementById('smtpFields');
-    if (box) box.hidden = !(email && email.checked);
+    var box = document.getElementById('sec-mail');
+    if (!box) return;
+    var on = !!(email && email.checked);
+    box.hidden = !on;
+    // 菜单项同步显隐；若正停留在该分组则退回注册方式
+    var link = document.querySelector('.doc-side a[href="#sec-mail"]');
+    if (link) link.style.display = on ? '' : 'none';
+    if (!on && box.classList.contains('active')) showSec('sec-reg');
   }
   form.querySelectorAll('input[name=reg_method]').forEach(function (el) {
     el.addEventListener('change', syncSmtpFields);
@@ -203,6 +234,20 @@
     el.addEventListener('change', syncRustFSFields);
   });
   syncRustFSFields();
+
+  // 左侧菜单：Tab 式切换，点击只显示对应分组（所有字段仍在同一表单内，保存不受影响）
+  var menuLinks = Array.prototype.slice.call(document.querySelectorAll('.doc-side a[href^="#sec-"]'));
+  function showSec(id) {
+    menuLinks.forEach(function (a) { a.classList.toggle('active', a.getAttribute('href') === '#' + id); });
+    form.querySelectorAll('.set-sec').forEach(function (s) { s.classList.toggle('active', s.id === id); });
+  }
+  menuLinks.forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      e.preventDefault();
+      showSec(a.getAttribute('href').slice(1));
+    });
+  });
+  showSec(/^#sec-/.test(location.hash) ? location.hash.slice(1) : 'sec-basic');
 
   document.getElementById('testRustFSBtn').addEventListener('click', async function () {
     var btn = this;

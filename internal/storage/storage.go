@@ -5,6 +5,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
+	"path"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -28,6 +31,8 @@ type PutResult struct {
 type Storage interface {
 	// Put 写入对象；key 形如 202609/abc.png；contentType 可为空
 	Put(ctx context.Context, key string, body io.Reader, size int64, contentType string) (PutResult, error)
+	// Delete 删除对象；key 不存在视为成功
+	Delete(ctx context.Context, key string) error
 	// Ping 连通性检测（凭证、endpoint、bucket）
 	Ping(ctx context.Context) error
 }
@@ -76,4 +81,86 @@ func ObjectURL(endpoint, bucket, key string) string {
 	endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
 	key = strings.TrimLeft(key, "/")
 	return endpoint + "/" + bucket + "/" + key
+}
+
+// uploadKeyRe 普通上传 key：YYYYMM/slug.ext
+var uploadKeyRe = regexp.MustCompile(`(?i)^[0-9]{6}/[a-zA-Z0-9]+\.(png|jpe?g|gif|webp|bmp)$`)
+
+// embedUploadKeyRe 嵌入预览专用 key：embed/YYYYMM/slug.ext（仅此类允许被 replace/DELETE 清理）
+var embedUploadKeyRe = regexp.MustCompile(`(?i)^embed/[0-9]{6}/[a-zA-Z0-9]+\.(png|jpe?g|gif|webp|bmp)$`)
+
+func cleanUploadKey(key string) string {
+	return strings.TrimLeft(strings.ReplaceAll(key, "\\", "/"), "/")
+}
+
+// ValidUploadKey 校验可解析的存储 key（普通图 + 嵌入预览），防止路径穿越
+func ValidUploadKey(key string) bool {
+	key = cleanUploadKey(key)
+	if key == "" || strings.Contains(key, "..") || strings.Contains(key, "//") {
+		return false
+	}
+	return uploadKeyRe.MatchString(key) || embedUploadKeyRe.MatchString(key)
+}
+
+// ValidEmbedUploadKey 仅嵌入预览对象；异步删除/覆盖替换只允许这类 key
+func ValidEmbedUploadKey(key string) bool {
+	key = cleanUploadKey(key)
+	if key == "" || strings.Contains(key, "..") || strings.Contains(key, "//") {
+		return false
+	}
+	return embedUploadKeyRe.MatchString(key)
+}
+
+// ObjectKeyFromURL 从对外 URL 解析存储 key；无法识别返回空字符串。
+// 支持：/uploads/{key}、带站点前缀的 /uploads/{key}、RustFS ObjectURL。
+func ObjectKeyFromURL(rawURL string, rust *RustFSConfig) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return ""
+	}
+	if strings.HasPrefix(rawURL, "/uploads/") {
+		key := strings.TrimPrefix(rawURL, "/uploads/")
+		if q := strings.IndexByte(key, '?'); q >= 0 {
+			key = key[:q]
+		}
+		if ValidUploadKey(key) {
+			return key
+		}
+		return ""
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	p := path.Clean("/" + strings.TrimPrefix(u.Path, "/"))
+	if strings.HasPrefix(p, "/uploads/") {
+		key := strings.TrimPrefix(p, "/uploads/")
+		if ValidUploadKey(key) {
+			return key
+		}
+		return ""
+	}
+	if rust == nil {
+		return ""
+	}
+	cfg, err := rust.Validate()
+	if err != nil {
+		return ""
+	}
+	prefix := ObjectURL(cfg.Endpoint, cfg.Bucket, "")
+	// prefix 形如 http://host/bucket/ ；兼容无尾斜杠比较
+	candidates := []string{rawURL, strings.TrimRight(rawURL, "/")}
+	for _, c := range candidates {
+		if strings.HasPrefix(c, prefix) {
+			key := strings.TrimPrefix(c, prefix)
+			if q := strings.IndexByte(key, '?'); q >= 0 {
+				key = key[:q]
+			}
+			key = strings.TrimLeft(key, "/")
+			if ValidUploadKey(key) {
+				return key
+			}
+		}
+	}
+	return ""
 }

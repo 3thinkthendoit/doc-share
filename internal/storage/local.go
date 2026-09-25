@@ -40,6 +40,33 @@ func (l *Local) Put(ctx context.Context, key string, body io.Reader, _ int64, _ 
 	return PutResult{URL: "/uploads/" + key}, nil
 }
 
+func (l *Local) Delete(ctx context.Context, key string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	key = stringsCleanKey(key)
+	if key == "" || strings.Contains(key, "..") {
+		return fmt.Errorf("非法存储 key")
+	}
+	absDir, err := filepath.Abs(l.Dir)
+	if err != nil {
+		return fmt.Errorf("解析上传目录失败: %w", err)
+	}
+	dst := filepath.Join(absDir, filepath.FromSlash(key))
+	absDst, err := filepath.Abs(dst)
+	if err != nil {
+		return fmt.Errorf("解析目标路径失败: %w", err)
+	}
+	sep := string(os.PathSeparator)
+	if absDst != absDir && !strings.HasPrefix(absDst, absDir+sep) {
+		return fmt.Errorf("非法存储 key")
+	}
+	if err := os.Remove(absDst); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("删除文件失败: %w", err)
+	}
+	return nil
+}
+
 func (l *Local) Ping(_ context.Context) error {
 	if l.Dir == "" {
 		return fmt.Errorf("本地上传目录未配置")

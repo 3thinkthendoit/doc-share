@@ -60,6 +60,23 @@ func (r *RustFS) Put(ctx context.Context, key string, body io.Reader, size int64
 	return PutResult{URL: ObjectURL(r.cfg.Endpoint, r.cfg.Bucket, key)}, nil
 }
 
+func (r *RustFS) Delete(ctx context.Context, key string) error {
+	ctx, cancel := context.WithTimeout(ctx, opTimeout)
+	defer cancel()
+	key = strings.TrimLeft(key, "/")
+	if key == "" || strings.Contains(key, "..") {
+		return fmt.Errorf("非法存储 key")
+	}
+	_, err := r.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(r.cfg.Bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return fmt.Errorf("RustFS 删除失败: %w", err)
+	}
+	return nil
+}
+
 func (r *RustFS) Ping(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, opTimeout)
 	defer cancel()
