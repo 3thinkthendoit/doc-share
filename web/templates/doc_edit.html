@@ -30,7 +30,7 @@
       <a href="/admin/docs" class="btn">{{$.T "返回列表"}}</a>
       {{if and .doc .canEditDoc}}<button id="shareBtn" class="btn">{{$.T "分享"}}</button>{{end}}
       {{if .doc}}<button type="button" id="revisionsBtn" class="btn">{{$.T "revisions.title"}}</button>{{end}}
-      {{if .canEditDoc}}<button id="saveBtn" class="btn btn-primary">{{$.T "保存"}}</button>{{end}}
+      {{if .canEditDoc}}<button id="saveBtn" class="btn btn-primary" type="button">{{$.T "保存"}}</button>{{end}}
     </div>
   </div>
 

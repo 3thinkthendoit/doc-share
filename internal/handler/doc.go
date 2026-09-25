@@ -380,16 +380,20 @@ func (a *App) validCategoryRef(c *gin.Context, categoryID, current uint) bool {
 	return true
 }
 
-// CreateDoc 新建文档
+// CreateDoc 新建文档；标题留空时写入「未命名文档」
 func (a *App) CreateDoc(c *gin.Context) {
 	var req docReq
-	if err := c.ShouldBind(&req); err != nil || req.Title == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": errTitleEmpty})
+	if err := c.ShouldBind(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": errParam})
 		return
+	}
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
+		title = a.tr(c, "edit.untitled")
 	}
 	user := middleware.CurrentUser(c)
 	doc := model.Document{
-		Title:   req.Title,
+		Title:   title,
 		Slug:    util.RandomSlug(8),
 		Content: req.Content,
 		OwnerID: user.ID,
@@ -434,7 +438,7 @@ func (a *App) UpdateDoc(c *gin.Context) {
 		return
 	}
 	if req.Title != "" {
-		doc.Title = req.Title
+		doc.Title = strings.TrimSpace(req.Title)
 	}
 	doc.Content = req.Content
 	// 指针语义：未传 = 不修改，传 0 = 清空；项目未改动时跳过归属校验（M-1：避免 viewer 保存他人项目下的文档被拒）

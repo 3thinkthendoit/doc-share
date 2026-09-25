@@ -56,6 +56,7 @@ window.UI = (function () {
         input.type = opts.input === 'password' ? 'password' : 'text';
         input.className = 'dialog-input';
         input.placeholder = t(opts.placeholder || '');
+        if (opts.value != null && opts.value !== '') input.value = String(opts.value);
         modal.appendChild(input);
       }
 
@@ -486,11 +487,12 @@ window.UI = (function () {
         ],
       });
     },
-    prompt: function (message, inputType, placeholder) {
+    prompt: function (message, inputType, placeholder, defaultValue) {
       return dialog({
         message: message,
         input: inputType || 'text',
         placeholder: placeholder || '',
+        value: defaultValue || '',
         buttons: [
           { label: '取消', primary: false, value: null },
           { label: '确定', primary: true, value: true },
