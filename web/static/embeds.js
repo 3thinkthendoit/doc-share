@@ -1313,6 +1313,7 @@
     hydrate: hydrate,
     openEditor: openEditor,
     insertEmbed: insertEmbed,
-    labelFor: labelFor
+    labelFor: labelFor,
+    openLightbox: openLightbox
   };
 })();

@@ -618,6 +618,7 @@
   "comments.imageFail": "图片上传失败",
   "comments.imageUploading": "图片上传中，请稍候",
   "comments.loginForImage": "登录后才能上传图片",
+  "comments.viewImage": "查看大图",
   "share.saveNetErr": "保存失败：网络错误",
   "revisions.rollbackConfirm": "回滚到此版本？当前内容会先存为新版本。",
   "revisions.rollbackFail": "回滚失败",

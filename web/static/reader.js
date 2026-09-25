@@ -323,17 +323,23 @@
       imgs.forEach(function (raw) {
         var src = safeCommentImageURL(raw);
         if (!src) return;
-        var a = document.createElement('a');
-        a.href = src;
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        a.className = 'comment-image-link';
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'comment-image-link';
+        btn.title = t('查看大图');
         var im = document.createElement('img');
         im.src = src;
         im.alt = '';
         im.loading = 'lazy';
-        a.appendChild(im);
-        gallery.appendChild(a);
+        btn.appendChild(im);
+        btn.addEventListener('click', function () {
+          if (window.Embeds && typeof Embeds.openLightbox === 'function') {
+            Embeds.openLightbox(src, '');
+            return;
+          }
+          window.open(src, '_blank', 'noopener,noreferrer');
+        });
+        gallery.appendChild(btn);
       });
       if (gallery.childNodes.length) item.appendChild(gallery);
     }

@@ -618,6 +618,7 @@
   "comments.imageFail": "Échec du téléversement",
   "comments.imageUploading": "Téléversement en cours…",
   "comments.loginForImage": "Connectez-vous pour envoyer des images",
+  "comments.viewImage": "Voir l'image",
   "share.saveNetErr": "Échec de l'enregistrement : erreur réseau",
   "revisions.rollbackConfirm": "Restaurer cette version ? Le contenu actuel sera d'abord enregistré comme nouvelle version.",
   "revisions.rollbackFail": "Échec de la restauration",

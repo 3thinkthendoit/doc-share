@@ -618,6 +618,7 @@
   "comments.imageFail": "圖片上傳失敗",
   "comments.imageUploading": "圖片上傳中，請稍候",
   "comments.loginForImage": "登入後才能上傳圖片",
+  "comments.viewImage": "查看大圖",
   "share.saveNetErr": "儲存失敗：網路錯誤",
   "revisions.rollbackConfirm": "回溯到此版本？目前內容會先存為新版本。",
   "revisions.rollbackFail": "回溯失敗",

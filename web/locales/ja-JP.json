@@ -618,6 +618,7 @@
   "comments.imageFail": "画像のアップロードに失敗しました",
   "comments.imageUploading": "画像をアップロード中です",
   "comments.loginForImage": "画像のアップロードにはログインが必要です",
+  "comments.viewImage": "画像を拡大表示",
   "share.saveNetErr": "保存に失敗しました：ネットワークエラー",
   "revisions.rollbackConfirm": "この版に戻しますか？現在の内容は先に新しい版として保存されます。",
   "revisions.rollbackFail": "ロールバックに失敗しました",

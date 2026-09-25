@@ -618,6 +618,7 @@
   "comments.imageFail": "Image upload failed",
   "comments.imageUploading": "Still uploading, please wait",
   "comments.loginForImage": "Sign in to upload images",
+  "comments.viewImage": "View image",
   "share.saveNetErr": "Save failed: network error",
   "revisions.rollbackConfirm": "Restore this revision? Current content will be saved as a new revision first.",
   "revisions.rollbackFail": "Rollback failed",
