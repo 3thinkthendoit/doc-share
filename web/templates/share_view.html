@@ -3,15 +3,11 @@
 <html lang="{{.Lang}}">
 <head>
 {{template "head" .}}
+<link rel="stylesheet" href="/static/site-nav.css">
 {{template "hljsTheme" .}}
 </head>
 <body class="reader-body">
-  <header class="reader-header">
-    <div class="reader-head-inner">
-      <div class="reader-brand"><a href="/">{{if .SiteLogo}}<img class="reader-logo" src="{{.SiteLogo}}" alt="">{{else}}<img class="reader-logo" src="/static/logo-mark.svg" alt="">{{end}}{{.SiteName}}</a></div>
-      <div class="reader-tools">{{template "themeToggle" .}}{{template "langSwitch" .}}</div>
-    </div>
-  </header>
+  {{template "siteNav" .}}
   <article class="reader">
     <h1 class="doc-title">{{.doc.Title}}</h1>
     <div class="doc-author">
@@ -23,19 +19,19 @@
       <span>{{.doc.UpdatedAt.Format "2006-01-02 15:04"}}</span>
       <span class="doc-author-dot">·</span>
       <span>{{$.T "share.views" .doc.ViewCount}}</span>
-    </div>
-
-    {{if .visitors}}
-    <div class="doc-visitors">
-      <span class="doc-visitors-label">{{$.T "visitors.count" (len .visitors)}}</span>
-      <span class="visitor-avatars">
-        {{range .visitors}}<button type="button" class="visitor-avatar" data-name="{{.Name}}" data-last="{{.LastSeenAt.Format "2006-01-02 15:04"}}" data-visits="{{.Visits}}">
-          {{if .Avatar}}<img src="{{.Avatar}}" alt="">{{else}}<span class="visitor-fallback">{{avatar .Name}}</span>{{end}}
-        </button>{{end}}
+      {{if .visitors}}
+      <span class="doc-author-dot">·</span>
+      <span class="doc-visitors">
+        <span class="doc-visitors-label">{{$.T "visitors.count" (len .visitors)}}</span>
+        <span class="visitor-avatars">
+          {{range .visitors}}<button type="button" class="visitor-avatar" data-name="{{.Name}}" data-last="{{.LastSeenAt.Format "2006-01-02 15:04"}}" data-visits="{{.Visits}}">
+            {{if .Avatar}}<img src="{{.Avatar}}" alt="">{{else}}<span class="visitor-fallback">{{avatar .Name}}</span>{{end}}
+          </button>{{end}}
+        </span>
       </span>
-      <div id="visitorTip" class="visitor-tip" hidden></div>
+      {{end}}
     </div>
-    {{end}}
+    {{if .visitors}}<div id="visitorTip" class="visitor-tip" hidden></div>{{end}}
 
     {{if .canEdit}}
     <div class="doc-editbar">
@@ -54,9 +50,18 @@
     <h2 class="comments-title">{{$.T "comments.title"}}</h2>
     <div id="commentList" class="comment-list"><div class="muted">{{$.T "comments.loading"}}</div></div>
     <form id="commentForm" class="comment-form">
-      <textarea id="commentContent" maxlength="1000" rows="3" placeholder="{{$.T "comments.placeholder"}}"></textarea>
+      <div class="comment-compose{{if .user}} has-img-tool{{end}}">
+        <div id="commentImagePreviews" class="comment-img-previews" hidden></div>
+        <textarea id="commentContent" maxlength="1000" rows="3" placeholder="{{$.T "comments.placeholder"}}"></textarea>
+        {{if .user}}
+        <button type="button" class="btn-link comment-img-btn" id="commentImageBtn" title="{{$.T "comments.addImage"}}" aria-label="{{$.T "comments.addImage"}}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="m21 15-4.5-4.5L9 18"/></svg>
+        </button>
+        <input type="file" id="commentImageInput" accept="image/png,image/jpeg,image/gif,image/webp,image/bmp" multiple hidden>
+        {{end}}
+      </div>
       <div class="comment-form-foot">
-        <span class="muted" id="replyingTo" hidden></span>
+        <span class="muted comment-replying" id="replyingTo" hidden></span>
         <button type="submit" class="btn btn-primary btn-sm">{{$.T "comments.submit"}}</button>
       </div>
     </form>

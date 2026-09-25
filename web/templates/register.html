@@ -1,9 +1,9 @@
 {{define "register.html"}}
 <!DOCTYPE html>
 <html lang="{{.Lang}}">
-<head>{{template "head" .}}</head>
-<body class="auth-body">
-  <div class="auth-tools">{{template "themeToggle" .}}{{template "langSwitch" .}}</div>
+<head>{{template "head" .}}<link rel="stylesheet" href="/static/site-nav.css"></head>
+<body class="auth-body has-site-nav">
+  {{template "siteNav" .}}
   <div class="auth-card">
     <h1 class="auth-title">{{$.T "reg.title"}}</h1>
     <p class="auth-sub">{{$.T "reg.sub"}}</p>
@@ -220,6 +220,10 @@
   });
 })();
 </script>
+<div class="auth-foot">
+  <span>© {{now.Format "2006"}} {{.SiteName}}</span>
+  <span>Powered by <a href="https://github.com/3thinkthendoit/doc-share" target="_blank" rel="noopener">DocShare</a></span>
+</div>
 </body>
 </html>
 {{end}}

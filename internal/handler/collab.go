@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 
 	"doc-share/internal/middleware"
 	"doc-share/internal/model"
+	"doc-share/internal/storage"
 	"doc-share/internal/util"
 
 	"github.com/gin-gonic/gin"
@@ -20,6 +22,7 @@ const (
 	CookieGuest       = "ds_guest"
 	guestCookieMaxAge = 365 * 24 * 3600 // 游客身份一年有效
 	commentMaxRunes   = 1000
+	commentMaxImages  = 3
 )
 
 // sessionUser 从 ds_session cookie 解析当前登录用户（公开路由用，无登录态返回 nil）
@@ -103,7 +106,85 @@ type commentView struct {
 	Avatar    string    `json:"avatar"`
 	IsGuest   bool      `json:"is_guest"`
 	Content   string    `json:"content"`
+	Images    []string  `json:"images"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+func parseCommentImages(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "null" {
+		return []string{}
+	}
+	var imgs []string
+	if err := json.Unmarshal([]byte(raw), &imgs); err != nil {
+		return []string{}
+	}
+	out := make([]string, 0, len(imgs))
+	for _, u := range imgs {
+		u = strings.TrimSpace(u)
+		if u != "" {
+			out = append(out, u)
+		}
+	}
+	return out
+}
+
+func (a *App) commentRustFSConfig() *storage.RustFSConfig {
+	s := a.Settings()
+	if s.StorageDriver != storage.DriverRustFS {
+		return nil
+	}
+	return &storage.RustFSConfig{
+		Endpoint:  s.RustFSEndpoint,
+		Region:    s.RustFSRegion,
+		AccessKey: s.RustFSAccessKey,
+		SecretKey: s.RustFSSecretKey,
+		Bucket:    s.RustFSBucket,
+	}
+}
+
+// sanitizeCommentImages 校验评论附图：仅本站上传 key（不含 embed/），按 key 去重，最多 commentMaxImages 张。
+// strict 为真时非法地址报错；为假时跳过非法项（列表回显用）。
+func (a *App) sanitizeCommentImages(urls []string, strict bool) ([]string, error) {
+	if len(urls) == 0 {
+		return []string{}, nil
+	}
+	if strict && len(urls) > commentMaxImages {
+		return nil, fmt.Errorf("评论最多附 %d 张图", commentMaxImages)
+	}
+	rustCfg := a.commentRustFSConfig()
+	out := make([]string, 0, commentMaxImages)
+	seen := map[string]struct{}{}
+	for _, raw := range urls {
+		u := strings.TrimSpace(raw)
+		if u == "" {
+			continue
+		}
+		key := storage.ObjectKeyFromURL(u, rustCfg)
+		if key == "" || strings.HasPrefix(key, "embed/") || !storage.ValidUploadKey(key) {
+			if strict {
+				return nil, fmt.Errorf("评论图片地址无效")
+			}
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		if len(out) >= commentMaxImages {
+			if strict {
+				return nil, fmt.Errorf("评论最多附 %d 张图", commentMaxImages)
+			}
+			break
+		}
+		seen[key] = struct{}{}
+		out = append(out, u)
+	}
+	return out, nil
+}
+
+// normalizeCommentImages 发表评论时严格校验附图
+func (a *App) normalizeCommentImages(urls []string) ([]string, error) {
+	return a.sanitizeCommentImages(urls, true)
 }
 
 func (a *App) listCommentViews(docID uint) []commentView {
@@ -129,7 +210,11 @@ func (a *App) listCommentViews(docID uint) []commentView {
 	}
 	views := make([]commentView, 0, len(comments))
 	for _, cm := range comments {
-		v := commentView{ID: cm.ID, ParentID: cm.ParentID, UserID: cm.UserID, Content: cm.Content, CreatedAt: cm.CreatedAt}
+		imgs, _ := a.sanitizeCommentImages(parseCommentImages(cm.Images), false)
+		v := commentView{
+			ID: cm.ID, ParentID: cm.ParentID, UserID: cm.UserID,
+			Content: cm.Content, Images: imgs, CreatedAt: cm.CreatedAt,
+		}
 		if u, ok := users[cm.UserID]; cm.UserID > 0 && ok {
 			v.Name, v.Avatar = u.DisplayName(), u.Avatar
 		} else {
@@ -140,10 +225,22 @@ func (a *App) listCommentViews(docID uint) []commentView {
 	return views
 }
 
-// shareUnlocked 带密码的分享须已解锁：密码凭证 cookie，或已批准的「申请查看」。
+// shareOwnerBypass 文档属主或管理员查看自己的分享链接时免密。
+func (a *App) shareOwnerBypass(c *gin.Context, doc *model.Document) bool {
+	user := a.sessionUser(c)
+	if user == nil || doc == nil {
+		return false
+	}
+	return user.IsAdmin() || user.ID == doc.OwnerID
+}
+
+// shareUnlocked 带密码的分享须已解锁：属主/管理员、密码凭证 cookie，或已批准的「申请查看」。
 // 防止绕过密码直接访问公开 API（评论读写、内容保存）；未通过时写 403 并返回 false。
-func (a *App) shareUnlocked(c *gin.Context, token string, share *model.Share) bool {
+func (a *App) shareUnlocked(c *gin.Context, token string, doc *model.Document, share *model.Share) bool {
 	if !share.HasPassword() {
+		return true
+	}
+	if a.shareOwnerBypass(c, doc) {
 		return true
 	}
 	if cred, err := c.Cookie(CookieShare); err == nil && a.Signer.VerifyShareToken(cred, token) {
@@ -163,7 +260,7 @@ func (a *App) ShareListComments(c *gin.Context) {
 	if doc == nil {
 		return
 	}
-	if !a.shareUnlocked(c, token, share) {
+	if !a.shareUnlocked(c, token, doc, share) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"comments": a.listCommentViews(doc.ID)})
@@ -176,7 +273,7 @@ func (a *App) ShareAddComment(c *gin.Context) {
 	if doc == nil {
 		return
 	}
-	if !a.shareUnlocked(c, token, share) {
+	if !a.shareUnlocked(c, token, doc, share) {
 		return
 	}
 	a.addComment(c, doc, "c:"+token)
@@ -218,22 +315,38 @@ func (a *App) addComment(c *gin.Context, doc *model.Document, limitKey string) {
 		}
 	}
 	var req struct {
-		Content  string `json:"content"`
-		ParentID uint   `json:"parent_id"`
+		Content  string   `json:"content"`
+		ParentID uint     `json:"parent_id"`
+		Images   []string `json:"images"`
 	}
 	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 		return
 	}
 	content := strings.TrimSpace(req.Content)
-	if content == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "评论内容不能为空"})
-		return
-	}
 	if len([]rune(content)) > commentMaxRunes {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("评论最多 %d 字", commentMaxRunes)})
 		return
 	}
+
+	var images []string
+	if len(req.Images) > 0 {
+		if user == nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "登录后才能上传图片"})
+			return
+		}
+		var err error
+		images, err = a.normalizeCommentImages(req.Images)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
+	if content == "" && len(images) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "评论内容不能为空"})
+		return
+	}
+
 	// 一级回复：回复目标必须是本文档的顶层评论
 	if req.ParentID > 0 {
 		var parent model.Comment
@@ -252,6 +365,10 @@ func (a *App) addComment(c *gin.Context, doc *model.Document, limitKey string) {
 	}
 
 	cm := model.Comment{DocumentID: doc.ID, ParentID: req.ParentID, Content: content}
+	if len(images) > 0 {
+		b, _ := json.Marshal(images)
+		cm.Images = string(b)
+	}
 	if user != nil {
 		cm.UserID = user.ID
 	} else {
@@ -367,8 +484,8 @@ func (a *App) ShareSaveContent(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "该分享未开启编辑权限"})
 		return
 	}
-	// 带密码的分享须已解锁（密码凭证或已批准的申请查看），防止绕过密码直接改内容
-	if !a.shareUnlocked(c, token, share) {
+	// 带密码的分享须已解锁（属主/管理员、密码凭证或已批准的申请查看），防止绕过密码直接改内容
+	if !a.shareUnlocked(c, token, doc, share) {
 		return
 	}
 	var req struct {

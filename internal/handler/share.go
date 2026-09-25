@@ -66,8 +66,8 @@ func (a *App) ShareView(c *gin.Context) {
 		return
 	}
 
-	// 无密码直接渲染
-	if !share.HasPassword() {
+	// 无密码、或属主/管理员登录态：直接渲染
+	if !share.HasPassword() || a.shareOwnerBypass(c, doc) {
 		a.serveDoc(c, doc, share, token)
 		return
 	}
@@ -134,7 +134,7 @@ func (a *App) ShareSubmit(c *gin.Context) {
 	if doc == nil {
 		return
 	}
-	if !share.HasPassword() {
+	if !share.HasPassword() || a.shareOwnerBypass(c, doc) {
 		a.serveDoc(c, doc, share, token)
 		return
 	}

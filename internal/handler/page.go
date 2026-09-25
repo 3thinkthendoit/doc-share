@@ -70,7 +70,10 @@ func (a *App) render(c *gin.Context, name string, data gin.H) {
 
 // Home 官网首页：公开访问，登录与否都可看
 func (a *App) Home(c *gin.Context) {
-	a.render(c, "home.html", gin.H{"user": middleware.CurrentUser(c)})
+	a.render(c, "home.html", gin.H{
+		"user":             middleware.CurrentUser(c),
+		"ShowLandingLinks": true,
+	})
 }
 
 // Dashboard 仪表盘：统计信息

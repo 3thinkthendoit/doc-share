@@ -83,11 +83,23 @@
               </td>
               <td>{{.UpdatedAt.Format "2006-01-02 15:04"}}</td>
               <td class="col-actions">
-                <a href="/admin/docs/{{.ID}}/preview" target="_blank" class="btn btn-sm" title="{{$.T "以读者视图查看（不计浏览数）"}}">{{$.T "查看"}}</a>
-                {{if and $.canEdit (index $.canEdit .ID)}}
-                <a href="/admin/docs/{{.ID}}/edit" class="btn btn-sm">{{$.T "编辑"}}</a>
-                <button class="btn btn-sm btn-danger" onclick="delDoc({{.ID}}, this)">{{$.T "删除"}}</button>
-                {{end}}
+                <div class="ops-wrap">
+                  <button type="button" class="btn btn-sm ops-toggle">{{$.T "操作"}} <span class="chip-caret">▾</span></button>
+                  <div class="ops-menu" hidden>
+                    {{if and $.user (or $.user.IsAdmin (eq $.user.ID .OwnerID))}}
+                    <button type="button" class="ops-item" data-op="share" data-id="{{.ID}}" data-title="{{.Title}}" data-shared="{{if .IsShared}}1{{else}}0{{end}}" data-canedit="{{if .Share}}{{if .Share.CanEdit}}1{{end}}{{end}}" data-haspwd="{{if .Share}}{{if .Share.HasPassword}}1{{end}}{{end}}" data-token="{{if .Share}}{{.Share.ShareToken}}{{end}}">{{$.T "分享设置"}}</button>
+                    {{end}}
+                    {{if .IsShared}}{{if .Share}}
+                    <a class="ops-item" href="/s/{{.Share.ShareToken}}" target="_blank" rel="noopener">{{$.T "查看"}}</a>
+                    {{end}}{{else}}
+                    <a class="ops-item" href="/admin/docs/{{.ID}}/preview" target="_blank" rel="noopener">{{$.T "查看"}}</a>
+                    {{end}}
+                    {{if and $.canEdit (index $.canEdit .ID)}}
+                    <a class="ops-item" href="/admin/docs/{{.ID}}/edit">{{$.T "编辑"}}</a>
+                    <button type="button" class="ops-item ops-danger" data-op="del" data-id="{{.ID}}">{{$.T "删除"}}</button>
+                    {{end}}
+                  </div>
+                </div>
               </td>
             </tr>
           {{else}}
@@ -138,10 +150,62 @@
     </div>
   </div>
 </div>
+<!-- 分享设置弹窗：与编辑页同一套接口（POST/DELETE /admin/api/docs/:id/share） -->
+<div class="modal-overlay" id="shareModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="{{$.T "分享设置"}}">
+    <div class="modal-head">
+      <h2>{{$.T "分享设置"}}<span id="shDocTitle" class="muted" style="font-size:14px;font-weight:500"></span></h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+    </div>
+    <div class="modal-body share-body">
+      <label class="check"><input type="checkbox" id="shareEnabled"> {{$.T "开启分享链接"}}</label>
+      <div id="shareConfig" class="share-config" style="display:none">
+        <label class="check"><input type="checkbox" id="shareCanEdit"> {{$.T "share.canEdit"}}</label>
+        <label>{{$.T "访问密码（留空则不修改 / 无密码）"}}
+          <div class="pwd-row">
+            <input type="text" id="sharePassword" autocomplete="off">
+            <button type="button" class="btn btn-sm" id="genPwdBtn">{{$.T "share.genPwd"}}</button>
+          </div>
+        </label>
+        <label>{{$.T "有效期"}}
+          <select id="shareExpire">
+            <option value="0">{{$.T "永久有效"}}</option>
+            <option value="1">{{$.T "1 天"}}</option>
+            <option value="7">{{$.T "7 天"}}</option>
+            <option value="30">{{$.T "30 天"}}</option>
+          </select>
+        </label>
+        <div id="shareLink" class="share-link" style="display:none">
+          {{$.T "分享链接："}}<code id="shareURL"></code>
+          <button type="button" class="btn btn-sm" onclick="copyShare()">{{$.T "复制"}}</button>
+        </div>
+        <div id="accessReqBox" class="share-access-box" hidden>
+          <div class="share-access-head">
+            <strong>{{$.T "share.applyListTitle"}}</strong>
+            <button type="button" class="btn btn-sm" id="refreshAccessReq">{{$.T "docs.query"}}</button>
+          </div>
+          <div id="accessReqList" class="share-access-list"><div class="muted">{{$.T "share.applyListEmpty"}}</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn" data-close-modal>{{$.T "关闭"}}</button>
+      <button type="button" id="saveShareBtn" class="btn btn-primary">{{$.T "应用分享设置"}}</button>
+    </div>
+  </div>
+</div>
 <style>
 .modal-sm{width:440px}
 /* overflow:visible：内容较短无需滚动；否则会裁掉 .xsel 自定义下拉的浮层 */
 .import-body{padding:22px;overflow:visible}
+/* 操作下拉按钮组：fixed 定位避免被 .panel 的 overflow 裁剪 */
+.ops-wrap{position:relative;display:inline-block}
+.ops-toggle .chip-caret{font-size:10px;opacity:.7}
+.ops-menu{position:fixed;z-index:120;min-width:132px;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(26,26,34,.16);padding:6px;display:flex;flex-direction:column;gap:2px}
+.ops-item{display:block;width:100%;text-align:left;padding:7px 12px;border:none;border-radius:6px;background:none;color:var(--text);font-size:13px;cursor:pointer;text-decoration:none;font-family:inherit;transition:all .12s}
+.ops-item:hover{background:var(--bg-soft);color:var(--text);text-decoration:none}
+.ops-item.ops-danger{color:#d93025}
+.ops-item.ops-danger:hover{background:#fdf0ef}
 .import-drop{display:flex;flex-direction:column;align-items:center;gap:5px;padding:24px 16px;border:2px dashed var(--border-strong);border-radius:var(--radius-sm);text-align:center;cursor:pointer;transition:all .15s}
 .import-drop:hover,.import-drop.dragover{border-color:var(--primary);background:var(--bg-soft)}
 .import-drop strong{font-size:14px}
@@ -155,11 +219,241 @@
 </style>
 <script>
 async function delDoc(id, btn){
-  if(!await UI.confirm('确认删除该文档？删除后不可恢复。', { danger: true })) return;
+  if(!await UI.confirm(UI.t('确认删除该文档？删除后不可恢复。'), { danger: true })) return;
   const res = await fetch('/admin/api/docs/'+id, {method:'DELETE', headers:{'X-Requested-With':'XMLHttpRequest'}});
-  if(res.ok){ btn.closest('tr').remove(); UI.toast('已删除', 'success'); }
-  else { const d = await res.json().catch(function(){return {};}); UI.alert((d && d.error) || '删除失败'); }
+  if(res.ok){ btn.closest('tr').remove(); UI.toast(UI.t('已删除'), 'success'); }
+  else { const d = await res.json().catch(function(){return {};}); UI.alert((d && d.error) || UI.t('删除失败')); }
 }
+
+/* ---- 操作下拉：点击按钮弹出菜单，点空白处关闭；菜单项 fixed 定位防裁剪 ---- */
+(function () {
+  document.addEventListener('click', function (e) {
+    var toggle = e.target.closest('.ops-toggle');
+    var inMenu = e.target.closest('.ops-menu');
+    document.querySelectorAll('.ops-menu').forEach(function (m) {
+      if (!toggle || m !== toggle.nextElementSibling) m.hidden = true;
+    });
+    if (toggle) {
+      var menu = toggle.nextElementSibling;
+      if (menu) {
+        var willShow = menu.hidden;
+        menu.hidden = !menu.hidden;
+        if (willShow) {
+          var r = toggle.getBoundingClientRect();
+          menu.style.visibility = 'hidden';
+          var mw = menu.offsetWidth, mh = menu.offsetHeight;
+          var left = Math.min(r.right - mw, window.innerWidth - mw - 8);
+          if (left < 8) left = 8;
+          var top = r.bottom + 6;
+          if (top + mh > window.innerHeight - 8) top = Math.max(8, r.top - mh - 6);
+          menu.style.left = left + 'px';
+          menu.style.top = top + 'px';
+          menu.style.visibility = '';
+        }
+      }
+    }
+    var item = e.target.closest('.ops-item');
+    if (item) {
+      if (inMenu) {
+        var m = item.closest('.ops-menu');
+        if (m) m.hidden = true;
+      }
+      var op = item.getAttribute('data-op');
+      if (op === 'del') {
+        e.preventDefault();
+        delDoc(item.getAttribute('data-id'), item);
+      } else if (op === 'share') {
+        e.preventDefault();
+        openShareModal(item);
+      }
+      /* 无 data-op 的为原生链接（查看/编辑），交给浏览器导航 */
+    }
+  });
+})();
+
+/* ---- 分享设置弹窗：与编辑页同一套接口 ---- */
+var currentShareDocId = 0;
+var shareModalEl = document.getElementById('shareModal');
+UI.bindModal(shareModalEl);
+
+function openShareModal(item) {
+  currentShareDocId = item.getAttribute('data-id');
+  document.getElementById('shDocTitle').textContent = item.getAttribute('data-title') || '';
+  var enabled = item.getAttribute('data-shared') === '1';
+  var hasPwd = item.getAttribute('data-haspwd') === '1';
+  document.getElementById('shareEnabled').checked = enabled;
+  document.getElementById('shareCanEdit').checked = item.getAttribute('data-canedit') === '1';
+  var pwd = document.getElementById('sharePassword');
+  pwd.value = '';
+  pwd.placeholder = hasPwd ? UI.t('已设置密码') : '';
+  document.getElementById('genPwdBtn').textContent = UI.t(hasPwd ? 'share.resetPwd' : 'share.genPwd');
+  document.getElementById('shareExpire').value = '0';
+  var token = item.getAttribute('data-token') || '';
+  var linkEl = document.getElementById('shareLink');
+  if (enabled && token) {
+    document.getElementById('shareURL').textContent = location.origin + '/s/' + token;
+    linkEl.style.display = 'flex';
+  } else {
+    linkEl.style.display = 'none';
+  }
+  document.getElementById('shareConfig').style.display = enabled ? 'block' : 'none';
+  var reqBox = document.getElementById('accessReqBox');
+  if (reqBox) reqBox.hidden = !enabled;
+  UI.openModal(shareModalEl);
+  if (enabled) loadAccessRequests(currentShareDocId);
+}
+
+document.getElementById('shareEnabled').addEventListener('change', function () {
+  document.getElementById('shareConfig').style.display = this.checked ? 'block' : 'none';
+  var reqBox = document.getElementById('accessReqBox');
+  if (reqBox) reqBox.hidden = !this.checked;
+  if (this.checked) loadAccessRequests(currentShareDocId);
+});
+
+/* 密码生成：去掉易混淆字符（0/o、1/l/I），6 位数字+字母 */
+function genPassword() {
+  var chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  var out = '';
+  var buf = new Uint32Array(6);
+  (window.crypto || window.msCrypto).getRandomValues(buf);
+  for (var i = 0; i < 6; i++) out += chars[buf[i] % chars.length];
+  return out;
+}
+document.getElementById('genPwdBtn').addEventListener('click', function () {
+  document.getElementById('sharePassword').value = genPassword();
+});
+function sharePwdKey(url) {
+  var m = String(url || '').match(/\/s\/([A-Za-z0-9]+)/);
+  return m ? 'ds_share_pwd_' + m[1] : '';
+}
+function storedSharePwd(url) {
+  try { return localStorage.getItem(sharePwdKey(url)) || ''; } catch (e) { return ''; }
+}
+async function copyShare() {
+  var url = document.getElementById('shareURL').textContent;
+  var text = url;
+  var pwd = storedSharePwd(url);
+  if (pwd) text += '\n' + UI.t('访问密码') + ': ' + pwd;
+  try { await navigator.clipboard.writeText(text); UI.toast(UI.t('已复制'), 'success'); }
+  catch (e) { UI.toast(UI.t('复制失败'), 'error'); }
+}
+
+document.getElementById('saveShareBtn').addEventListener('click', async function () {
+  if (!currentShareDocId) return;
+  var enabledEl = document.getElementById('shareEnabled');
+  var payload = {
+    enabled: enabledEl.checked,
+    can_edit: document.getElementById('shareCanEdit').checked,
+    password: document.getElementById('sharePassword').value,
+    expire_days: parseInt(document.getElementById('shareExpire').value, 10) || 0
+  };
+  this.disabled = true;
+  try {
+    var res = await fetch('/admin/api/docs/' + currentShareDocId + '/share', {
+      method: enabledEl.checked ? 'POST' : 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      body: JSON.stringify(payload)
+    });
+    var data = await res.json().catch(function () { return {}; });
+    if (!res.ok) { UI.alert((data && data.error) || UI.t('操作失败')); return; }
+    if (enabledEl.checked && payload.password.trim()) {
+      try { localStorage.setItem(sharePwdKey(data.url || ''), payload.password.trim()); } catch (e) {}
+    }
+    UI.toast(UI.t(enabledEl.checked ? '分享设置已更新' : '已关闭分享'), 'success');
+    setTimeout(function () { location.reload(); }, 600);
+  } catch (e) {
+    UI.toast(UI.t('网络错误，分享设置失败'), 'error');
+  } finally {
+    this.disabled = false;
+  }
+});
+
+/* ---- 查看申请列表与审批（与编辑页同一套接口） ---- */
+async function loadAccessRequests(docId) {
+  var list = document.getElementById('accessReqList');
+  if (!list || !docId) return;
+  list.innerHTML = '<div class="muted">' + UI.t('加载中…') + '</div>';
+  try {
+    var res = await fetch('/admin/api/docs/' + docId + '/access-requests', {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    var data = await res.json();
+    if (!res.ok) { list.innerHTML = '<div class="muted">' + UI.t((data && data.error) || '加载失败') + '</div>'; return; }
+    var items = (data && data.data) || [];
+    if (!items.length) { list.innerHTML = '<div class="muted">' + UI.t('share.applyListEmpty') + '</div>'; return; }
+    var statusMap = { 0: UI.t('share.applyStatusPending'), 1: UI.t('share.applyStatusApproved'), 2: UI.t('share.applyStatusRejected') };
+    var table = document.createElement('table');
+    table.className = 'table';
+    table.innerHTML =
+      '<thead><tr>' +
+      '<th>' + UI.t('dash.pendingName') + '</th>' +
+      '<th>' + UI.t('dash.pendingTime') + '</th>' +
+      '<th>' + UI.t('common.status') + '</th>' +
+      '<th class="col-actions">' + UI.t('common.actions') + '</th>' +
+      '</tr></thead>';
+    var tbody = document.createElement('tbody');
+    items.forEach(function (r) {
+      var tr = document.createElement('tr');
+      var tdName = document.createElement('td');
+      tdName.textContent = r.name || '—';
+      tr.appendChild(tdName);
+      var tdTime = document.createElement('td');
+      tdTime.className = 'cell-muted';
+      tdTime.textContent = r.created_at || '—';
+      tr.appendChild(tdTime);
+      var tdStatus = document.createElement('td');
+      var tag = document.createElement('span');
+      tag.className = 'tag' + (r.status === 1 ? ' tag-green' : '');
+      tag.textContent = statusMap[r.status] || String(r.status);
+      tdStatus.appendChild(tag);
+      tr.appendChild(tdStatus);
+      var tdActs = document.createElement('td');
+      tdActs.className = 'col-actions';
+      if (r.status === 0) {
+        var ok = document.createElement('button');
+        ok.type = 'button';
+        ok.className = 'btn btn-sm btn-primary';
+        ok.textContent = UI.t('share.applyApprove');
+        ok.addEventListener('click', function () { reviewAccess(docId, r.id, 'approve', tdActs); });
+        var no = document.createElement('button');
+        no.type = 'button';
+        no.className = 'btn btn-sm';
+        no.textContent = UI.t('share.applyReject');
+        no.addEventListener('click', function () { reviewAccess(docId, r.id, 'reject', tdActs); });
+        tdActs.appendChild(ok);
+        tdActs.appendChild(no);
+      } else {
+        tdActs.textContent = '—';
+      }
+      tr.appendChild(tdActs);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    list.innerHTML = '';
+    list.appendChild(table);
+  } catch (e) {
+    list.innerHTML = '<div class="muted">' + UI.t('加载失败') + '</div>';
+  }
+}
+async function reviewAccess(docId, rid, action, acts) {
+  if (acts) acts.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+  try {
+    var res = await fetch('/admin/api/docs/' + docId + '/access-requests/' + rid, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      body: JSON.stringify({ action: action })
+    });
+    var data = await res.json().catch(function () { return {}; });
+    if (!res.ok) { UI.toast(UI.t((data && data.error) || '操作失败'), 'error'); if (acts) acts.querySelectorAll('button').forEach(function (b) { b.disabled = false; }); return; }
+    UI.toast(UI.t('操作成功'), 'success');
+    loadAccessRequests(docId);
+  } catch (e) {
+    UI.toast(UI.t('网络错误'), 'error');
+    if (acts) acts.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+  }
+}
+var refreshAccessReq = document.getElementById('refreshAccessReq');
+if (refreshAccessReq) refreshAccessReq.addEventListener('click', function () { loadAccessRequests(currentShareDocId); });
 
 /* 导入文档：拖拽/选择 pdf、doc、docx → 转换 Markdown → 按所选项目/分类建文档 */
 (async function () {
@@ -234,6 +528,7 @@ async function delDoc(id, btn){
   });
 })();
 </script>
+{{template "adminfoot" .}}
 </body>
 </html>
 {{end}}

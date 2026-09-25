@@ -28,7 +28,8 @@ func TestDumpHomePreview(t *testing.T) {
 	a := &App{I18N: bundle, Tmpl: tmpl}
 	data := View{
 		"user": nil, "Lang": lang, "Langs": i18n.Supported, "Path": "/",
-		"Dict": template.JS(a.dictJSON(lang)), viewBundleKey: bundle,
+		"ShowLandingLinks": true,
+		"Dict":             template.JS(a.dictJSON(lang)), viewBundleKey: bundle,
 	}
 	var buf strings.Builder
 	if err := tmpl.ExecuteTemplate(&buf, "home.html", data); err != nil {

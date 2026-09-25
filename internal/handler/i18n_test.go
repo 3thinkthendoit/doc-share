@@ -22,7 +22,7 @@ func TestParseTemplates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseTemplates: %v", err)
 	}
-	for _, name := range []string{"head", "nav", "langSwitch", "pager"} {
+	for _, name := range []string{"head", "nav", "siteNav", "langSwitch", "pager"} {
 		if tmpl.Lookup(name) == nil {
 			t.Errorf("公共片段 %s 未定义", name)
 		}
@@ -69,7 +69,7 @@ func TestPagesRender(t *testing.T) {
 		data func() View
 	}{
 		{"login.html", func() View { v := base(); v["title"] = "登录"; return v }},
-		{"home.html", func() View { v := base(); v["user"] = nil; v["Path"] = "/"; return v }},
+		{"home.html", func() View { v := base(); v["user"] = nil; v["Path"] = "/"; v["ShowLandingLinks"] = true; return v }},
 		{"register.html", func() View { v := base(); v["title"] = "注册"; v["username"] = "bob"; return v }},
 		{"dashboard.html", func() View {
 			v := base()

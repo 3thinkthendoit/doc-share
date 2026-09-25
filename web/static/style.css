@@ -249,6 +249,12 @@ html[data-theme="light"] .theme-toggle .i-moon{display:none}
 .auth-foot{position:absolute;bottom:16px;left:0;right:0;display:flex;justify-content:center;gap:16px;font-size:12px;color:var(--muted)}
 .auth-foot a{color:var(--muted);text-decoration:none}
 .auth-foot a:hover{color:var(--text);text-decoration:none}
+/* 后台页面公共 footer：内容不足一屏时钉在视口底部，超出时随内容下移 */
+body:has(.admin-foot){min-height:100vh;display:flex;flex-direction:column}
+body:has(.admin-foot) main.container{flex:1 0 auto;width:100%}
+.admin-foot{display:flex;justify-content:center;gap:16px;margin:40px 0 24px;margin-top:auto;padding-top:24px;font-size:12px;color:var(--muted)}
+.admin-foot a{color:var(--muted);text-decoration:none}
+.admin-foot a:hover{color:var(--text);text-decoration:none}
 .btn-link{background:none;border:none;color:var(--primary);cursor:pointer;font-size:13px;padding:0}
 .btn-link:hover{color:var(--primary-dark)}
 
@@ -372,6 +378,8 @@ button.stat-card:focus-visible{outline:2px solid var(--primary);outline-offset:2
 .auth-body{position:relative;display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--bg-soft);background-image:radial-gradient(600px 400px at 20% 0%,rgba(124,108,246,.14),transparent 60%),radial-gradient(700px 420px at 85% 100%,rgba(97,92,237,.12),transparent 60%)}
 .auth-card{background:var(--panel);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow-auth);padding:40px;width:380px}
 .auth-title{text-align:center;margin:0;font-size:26px;font-weight:700;letter-spacing:-.03em;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+/* 认证页标题内联 logo：inline 排版不破坏渐变文字 */
+.auth-title .auth-logo{width:34px;height:34px;border-radius:8px;margin-right:10px;vertical-align:-9px}
 .auth-sub{text-align:center;color:var(--muted);margin:8px 0 28px;font-size:13px;line-height:1.55}
 .auth-card label{display:block;margin-bottom:16px;font-weight:500;color:var(--text);font-size:13px}
 .auth-card input{width:100%;margin-top:6px;padding:11px 14px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-size:15px;font-family:inherit;transition:all .15s;background:var(--panel);color:var(--text)}
@@ -533,20 +541,20 @@ body.modal-open{overflow:hidden}
 .reader-tools .theme-toggle{width:32px;height:32px}
 .reader-head-inner .lang-switch .xsel-btn,.reader-head-inner .lang-switch select{padding:4px 8px;font-size:12px}
 
-/* 阅读页：访客头像行 */
-.doc-visitors{display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin:0 0 18px;padding:8px 0;border-top:1px solid var(--border);font-size:12.5px;color:var(--muted)}
-.doc-visitors-label{margin-right:6px}
+/* 阅读页：访客头像（跟在浏览次数同一行） */
+.doc-visitors{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;margin:0;padding:0;border:0;font-size:inherit;color:inherit}
+.doc-visitors-label{margin-right:4px}
 .visitor-avatars{display:inline-flex;align-items:center;flex-wrap:wrap;gap:2px}
 .visitor-avatar{width:26px;height:26px;padding:0;border:1px solid var(--border);border-radius:50%;background:var(--panel);cursor:pointer;overflow:hidden;display:grid;place-items:center;font-size:12px;color:var(--muted)}
 .visitor-avatar img{width:100%;height:100%;object-fit:cover;display:block}
 .visitor-fallback{line-height:1}
-.visitor-tip{flex:1 1 100%;margin-top:6px;padding:6px 10px;background:var(--bg-soft);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12.5px;color:var(--text)}
+.visitor-tip{margin:-20px 0 18px;padding:6px 10px;background:var(--bg-soft);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12.5px;color:var(--text)}
 /* 阅读页：分享编辑条与编辑器 */
 .doc-editbar{display:flex;align-items:center;gap:8px;margin-bottom:16px}
 .reader-editor{width:100%;min-height:420px;resize:vertical;padding:16px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;font-size:13.5px;line-height:1.7;background:var(--input-bg);color:var(--text);margin-bottom:12px}
 .reader-editor:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
 /* 阅读页：评论区 */
-.comments{max-width:840px;margin:0 auto;padding:0 24px 80px;border-top:1px solid var(--border)}
+.comments{width:min(1080px,100%);max-width:1080px;margin:0 auto;padding:0 24px 80px;border-top:1px solid var(--border);box-sizing:border-box}
 .comments-title{font-size:18px;margin:28px 0 16px}
 .comment-item{display:flex;flex-direction:column;gap:4px;padding:12px 0;border-bottom:1px solid var(--border)}
 .comment-item.is-reply{border-bottom:none;padding:8px 0}
@@ -565,18 +573,34 @@ body.modal-open{overflow:hidden}
 .comment-replies .comment-item:last-child{padding-bottom:2px}
 .comment-replies .comment-actions .btn-link{font-size:12px}
 .comment-form{margin-top:16px}
-.comment-form textarea{width:100%;padding:10px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:inherit;font-size:14px;resize:vertical;background:var(--input-bg);color:var(--text)}
-.comment-form textarea:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
-.comment-form-foot{display:flex;align-items:center;gap:10px;justify-content:flex-end;margin-top:8px}
+.comment-compose{position:relative;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--input-bg);transition:border-color .15s,box-shadow .15s}
+.comment-compose:focus-within{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+.comment-compose textarea{width:100%;padding:10px 12px;border:0;border-radius:0;font-family:inherit;font-size:14px;resize:vertical;background:transparent;color:var(--text);box-sizing:border-box;display:block;min-height:72px}
+.comment-compose.has-img-tool textarea{padding-bottom:36px}
+.comment-compose textarea:focus{outline:none;box-shadow:none}
+.comment-compose .comment-img-btn{position:absolute;left:8px;bottom:8px;z-index:1;display:inline-grid;place-items:center;width:28px;height:28px;padding:0;border-radius:6px;color:var(--muted);background:transparent}
+.comment-compose .comment-img-btn:hover{color:var(--primary);background:var(--primary-soft)}
+.comment-form-foot{display:flex;align-items:center;gap:10px;justify-content:flex-end;margin-top:8px;flex-wrap:wrap}
 .comment-replying{margin-right:auto;font-size:12.5px;cursor:pointer}
+.comment-compose .comment-img-previews{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:10px 12px 0}
+.comment-compose .comment-img-previews[hidden]{display:none!important}
+.comment-img-card{position:relative;width:72px;height:72px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:var(--bg-soft)}
+.comment-img-card img{width:100%;height:100%;object-fit:cover;display:block}
+.comment-img-card.is-uploading{opacity:.6}
+.comment-img-loading{display:grid;place-items:center;width:100%;height:100%;color:var(--muted);font-size:18px}
+.comment-img-remove{position:absolute;top:2px;right:2px;width:20px;height:20px;padding:0;border:0;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:14px;line-height:1;cursor:pointer}
+.comment-img-remove:hover{background:rgba(0,0,0,.75)}
+.comment-images{display:flex;flex-wrap:wrap;gap:8px;padding:6px 0 2px 32px}
+.comment-image-link{display:block;max-width:220px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:var(--bg-soft)}
+.comment-image-link img{display:block;max-width:100%;max-height:180px;width:auto;height:auto;object-fit:contain}
 /* 历史版本列表 */
 .revision-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}
 .revision-row:last-child{border-bottom:none}
 .revision-info{color:var(--text)}
-.reader{max-width:840px;margin:0 auto;padding:44px 24px 96px}
+.reader{width:min(1080px,100%);max-width:1080px;margin:0 auto;padding:44px 24px 96px;box-sizing:border-box}
 .doc-title{font-size:34px;font-weight:700;letter-spacing:-.03em;margin:0 0 12px;padding:0;border:none}
-/* 阅读页作者信息：头像 + 昵称 + 更新时间 */
-.doc-author{display:flex;align-items:center;gap:8px;margin:0 0 28px;color:var(--muted);font-size:13.5px}
+/* 阅读页作者信息：头像 + 昵称 + 更新时间 + 浏览 + 访客 */
+.doc-author{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:0 0 28px;color:var(--muted);font-size:13.5px}
 .doc-author .user-avatar-sm{width:30px;height:30px;font-size:13px}
 .doc-author-name{color:var(--text);font-weight:600}
 

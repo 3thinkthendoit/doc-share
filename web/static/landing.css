@@ -114,99 +114,8 @@ html[data-theme="light"] {
   background: var(--l-fx-scan), var(--l-fx-vig);
 }
 
-/* ---------- nav ---------- */
-.l-nav {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 50;
-  height: 66px; display: flex; align-items: center; gap: 28px;
-  padding: 0 30px;
-  background: var(--l-nav-bg);
-  backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px);
-  border-bottom: 1px solid var(--l-border);
-  transition: background .2s;
-}
-/* 滚动后加深底色：由 JS 挂类，不写内联 style，否则切主题时会被顶掉 */
-.l-nav.l-nav--scrolled { background: var(--l-nav-bg-2); }
-.l-logo { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 16px; letter-spacing: -.4px; color: var(--l-head); }
-.l-logo b {
-  display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px;
-  background: linear-gradient(135deg, var(--l-grad-a), var(--l-grad-b));
-  color: #fff; font-size: 13px;
-}
-.l-nav-links { display: flex; gap: 4px; flex: 1; }
-.l-nav-links a {
-  font-size: 13px; color: var(--l-muted); padding: 7px 12px; border-radius: 6px; transition: color .15s, background .15s;
-}
-.l-nav-links a:hover { color: var(--l-text); background: var(--l-hairline); }
-/* 落地页汉堡 + 抽屉 */
-.l-nav-toggle {
-  display: none; align-items: center; justify-content: center; flex-direction: column; gap: 5px;
-  width: 38px; height: 38px; padding: 0; border: 1px solid transparent; border-radius: 6px;
-  background: transparent; cursor: pointer; flex: none; color: var(--l-head);
-}
-.l-nav-toggle:hover { border-color: var(--l-border-2); background: var(--l-panel); }
-.l-nav-toggle-bar { display: block; width: 18px; height: 2px; border-radius: 1px; background: currentColor; transition: transform .2s, opacity .2s; }
-.l-nav-toggle[aria-expanded="true"] .l-nav-toggle-bar:nth-child(1) { transform: translateY(7px) rotate(45deg); }
-.l-nav-toggle[aria-expanded="true"] .l-nav-toggle-bar:nth-child(2) { opacity: 0; }
-.l-nav-toggle[aria-expanded="true"] .l-nav-toggle-bar:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
-.l-nav-drawer-overlay {
-  position: fixed; inset: 0; z-index: 120; background: rgba(8, 10, 18, .48);
-  display: flex; justify-content: flex-start; align-items: stretch;
-}
-.l-nav-drawer-overlay[hidden] { display: none !important; }
-.l-nav-drawer {
-  width: min(300px, 86vw); background: var(--l-panel); color: var(--l-text);
-  box-shadow: 8px 0 32px rgba(0,0,0,.28); display: flex; flex-direction: column;
-  animation: lNavDrawerIn .22s ease-out; border-right: 1px solid var(--l-border);
-}
-@keyframes lNavDrawerIn { from { transform: translateX(-12px); opacity: .6; } to { transform: none; opacity: 1; } }
-.l-nav-drawer-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 16px 18px; border-bottom: 1px solid var(--l-border);
-}
-.l-nav-drawer-title { font-weight: 700; font-size: 15px; color: var(--l-head); }
-.l-nav-drawer-close {
-  width: 32px; height: 32px; border: 0; border-radius: 6px; background: transparent;
-  color: var(--l-muted); cursor: pointer; font-size: 16px; line-height: 1;
-}
-.l-nav-drawer-close:hover { background: var(--l-hairline); color: var(--l-head); }
-.l-nav-drawer-links { display: flex; flex-direction: column; padding: 10px 12px 20px; gap: 2px; overflow: auto; }
-.l-nav-drawer-links a {
-  display: block; padding: 12px 14px; border-radius: 8px; color: var(--l-text);
-  font-size: 14.5px; font-weight: 500; text-decoration: none;
-}
-.l-nav-drawer-links a:hover { background: var(--l-hairline); color: var(--l-accent); }
-body.l-nav-open { overflow: hidden; }
-.l-nav-right { display: flex; align-items: center; gap: 10px; --ctl-h: 38px; }
-/* 导航右侧三个控件等高：原生 select 与自绘按钮共用同一尺寸变量 */
-.l-nav-right > .l-btn,
-.l-nav-right .l-lang select { height: var(--ctl-h); box-sizing: border-box; line-height: 1; }
-
-/* 语言下拉（深色，原生 select） */
-.l-lang { display: inline-flex; align-items: center; }
-.l-lang select {
-  background: var(--l-panel); color: var(--l-muted);
-  border: 1px solid var(--l-border-2); border-radius: 6px;
-  font-family: inherit; font-size: 13px; padding: 0 10px; cursor: pointer;
-}
-.l-lang select:hover { color: var(--l-text); border-color: var(--l-accent); }
-
-/* 主题切换（图标按钮，与导航其他控件等高）；双类选择器提高优先级，不被 .l-btn 内边距覆盖 */
-.l-btn.l-theme {
-  display: inline-grid; place-items: center; width: var(--ctl-h, 38px); padding: 0;
-  background: var(--l-panel); color: var(--l-muted);
-  border: 1px solid var(--l-border-2); border-radius: 6px;
-  font-size: 15px; cursor: pointer;
-}
-.l-btn.l-theme:hover { color: var(--l-head); border-color: var(--l-accent); transform: none; }
-.l-btn.l-theme .i-sun { display: none; }
-.l-btn.l-theme .i-moon { display: block; }
-html[data-theme="light"] .l-btn.l-theme .i-sun { display: block; }
-html[data-theme="light"] .l-btn.l-theme .i-moon { display: none; }
-/* 自定义 Logo 图：与渐变方块 D 同尺寸 */
-.l-logo-img { width: 36px; height: 36px; border-radius: 9px; object-fit: cover; display: block; }
-/* 切主题时不要逐块闪色 */
+/* 顶栏样式见 site-nav.css（官网 / 分享 / 预览共用） */
 html[data-theme-anim] .l-site,
-html[data-theme-anim] .l-nav,
 html[data-theme-anim] .l-card,
 html[data-theme-anim] .l-stat,
 html[data-theme-anim] .l-mock { transition: background-color .25s, color .25s, border-color .25s, box-shadow .25s; }
@@ -387,19 +296,11 @@ html[data-theme-anim] .l-mock { transition: background-color .25s, color .25s, b
   .l-foot-grid { grid-template-columns: 1fr 1fr; }
   .l-h1 { font-size: 42px; letter-spacing: -1.6px; }
   .l-h2 { font-size: 30px; }
-  .l-nav-links { display: none; }
-  .l-nav-toggle { display: inline-flex; }
   .l-anchors { display: flex; }
-  .l-nav { height: 66px; min-height: 66px; flex-wrap: nowrap; padding: 0 16px; gap: 10px; }
-  .l-nav-right { margin-left: auto; flex-wrap: nowrap; gap: 8px; }
-  .l-logo { font-size: 15px; max-width: 36vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 @media (max-width: 620px) {
   .l-grid-3, .l-stats { grid-template-columns: 1fr; }
   .l-hero { padding-top: 110px; }
-  .l-nav-right { --ctl-h: 34px; gap: 6px; }
-  .l-nav-right .l-lang select { font-size: 12px; padding: 0 6px; max-width: 88px; }
-  .l-btn.l-btn-ghost, .l-nav-right > .l-btn-primary { padding-left: 10px; padding-right: 10px; font-size: 12.5px; }
 }
 @media (prefers-reduced-motion: reduce) {
   [data-reveal] { opacity: 1; transform: none; transition: none; }

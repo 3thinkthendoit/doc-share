@@ -220,6 +220,7 @@
   window.CURRENT_USER_ID = {{if .user}}{{.user.ID}}{{else}}0{{end}};
 </script>
 <script src="/static/projects.js"></script>
+{{template "adminfoot" .}}
 </body>
 </html>
 {{end}}

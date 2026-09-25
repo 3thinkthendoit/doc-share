@@ -516,10 +516,10 @@ window.UI = (function () {
 document.addEventListener('DOMContentLoaded', function () {
   if (!window.UI) return;
 
-  // 明暗主题：与官网共用 localStorage ds_theme；按钮由模板注入 .theme-toggle
+  // 明暗主题：与官网共用 localStorage ds_theme；.theme-toggle（控制台）与 .l-theme（官网/分享顶栏）
   (function initThemeToggles() {
     var root = document.documentElement;
-    var btns = document.querySelectorAll('.theme-toggle');
+    var btns = document.querySelectorAll('.theme-toggle, .l-theme');
     if (!btns.length) return;
     function syncPressed() {
       var isLight = root.getAttribute('data-theme') === 'light';
@@ -549,8 +549,11 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   })();
 
-  // 全站升级自定义下拉
-  document.querySelectorAll('select').forEach(function (sel) { UI.skinSelect ? UI.skinSelect(sel) : null; });
+  // 全站升级自定义下拉（官网/分享顶栏语言选择保持原生，与 landing 视觉一致）
+  document.querySelectorAll('select').forEach(function (sel) {
+    if (sel.closest('.l-lang')) return;
+    UI.skinSelect ? UI.skinSelect(sel) : null;
+  });
   // 所有者 / 成员悬停信息卡
   UI.bindOwnerHover(document);
   window.bindOwnerHover = UI.bindOwnerHover;

@@ -217,6 +217,7 @@ type Comment struct {
 	UserID     uint      `gorm:"index;not null;default:0" json:"user_id"`   // 0=游客
 	GuestName  string    `gorm:"size:64" json:"guest_name"`                 // 游客昵称（UserID=0 时有效）
 	Content    string    `gorm:"size:1000;not null" json:"content"`
+	Images     string    `gorm:"type:text" json:"-"` // JSON 数组，最多 3 个本站上传图 URL
 	CreatedAt  time.Time `json:"created_at"`
 }
 
