@@ -437,6 +437,8 @@ func (a *App) UpdateDoc(c *gin.Context) {
 	if !a.requireDocEdit(c, doc) {
 		return
 	}
+	actor := middleware.CurrentUser(c)
+	oldTitle, oldContent := doc.Title, doc.Content
 	var req docReq
 	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": errParam})
@@ -464,6 +466,9 @@ func (a *App) UpdateDoc(c *gin.Context) {
 	if err := a.DB.Save(doc).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新失败"})
 		return
+	}
+	if actor != nil && (doc.Title != oldTitle || doc.Content != oldContent) {
+		a.notifyDocUpdated(doc, actor.DisplayName(), actor.ID)
 	}
 	c.JSON(http.StatusOK, gin.H{"data": doc})
 }

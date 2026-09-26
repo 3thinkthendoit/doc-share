@@ -348,15 +348,21 @@ func (a *App) addComment(c *gin.Context, doc *model.Document, limitKey string) {
 	}
 
 	// 一级回复：回复目标必须是本文档的顶层评论
+	var parent *model.Comment
 	if req.ParentID > 0 {
-		var parent model.Comment
-		if err := a.DB.Where("id = ? AND document_id = ?", req.ParentID, doc.ID).First(&parent).Error; err != nil {
+		var p model.Comment
+		if err := a.DB.Where("id = ? AND document_id = ?", req.ParentID, doc.ID).First(&p).Error; err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "回复的评论不存在"})
 			return
 		}
-		if parent.ParentID != 0 {
-			req.ParentID = parent.ParentID // 回复回复时归并到其顶层
+		if p.ParentID != 0 {
+			req.ParentID = p.ParentID // 回复回复时归并到其顶层
+			if err := a.DB.Where("id = ? AND document_id = ?", req.ParentID, doc.ID).First(&p).Error; err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "回复的评论不存在"})
+				return
+			}
 		}
+		parent = &p
 		// 不能回复自己的评论（仅登录用户可判定；游客无稳定身份，不做限制）
 		if user != nil && parent.UserID == user.ID {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "不能回复自己的评论"})
@@ -369,14 +375,17 @@ func (a *App) addComment(c *gin.Context, doc *model.Document, limitKey string) {
 		b, _ := json.Marshal(images)
 		cm.Images = string(b)
 	}
+	actorName := ""
 	if user != nil {
 		cm.UserID = user.ID
+		actorName = user.DisplayName()
 	} else {
 		guest, isNew := a.guestIdentity(c)
 		if isNew {
 			setCookie(c, CookieGuest, a.Signer.Sign("g:"+guest), guestCookieMaxAge)
 		}
 		cm.GuestName = guest
+		actorName = guest
 	}
 	if err := a.DB.Create(&cm).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "发表失败"})
@@ -385,6 +394,7 @@ func (a *App) addComment(c *gin.Context, doc *model.Document, limitKey string) {
 	if limitID != "" {
 		a.Limiter.Fail(limitID, limitKey) // 占用一次限额
 	}
+	a.notifyNewComment(doc, &cm, actorName, parent)
 	c.JSON(http.StatusOK, gin.H{"ok": true, "id": cm.ID})
 }
 
@@ -515,6 +525,7 @@ func (a *App) ShareSaveContent(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
 		return
 	}
+	a.notifyShareEdited(doc, user.DisplayName(), user.ID)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 

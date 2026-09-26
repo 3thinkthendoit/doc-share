@@ -20,7 +20,6 @@
   "dlg.ok": "知道了",
   "dlg.confirm": "確定",
   "val.required": "請填寫完整後再送出",
-
   "nav.home": "首頁",
   "nav.dashboard": "儀表板",
   "nav.docs": "文件",
@@ -34,7 +33,6 @@
   "nav.logout": "登出系統",
   "nav.langTip": "切換語言",
   "nav.menu": "開啟選單",
-
   "page.login": "登入",
   "page.register": "註冊",
   "page.dashboard": "儀表板",
@@ -46,7 +44,6 @@
   "page.users": "使用者管理",
   "page.apikeys": "API 金鑰",
   "page.brand": "Markdown 文件分享系統",
-
   "login.username": "使用者名稱",
   "login.password": "密碼",
   "login.captcha": "驗證碼",
@@ -56,7 +53,6 @@
   "login.submit": "登入",
   "login.noAccount": "沒有帳號？",
   "login.registerLink": "立即註冊",
-
   "reg.title": "註冊",
   "reg.sub": "註冊後預設為一般使用者，可新建與分享文件",
   "reg.confirmPwd": "確認密碼",
@@ -65,7 +61,6 @@
   "reg.toLogin": "去登入",
   "reg.pwdMin": "密碼至少 6 位",
   "reg.pwdMismatch": "兩次輸入的密碼不一致",
-
   "dash.title": "儀表板",
   "dash.docTotal": "文件總數",
   "dash.myDocs": "我的文件",
@@ -82,7 +77,6 @@
   "dash.unshared": "未分享",
   "dash.preview": "預覽",
   "dash.empty": "還沒有文件",
-
   "docs.title": "文件管理",
   "docs.new": "新建文件",
   "docs.searchPh": "搜尋標題 / slug",
@@ -121,7 +115,6 @@
   "pager.info": "第 {0} / {1} 頁，共 {2} 條",
   "pager.size": "每頁筆數",
   "pager.perPage": "條/頁",
-
   "edit.editDoc": "編輯文件",
   "edit.newDoc": "新建文件",
   "edit.project": "項目",
@@ -177,7 +170,6 @@
   "edit.shareClosed": "已關閉分享",
   "edit.noShareLink": "尚無分享連結",
   "edit.copyManual": "複製失敗，請手動選取連結複製",
-
   "share.viewsInfo": "{0} 次瀏覽 · 更新於 {1}",
   "share.protected": "受保護的文件",
   "share.accessPwd": "存取密碼",
@@ -216,7 +208,6 @@
   "share.notFound": "分享連結不存在或已取消",
   "share.expired": "分享連結已過期",
   "share.docGone": "文件不存在",
-
   "proj.title": "項目",
   "proj.new": "新建項目",
   "proj.editTitle": "編輯項目",
@@ -231,7 +222,6 @@
   "proj.confirmDel": "確定刪除項目「{0}」？其下文件將回到未分組。",
   "proj.saveNetErr": "網路錯誤，儲存失敗",
   "proj.delNetErr": "網路錯誤，刪除失敗",
-
   "cat.title": "分類",
   "cat.new": "新建分類",
   "cat.editTitle": "編輯分類",
@@ -247,7 +237,6 @@
   "cat.saveNetErr": "網路錯誤，儲存失敗",
   "cat.delNetErr": "網路錯誤，刪除失敗",
   "cat.filterName": "分類名稱",
-
   "user.title": "使用者管理",
   "user.new": "新建使用者",
   "user.editTitle": "編輯使用者",
@@ -285,7 +274,6 @@
   "user.pwdResetOk": "密碼已重設",
   "user.avatarUpload": "上傳頭像",
   "user.avatarClear": "移除",
-
   "pwd.old": "原密碼",
   "pwd.new": "新密碼",
   "pwd.confirm": "確認新密碼",
@@ -294,12 +282,10 @@
   "pwd.mismatch": "兩次輸入的新密碼不一致",
   "pwd.changed": "密碼已修改",
   "pwd.changeFail": "修改失敗",
-
   "prof.title": "個人資訊",
   "prof.username": "使用者名稱",
   "prof.nickname": "暱稱",
   "prof.saved": "個人資訊已儲存",
-
   "key.title": "API 金鑰",
   "key.manage": "金鑰管理",
   "key.new": "新建金鑰",
@@ -328,7 +314,6 @@
   "key.filterOwner": "金鑰擁有者",
   "key.confirmReset": "重設後舊 Secret 立即失效，確認重設「{0}」？",
   "key.confirmDel": "刪除後該金鑰立即失效且無法復原，確認刪除「{0}」？",
-
   "apidoc.title": "串接說明",
   "apidoc.tocPick": "選擇目錄章節",
   "apidoc.secIntro": "總覽",
@@ -399,7 +384,6 @@
   "apidoc.respExample": "回應範例",
   "apidoc.thCode": "狀態碼",
   "apidoc.thErrMsg": "error 資訊",
-
   "err.param": "參數錯誤",
   "err.server": "伺服器錯誤",
   "err.notLogin": "未登入",
@@ -474,7 +458,6 @@
   "err.fileType": "不支援的檔案類型",
   "err.fileSave": "儲存檔案失敗",
   "err.shareFail": "操作失敗",
-
   "err.noOwnerDoc": "無權操作他人的文檔",
   "err.netCreate": "建立失敗：網路錯誤或服務不可用",
   "err.netSave": "儲存失敗：網路錯誤或服務不可用",
@@ -554,7 +537,6 @@
   "share.ownerShare": "{0} 給你分享了文件",
   "key.info": "金鑰資訊",
   "apidoc.sampleComment": "查詢我的文件列表",
-
   "err.projCatIllegal": "項目或分類非法",
   "err.shareSetFail": "分享設定失敗",
   "err.loginEmpty": "用戶名和密碼不能為空",
@@ -806,5 +788,12 @@
   "site.107": "PDF / Word 一鍵匯入轉 Markdown",
   "site.108": "成員協作，按角色檢視與編輯",
   "site.110": "成員協作已開啟 · 3 位成員",
-  "site.111": "GitHub 儲存庫"
+  "site.111": "GitHub 儲存庫",
+  "msg.title": "訊息",
+  "msg.readAll": "全部已讀",
+  "msg.loading": "載入中…",
+  "msg.empty": "暫無訊息",
+  "msg.loadFail": "載入失敗",
+  "share.createdAt": "建立於 {0}",
+  "share.updatedAt": "更新於 {0}"
 }

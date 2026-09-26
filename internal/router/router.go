@@ -92,6 +92,12 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.POST("/api/docs/:id/access-requests/:rid", app.ReviewAccessRequest)
 		admin.GET("/api/access-requests", app.ListPendingAccessRequests)
 
+		// 站内消息
+		admin.GET("/api/messages", app.ListMessages)
+		admin.GET("/api/messages/unread-count", app.UnreadMessageCount)
+		admin.POST("/api/messages/read-all", app.MarkAllMessagesRead)
+		admin.POST("/api/messages/:id/read", app.MarkMessageRead)
+
 		// 文档评论（作者/管理员，登录身份）
 		admin.GET("/api/docs/:id/comments", app.DocListComments)
 		admin.POST("/api/docs/:id/comments", app.DocAddComment)

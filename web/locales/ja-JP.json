@@ -20,7 +20,6 @@
   "dlg.ok": "OK",
   "dlg.confirm": "確定",
   "val.required": "すべて入力してから送信してください",
-
   "nav.home": "ホーム",
   "nav.dashboard": "ダッシュボード",
   "nav.docs": "ドキュメント",
@@ -34,7 +33,6 @@
   "nav.logout": "ログアウト",
   "nav.langTip": "言語切替",
   "nav.menu": "メニューを開く",
-
   "page.login": "ログイン",
   "page.register": "登録",
   "page.dashboard": "ダッシュボード",
@@ -46,7 +44,6 @@
   "page.users": "ユーザー管理",
   "page.apikeys": "API キー",
   "page.brand": "Markdown ドキュメント共有システム",
-
   "login.username": "ユーザー名",
   "login.password": "パスワード",
   "login.captcha": "認証コード",
@@ -56,7 +53,6 @@
   "login.submit": "ログイン",
   "login.noAccount": "アカウントをお持ちでないですか？",
   "login.registerLink": "今すぐ登録",
-
   "reg.title": "登録",
   "reg.sub": "登録後は一般ユーザーとしてドキュメントの作成と共有が可能です",
   "reg.confirmPwd": "パスワード確認",
@@ -65,7 +61,6 @@
   "reg.toLogin": "ログインへ",
   "reg.pwdMin": "パスワードは 6 文字以上",
   "reg.pwdMismatch": "パスワードが一致しません",
-
   "dash.title": "ダッシュボード",
   "dash.docTotal": "総ドキュメント数",
   "dash.myDocs": "マイドキュメント",
@@ -82,7 +77,6 @@
   "dash.unshared": "未共有",
   "dash.preview": "プレビュー",
   "dash.empty": "ドキュメントがありません",
-
   "docs.title": "ドキュメント管理",
   "docs.new": "新規ドキュメント",
   "docs.searchPh": "タイトル / slug を検索",
@@ -121,7 +115,6 @@
   "pager.info": "{0} / {1} ページ（全 {2} 件）",
   "pager.size": "ページサイズ",
   "pager.perPage": "件/ページ",
-
   "edit.editDoc": "ドキュメント編集",
   "edit.newDoc": "新規ドキュメント",
   "edit.project": "プロジェクト",
@@ -177,7 +170,6 @@
   "edit.shareClosed": "共有を停止しました",
   "edit.noShareLink": "共有リンクがありません",
   "edit.copyManual": "コピーに失敗しました。リンクを手動で選択してコピーしてください",
-
   "share.viewsInfo": "{0} 閲覧 · 更新 {1}",
   "share.protected": "保護されたドキュメント",
   "share.accessPwd": "アクセスパスワード",
@@ -216,7 +208,6 @@
   "share.notFound": "共有リンクが存在しないか、キャンセルされています",
   "share.expired": "共有リンクの有効期限が切れています",
   "share.docGone": "ドキュメントが存在しません",
-
   "proj.title": "プロジェクト",
   "proj.new": "新規プロジェクト",
   "proj.editTitle": "プロジェクト編集",
@@ -231,7 +222,6 @@
   "proj.confirmDel": "プロジェクト「{0}」を削除しますか？配下のドキュメントは未分類に戻ります。",
   "proj.saveNetErr": "ネットワークエラーで保存に失敗しました",
   "proj.delNetErr": "ネットワークエラーで削除に失敗しました",
-
   "cat.title": "カテゴリ",
   "cat.new": "新規カテゴリ",
   "cat.editTitle": "カテゴリ編集",
@@ -247,7 +237,6 @@
   "cat.saveNetErr": "ネットワークエラーで保存に失敗しました",
   "cat.delNetErr": "ネットワークエラーで削除に失敗しました",
   "cat.filterName": "カテゴリ名",
-
   "user.title": "ユーザー管理",
   "user.new": "新規ユーザー",
   "user.editTitle": "ユーザー編集",
@@ -285,7 +274,6 @@
   "user.pwdResetOk": "パスワードをリセットしました",
   "user.avatarUpload": "アイコンをアップロード",
   "user.avatarClear": "削除",
-
   "pwd.old": "現在のパスワード",
   "pwd.new": "新しいパスワード",
   "pwd.confirm": "新しいパスワード確認",
@@ -294,12 +282,10 @@
   "pwd.mismatch": "新しいパスワードが一致しません",
   "pwd.changed": "パスワードを変更しました",
   "pwd.changeFail": "変更に失敗しました",
-
   "prof.title": "個人情報",
   "prof.username": "ユーザー名",
   "prof.nickname": "ニックネーム",
   "prof.saved": "個人情報を保存しました",
-
   "key.title": "API キー",
   "key.manage": "キー管理",
   "key.new": "新規キー",
@@ -328,7 +314,6 @@
   "key.filterOwner": "キー所有者",
   "key.confirmReset": "リセットすると古い Secret は直ちに無効になります。「{0}」をリセットしますか？",
   "key.confirmDel": "削除するとこのキーは直ちに無効になり復元できません。「{0}」を削除しますか？",
-
   "apidoc.title": "連携ガイド",
   "apidoc.tocPick": "セクションへ移動",
   "apidoc.secIntro": "概要",
@@ -399,7 +384,6 @@
   "apidoc.respExample": "レスポンス例",
   "apidoc.thCode": "ステータスコード",
   "apidoc.thErrMsg": "error メッセージ",
-
   "err.param": "パラメータエラー",
   "err.server": "サーバーエラー",
   "err.notLogin": "未ログイン",
@@ -474,7 +458,6 @@
   "err.fileType": "対応していないファイル形式です",
   "err.fileSave": "ファイルの保存に失敗しました",
   "err.shareFail": "操作に失敗しました",
-
   "err.noOwnerDoc": "他のユーザーのドキュメントは操作できません",
   "err.netCreate": "作成に失敗しました：ネットワークエラーまたはサービス利用不可",
   "err.netSave": "保存に失敗しました：ネットワークエラーまたはサービス利用不可",
@@ -554,7 +537,6 @@
   "share.ownerShare": "{0} からドキュメントが共有されました",
   "key.info": "キー情報",
   "apidoc.sampleComment": "自分のドキュメント一覧を取得",
-
   "err.projCatIllegal": "プロジェクトまたは分類が不正です",
   "err.shareSetFail": "共有設定の更新に失敗しました",
   "err.loginEmpty": "ユーザー名とパスワードを入力してください",
@@ -806,5 +788,12 @@
   "site.107": "PDF / Word をワンクリックで Markdown に取り込み",
   "site.108": "ロール別の閲覧・編集でチーム協働",
   "site.110": "チーム協働が有効 · メンバー 3 名",
-  "site.111": "GitHub リポジトリ"
+  "site.111": "GitHub リポジトリ",
+  "msg.title": "メッセージ",
+  "msg.readAll": "すべて既読",
+  "msg.loading": "読み込み中…",
+  "msg.empty": "メッセージはありません",
+  "msg.loadFail": "読み込みに失敗しました",
+  "share.createdAt": "作成：{0}",
+  "share.updatedAt": "更新：{0}"
 }

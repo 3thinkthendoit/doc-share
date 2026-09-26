@@ -20,7 +20,6 @@
   "dlg.ok": "知道了",
   "dlg.confirm": "确定",
   "val.required": "请填写完整后再提交",
-
   "nav.home": "首页",
   "nav.dashboard": "仪表盘",
   "nav.docs": "文档",
@@ -34,7 +33,6 @@
   "nav.logout": "退出系统",
   "nav.langTip": "切换语言",
   "nav.menu": "打开菜单",
-
   "page.login": "登录",
   "page.register": "注册",
   "page.dashboard": "仪表盘",
@@ -46,7 +44,6 @@
   "page.users": "用户管理",
   "page.apikeys": "API 密钥",
   "page.brand": "Markdown 文档分享系统",
-
   "login.username": "用户名",
   "login.password": "密码",
   "login.captcha": "验证码",
@@ -56,7 +53,6 @@
   "login.submit": "登录",
   "login.noAccount": "没有账号？",
   "login.registerLink": "立即注册",
-
   "reg.title": "注册",
   "reg.sub": "注册后默认为普通用户，可新建与分享文档",
   "reg.confirmPwd": "确认密码",
@@ -65,7 +61,6 @@
   "reg.toLogin": "去登录",
   "reg.pwdMin": "密码至少 6 位",
   "reg.pwdMismatch": "两次输入的密码不一致",
-
   "dash.title": "仪表盘",
   "dash.docTotal": "文档总数",
   "dash.myDocs": "我的文档",
@@ -82,7 +77,6 @@
   "dash.unshared": "未分享",
   "dash.preview": "预览",
   "dash.empty": "还没有文档",
-
   "docs.title": "文档管理",
   "docs.new": "新建文档",
   "docs.searchPh": "搜索标题 / slug",
@@ -121,7 +115,6 @@
   "pager.info": "第 {0} / {1} 页，共 {2} 条",
   "pager.size": "每页条数",
   "pager.perPage": "条/页",
-
   "edit.editDoc": "编辑文档",
   "edit.newDoc": "新建文档",
   "edit.project": "项目",
@@ -177,7 +170,6 @@
   "edit.shareClosed": "已关闭分享",
   "edit.noShareLink": "暂无分享链接",
   "edit.copyManual": "复制失败，请手动选择链接复制",
-
   "share.viewsInfo": "{0} 次浏览 · 更新于 {1}",
   "share.protected": "受保护的文档",
   "share.accessPwd": "访问密码",
@@ -216,7 +208,6 @@
   "share.notFound": "分享链接不存在或已取消",
   "share.expired": "分享链接已过期",
   "share.docGone": "文档不存在",
-
   "proj.title": "项目",
   "proj.new": "新建项目",
   "proj.editTitle": "编辑项目",
@@ -231,7 +222,6 @@
   "proj.confirmDel": "确定删除项目「{0}」？其下文档将回到未分组。",
   "proj.saveNetErr": "网络错误，保存失败",
   "proj.delNetErr": "网络错误，删除失败",
-
   "cat.title": "分类",
   "cat.new": "新建分类",
   "cat.editTitle": "编辑分类",
@@ -247,7 +237,6 @@
   "cat.saveNetErr": "网络错误，保存失败",
   "cat.delNetErr": "网络错误，删除失败",
   "cat.filterName": "分类名称",
-
   "user.title": "用户管理",
   "user.new": "新建用户",
   "user.editTitle": "编辑用户",
@@ -285,7 +274,6 @@
   "user.pwdResetOk": "密码已重置",
   "user.avatarUpload": "上传头像",
   "user.avatarClear": "移除",
-
   "pwd.old": "原密码",
   "pwd.new": "新密码",
   "pwd.confirm": "确认新密码",
@@ -294,12 +282,10 @@
   "pwd.mismatch": "两次输入的新密码不一致",
   "pwd.changed": "密码已修改",
   "pwd.changeFail": "修改失败",
-
   "prof.title": "个人信息",
   "prof.username": "用户名",
   "prof.nickname": "昵称",
   "prof.saved": "个人信息已保存",
-
   "key.title": "API 密钥",
   "key.manage": "密钥管理",
   "key.new": "新建密钥",
@@ -328,7 +314,6 @@
   "key.filterOwner": "密钥所有者",
   "key.confirmReset": "重置后旧 Secret 立即失效，确认重置「{0}」？",
   "key.confirmDel": "删除后该密钥立即失效且不可恢复，确认删除「{0}」？",
-
   "apidoc.title": "对接说明",
   "apidoc.tocPick": "选择目录章节",
   "apidoc.secIntro": "概述",
@@ -399,7 +384,6 @@
   "apidoc.respExample": "响应示例",
   "apidoc.thCode": "状态码",
   "apidoc.thErrMsg": "error 信息",
-
   "err.param": "参数错误",
   "err.server": "服务器错误",
   "err.notLogin": "未登录",
@@ -474,7 +458,6 @@
   "err.fileType": "不支持的文件类型",
   "err.fileSave": "保存文件失败",
   "err.shareFail": "操作失败",
-
   "err.noOwnerDoc": "无权操作他人的文档",
   "err.netCreate": "创建失败：网络错误或服务不可用",
   "err.netSave": "保存失败：网络错误或服务不可用",
@@ -550,11 +533,12 @@
   "edit.autosaved": "已自动保存",
   "share.meta": "浏览 {0} 次 · 更新于 {1}",
   "share.views": "浏览 {0} 次",
+  "share.createdAt": "创建于 {0}",
+  "share.updatedAt": "更新于 {0}",
   "share.pwHint": "输入访问密码后即可查看文档内容",
   "share.ownerShare": "{0} 给你分享了文档",
   "key.info": "密钥信息",
   "apidoc.sampleComment": "查询我的文档列表",
-
   "err.projCatIllegal": "项目或分类非法",
   "err.shareSetFail": "分享设置失败",
   "err.loginEmpty": "用户名和密码不能为空",
@@ -806,5 +790,10 @@
   "site.107": "PDF / Word 一键导入转 Markdown",
   "site.108": "成员协作，按角色查看与编辑",
   "site.110": "成员协作已开启 · 3 位成员",
-  "site.111": "GitHub 仓库"
+  "site.111": "GitHub 仓库",
+  "msg.title": "消息",
+  "msg.readAll": "全部已读",
+  "msg.loading": "加载中…",
+  "msg.empty": "暂无消息",
+  "msg.loadFail": "加载失败"
 }

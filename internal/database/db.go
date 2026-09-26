@@ -40,7 +40,7 @@ func Init(cfg *config.Config) (*gorm.DB, error) {
 	sqlDB.SetMaxIdleConns(cfg.Database.MaxIdleConn)
 
 	if err := db.AutoMigrate(&model.User{}, &model.Project{}, &model.Category{}, &model.ApiKey{}, &model.Document{}, &model.Share{}, &model.ShareAccessRequest{}, &model.SystemSetting{},
-		&model.DocumentRevision{}, &model.Comment{}, &model.DocumentVisitor{}, &model.ProjectMember{}); err != nil {
+		&model.DocumentRevision{}, &model.Comment{}, &model.DocumentVisitor{}, &model.ProjectMember{}, &model.Message{}); err != nil {
 		return nil, fmt.Errorf("auto migrate: %w", err)
 	}
 

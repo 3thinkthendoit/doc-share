@@ -705,6 +705,135 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   })();
 
+  // 站内消息：铃铛未读数 + 下拉列表
+  (function bindMessages() {
+    var bell = document.getElementById('msgBellBtn');
+    var drop = document.getElementById('msgDropdown');
+    var list = document.getElementById('msgList');
+    var badge = document.getElementById('msgBadge');
+    var readAll = document.getElementById('msgReadAll');
+    if (!bell || !drop || !list || !window.UI) return;
+
+    function setBadge(n) {
+      if (!badge) return;
+      if (n > 0) {
+        badge.hidden = false;
+        badge.textContent = n > 99 ? '99+' : String(n);
+      } else {
+        badge.hidden = true;
+        badge.textContent = '0';
+      }
+    }
+    function fmtTime(iso) {
+      return (iso || '').replace('T', ' ').substring(0, 16);
+    }
+    async function refreshCount() {
+      try {
+        var res = await fetch('/admin/api/messages/unread-count', {
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+        var data = await res.json();
+        if (res.ok) setBadge(data.count || 0);
+      } catch (e) { /* ignore */ }
+    }
+    async function loadList() {
+      list.innerHTML = '<div class="muted msg-empty">' + UI.t('msg.loading') + '</div>';
+      try {
+        var res = await fetch('/admin/api/messages?limit=30', {
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+        var data = await res.json().catch(function () { return {}; });
+        if (!res.ok) {
+          list.innerHTML = '<div class="muted msg-empty">' + UI.t('msg.loadFail') + '</div>';
+          return;
+        }
+        var items = (data && data.data) || [];
+        if (!items.length) {
+          list.innerHTML = '<div class="muted msg-empty">' + UI.t('msg.empty') + '</div>';
+          return;
+        }
+        list.innerHTML = '';
+        items.forEach(function (m) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'msg-item' + (m.read_at ? '' : ' is-unread');
+          var title = document.createElement('div');
+          title.className = 'msg-item-title';
+          title.textContent = m.title || '';
+          btn.appendChild(title);
+          if (m.body) {
+            var body = document.createElement('div');
+            body.className = 'msg-item-body';
+            body.textContent = m.body;
+            btn.appendChild(body);
+          }
+          var time = document.createElement('div');
+          time.className = 'msg-item-time';
+          time.textContent = fmtTime(m.created_at);
+          btn.appendChild(time);
+          btn.addEventListener('click', async function () {
+            if (!m.read_at) {
+              try {
+                await fetch('/admin/api/messages/' + m.id + '/read', {
+                  method: 'POST',
+                  headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+              } catch (e) { /* ignore */ }
+            }
+            drop.hidden = true;
+            bell.setAttribute('aria-expanded', 'false');
+            if (m.link) location.href = m.link;
+            else refreshCount();
+          });
+          list.appendChild(btn);
+        });
+      } catch (e) {
+        list.innerHTML = '<div class="muted msg-empty">' + UI.t('msg.loadFail') + '</div>';
+      }
+    }
+    function closeDrop() {
+      drop.hidden = true;
+      bell.setAttribute('aria-expanded', 'false');
+    }
+    bell.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (drop.hidden) {
+        drop.hidden = false;
+        bell.setAttribute('aria-expanded', 'true');
+        loadList();
+      } else {
+        closeDrop();
+      }
+    });
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('#msgMenu')) closeDrop();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !drop.hidden) closeDrop();
+    });
+    if (readAll) {
+      readAll.addEventListener('click', async function (e) {
+        e.stopPropagation();
+        try {
+          var res = await fetch('/admin/api/messages/read-all', {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+          });
+          if (!res.ok) {
+            UI.toast(UI.t('操作失败'), 'error');
+            return;
+          }
+          setBadge(0);
+          loadList();
+        } catch (err) {
+          UI.toast(UI.t('操作失败'), 'error');
+        }
+      });
+    }
+    refreshCount();
+    setInterval(refreshCount, 60000);
+  })();
+
   // 列表窄屏卡片：从 thead 注入 data-label；空行/合并格跳过
   (function enhanceTableCards() {
     document.querySelectorAll('.panel > table.table').forEach(function (table) {

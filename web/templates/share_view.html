@@ -16,7 +16,12 @@
       <span class="doc-author-name">{{if .doc.Owner.Nickname}}{{.doc.Owner.Nickname}}{{else}}{{.doc.Owner.Username}}{{end}}</span>
       <span class="doc-author-dot">·</span>
       {{end}}
-      <span>{{.doc.UpdatedAt.Format "2006-01-02 15:04"}}</span>
+      {{/* 创建后未再修改（精确到分相同）只显示创建时间；更新过则只显示更新时间 */}}
+      {{if eq (.doc.CreatedAt.Format "2006-01-02 15:04") (.doc.UpdatedAt.Format "2006-01-02 15:04")}}
+      <span>{{$.T "share.createdAt" (.doc.CreatedAt.Format "2006-01-02 15:04")}}</span>
+      {{else}}
+      <span>{{$.T "share.updatedAt" (.doc.UpdatedAt.Format "2006-01-02 15:04")}}</span>
+      {{end}}
       <span class="doc-author-dot">·</span>
       <span>{{$.T "share.views" .doc.ViewCount}}</span>
       {{if .visitors}}

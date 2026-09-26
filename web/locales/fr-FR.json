@@ -20,7 +20,6 @@
   "dlg.ok": "OK",
   "dlg.confirm": "Confirmer",
   "val.required": "Veuillez remplir tous les champs avant d'envoyer",
-
   "nav.home": "Accueil",
   "nav.dashboard": "Tableau de bord",
   "nav.docs": "Documents",
@@ -34,7 +33,6 @@
   "nav.logout": "Déconnexion",
   "nav.langTip": "Changer de langue",
   "nav.menu": "Ouvrir le menu",
-
   "page.login": "Connexion",
   "page.register": "Inscription",
   "page.dashboard": "Tableau de bord",
@@ -46,7 +44,6 @@
   "page.users": "Utilisateurs",
   "page.apikeys": "Clés API",
   "page.brand": "Système de partage de documents Markdown",
-
   "login.username": "Nom d'utilisateur",
   "login.password": "Mot de passe",
   "login.captcha": "Captcha",
@@ -56,7 +53,6 @@
   "login.submit": "Se connecter",
   "login.noAccount": "Pas de compte ?",
   "login.registerLink": "S'inscrire",
-
   "reg.title": "Inscription",
   "reg.sub": "Les nouveaux comptes sont des utilisateurs standard pouvant créer et partager des documents",
   "reg.confirmPwd": "Confirmer le mot de passe",
@@ -65,7 +61,6 @@
   "reg.toLogin": "Se connecter",
   "reg.pwdMin": "Le mot de passe doit contenir au moins 6 caractères",
   "reg.pwdMismatch": "Les deux mots de passe ne correspondent pas",
-
   "dash.title": "Tableau de bord",
   "dash.docTotal": "Documents",
   "dash.myDocs": "Mes documents",
@@ -82,7 +77,6 @@
   "dash.unshared": "Non partagé",
   "dash.preview": "Aperçu",
   "dash.empty": "Aucun document pour le moment",
-
   "docs.title": "Documents",
   "docs.new": "Nouveau document",
   "docs.searchPh": "Rechercher titre / slug",
@@ -121,7 +115,6 @@
   "pager.info": "Page {0} sur {1} · {2} éléments",
   "pager.size": "Taille de page",
   "pager.perPage": "/ page",
-
   "edit.editDoc": "Modifier le document",
   "edit.newDoc": "Nouveau document",
   "edit.project": "Projet",
@@ -177,7 +170,6 @@
   "edit.shareClosed": "Partage désactivé",
   "edit.noShareLink": "Aucun lien de partage",
   "edit.copyManual": "Échec de la copie, veuillez sélectionner et copier le lien manuellement",
-
   "share.viewsInfo": "{0} vues · mis à jour {1}",
   "share.protected": "Document protégé",
   "share.accessPwd": "Mot de passe d'accès",
@@ -216,7 +208,6 @@
   "share.notFound": "Le lien de partage n'existe pas ou a été révoqué",
   "share.expired": "Le lien de partage a expiré",
   "share.docGone": "Document introuvable",
-
   "proj.title": "Projets",
   "proj.new": "Nouveau projet",
   "proj.editTitle": "Modifier le projet",
@@ -231,7 +222,6 @@
   "proj.confirmDel": "Supprimer le projet « {0} » ? Ses documents redeviendront sans groupe.",
   "proj.saveNetErr": "Erreur réseau, échec de l'enregistrement",
   "proj.delNetErr": "Erreur réseau, échec de la suppression",
-
   "cat.title": "Catégories",
   "cat.new": "Nouvelle catégorie",
   "cat.editTitle": "Modifier la catégorie",
@@ -247,7 +237,6 @@
   "cat.saveNetErr": "Erreur réseau, échec de l'enregistrement",
   "cat.delNetErr": "Erreur réseau, échec de la suppression",
   "cat.filterName": "Nom de la catégorie",
-
   "user.title": "Utilisateurs",
   "user.new": "Nouvel utilisateur",
   "user.editTitle": "Modifier l'utilisateur",
@@ -285,7 +274,6 @@
   "user.pwdResetOk": "Mot de passe réinitialisé",
   "user.avatarUpload": "Téléverser un avatar",
   "user.avatarClear": "Retirer",
-
   "pwd.old": "Mot de passe actuel",
   "pwd.new": "Nouveau mot de passe",
   "pwd.confirm": "Confirmer le nouveau mot de passe",
@@ -294,12 +282,10 @@
   "pwd.mismatch": "Les deux nouveaux mots de passe ne correspondent pas",
   "pwd.changed": "Mot de passe modifié",
   "pwd.changeFail": "Échec de la modification",
-
   "prof.title": "Profil",
   "prof.username": "Nom d'utilisateur",
   "prof.nickname": "Pseudo",
   "prof.saved": "Profil enregistré",
-
   "key.title": "Clés API",
   "key.manage": "Clés API",
   "key.new": "Nouvelle clé",
@@ -328,7 +314,6 @@
   "key.filterOwner": "Propriétaire de la clé",
   "key.confirmReset": "La réinitialisation invalide immédiatement l'ancien Secret. Réinitialiser « {0} » ?",
   "key.confirmDel": "La suppression révoque immédiatement cette clé de façon irréversible. Supprimer « {0} » ?",
-
   "apidoc.title": "Guide d'intégration",
   "apidoc.tocPick": "Aller à la section",
   "apidoc.secIntro": "Aperçu",
@@ -399,7 +384,6 @@
   "apidoc.respExample": "Exemple de réponse",
   "apidoc.thCode": "Statut",
   "apidoc.thErrMsg": "Message d'erreur",
-
   "err.param": "Paramètre invalide",
   "err.server": "Erreur serveur",
   "err.notLogin": "Non connecté",
@@ -474,7 +458,6 @@
   "err.fileType": "Type de fichier non pris en charge",
   "err.fileSave": "Échec de l'enregistrement du fichier",
   "err.shareFail": "Échec de l'opération",
-
   "err.noOwnerDoc": "Vous ne pouvez pas modifier le document d'un autre propriétaire",
   "err.netCreate": "Échec de création : erreur réseau ou service indisponible",
   "err.netSave": "Échec de l'enregistrement : erreur réseau ou service indisponible",
@@ -554,7 +537,6 @@
   "share.ownerShare": "{0} a partagé un document avec vous",
   "key.info": "Détails de la clé",
   "apidoc.sampleComment": "Lister mes documents",
-
   "err.projCatIllegal": "Projet ou catégorie invalide",
   "err.shareSetFail": "Échec de mise à jour du partage",
   "err.loginEmpty": "Le nom d'utilisateur et le mot de passe sont obligatoires",
@@ -806,5 +788,12 @@
   "site.107": "Import PDF / Word vers Markdown en un clic",
   "site.108": "Collaboration d'équipe avec accès par rôle",
   "site.110": "Collaboration d'équipe activée · 3 membres",
-  "site.111": "Dépôt GitHub"
+  "site.111": "Dépôt GitHub",
+  "msg.title": "Messages",
+  "msg.readAll": "Tout marquer comme lu",
+  "msg.loading": "Chargement…",
+  "msg.empty": "Aucun message",
+  "msg.loadFail": "Échec du chargement",
+  "share.createdAt": "Créé le {0}",
+  "share.updatedAt": "Mis à jour le {0}"
 }

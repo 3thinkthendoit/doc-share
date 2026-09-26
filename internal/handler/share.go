@@ -267,6 +267,7 @@ func (a *App) ShareAccessApply(c *gin.Context) {
 	}
 	a.Limiter.Fail(ip, limitKey) // 占用限额，防刷
 	a.setShareReqCookie(c, doc.ID, req.RequestToken)
+	a.notifyAccessApply(doc, name)
 	c.JSON(http.StatusOK, gin.H{"ok": true, "status": "pending"})
 }
 
@@ -485,5 +486,11 @@ func (a *App) ReviewAccessRequest(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "share.applyReviewFail"})
 		return
 	}
+	var share model.Share
+	token := ""
+	if a.DB.Where("document_id = ?", doc.ID).First(&share).Error == nil {
+		token = share.ShareToken
+	}
+	a.notifyAccessReviewed(&req, doc, status == model.AccessApproved, token)
 	c.JSON(http.StatusOK, gin.H{"ok": true, "status": status})
 }

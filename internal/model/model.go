@@ -221,6 +221,34 @@ type Comment struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
+// 站内消息类型（持久化到 Message.Kind）
+const (
+	MsgAccessApply     = "access_apply"     // 有人申请查看文档
+	MsgAccessApproved  = "access_approved"  // 申请已通过
+	MsgAccessRejected  = "access_rejected"  // 申请已拒绝
+	MsgComment         = "comment"          // 文档新评论
+	MsgCommentReply    = "comment_reply"    // 评论被回复
+	MsgProjectAdded    = "project_added"    // 被加入项目
+	MsgProjectRole     = "project_role"     // 项目角色变更
+	MsgProjectRemoved  = "project_removed"  // 被移出项目
+	MsgShareEdited     = "share_edited"     // 分享页协作编辑保存
+	MsgDocUpdated      = "doc_updated"      // 他人更新了你的文档
+)
+
+// Message 站内消息：投递给登录用户；邮件为可选旁路（有邮箱且 SMTP 已配置时异步发送）
+type Message struct {
+	ID        uint       `gorm:"primaryKey" json:"id"`
+	UserID    uint       `gorm:"index;not null" json:"user_id"` // 收件人
+	Kind      string     `gorm:"size:32;index;not null" json:"kind"`
+	Title     string     `gorm:"size:200;not null" json:"title"`
+	Body      string     `gorm:"size:1000" json:"body"`
+	Link      string     `gorm:"size:500" json:"link"` // 站内相对路径，如 /admin/docs/1/edit
+	RefType   string     `gorm:"size:32" json:"ref_type"`
+	RefID     uint       `gorm:"index;not null;default:0" json:"ref_id"`
+	ReadAt    *time.Time `json:"read_at"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
 // DocumentVisitor 文档历史访客（按 文档+身份 去重，同一访客只留一条并累计次数）
 type DocumentVisitor struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`

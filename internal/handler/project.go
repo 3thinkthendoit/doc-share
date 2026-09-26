@@ -464,6 +464,7 @@ func (a *App) AddProjectMember(c *gin.Context) {
 		}
 		return
 	}
+	a.notifyProjectMemberAdded(project, m.UserID, m.Role)
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"id": m.ID, "user_id": m.UserID, "username": u.Username, "nickname": u.DisplayName(), "role": m.Role}})
 }
 
@@ -500,6 +501,7 @@ func (a *App) UpdateProjectMember(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": errUpdateFail})
 		return
 	}
+	a.notifyProjectMemberRole(project, m.UserID, m.Role)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
@@ -513,9 +515,11 @@ func (a *App) RemoveProjectMember(c *gin.Context) {
 	if m == nil {
 		return
 	}
+	uid := m.UserID
 	if err := a.DB.Delete(m).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
 		return
 	}
+	a.notifyProjectMemberRemoved(project, uid)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }

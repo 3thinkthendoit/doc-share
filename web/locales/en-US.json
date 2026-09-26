@@ -20,7 +20,6 @@
   "dlg.ok": "OK",
   "dlg.confirm": "Confirm",
   "val.required": "Please complete all fields before submitting",
-
   "nav.home": "Home",
   "nav.dashboard": "Dashboard",
   "nav.docs": "Documents",
@@ -34,7 +33,6 @@
   "nav.logout": "Sign out",
   "nav.langTip": "Switch language",
   "nav.menu": "Open menu",
-
   "page.login": "Sign in",
   "page.register": "Sign up",
   "page.dashboard": "Dashboard",
@@ -46,7 +44,6 @@
   "page.users": "Users",
   "page.apikeys": "API Keys",
   "page.brand": "Markdown Doc Sharing System",
-
   "login.username": "Username",
   "login.password": "Password",
   "login.captcha": "Captcha",
@@ -56,7 +53,6 @@
   "login.submit": "Sign in",
   "login.noAccount": "No account?",
   "login.registerLink": "Sign up",
-
   "reg.title": "Sign up",
   "reg.sub": "New accounts are regular users who can create and share documents",
   "reg.confirmPwd": "Confirm password",
@@ -65,7 +61,6 @@
   "reg.toLogin": "Sign in",
   "reg.pwdMin": "Password must be at least 6 characters",
   "reg.pwdMismatch": "The two passwords do not match",
-
   "dash.title": "Dashboard",
   "dash.docTotal": "Documents",
   "dash.myDocs": "My documents",
@@ -82,7 +77,6 @@
   "dash.unshared": "Not shared",
   "dash.preview": "Preview",
   "dash.empty": "No documents yet",
-
   "docs.title": "Documents",
   "docs.new": "New document",
   "docs.searchPh": "Search title / slug",
@@ -121,7 +115,6 @@
   "pager.info": "Page {0} of {1} · {2} items",
   "pager.size": "Page size",
   "pager.perPage": "/ page",
-
   "edit.editDoc": "Edit document",
   "edit.newDoc": "New document",
   "edit.project": "Project",
@@ -177,7 +170,6 @@
   "edit.shareClosed": "Sharing disabled",
   "edit.noShareLink": "No share link yet",
   "edit.copyManual": "Copy failed, please select and copy the link manually",
-
   "share.viewsInfo": "{0} views · updated {1}",
   "share.protected": "Protected document",
   "share.accessPwd": "Access password",
@@ -216,7 +208,6 @@
   "share.notFound": "Share link does not exist or has been revoked",
   "share.expired": "Share link has expired",
   "share.docGone": "Document not found",
-
   "proj.title": "Projects",
   "proj.new": "New project",
   "proj.editTitle": "Edit project",
@@ -231,7 +222,6 @@
   "proj.confirmDel": "Delete project \"{0}\"? Its documents will become ungrouped.",
   "proj.saveNetErr": "Network error, save failed",
   "proj.delNetErr": "Network error, delete failed",
-
   "cat.title": "Categories",
   "cat.new": "New category",
   "cat.editTitle": "Edit category",
@@ -247,7 +237,6 @@
   "cat.saveNetErr": "Network error, save failed",
   "cat.delNetErr": "Network error, delete failed",
   "cat.filterName": "Category name",
-
   "user.title": "Users",
   "user.new": "New user",
   "user.editTitle": "Edit user",
@@ -285,7 +274,6 @@
   "user.pwdResetOk": "Password reset",
   "user.avatarUpload": "Upload avatar",
   "user.avatarClear": "Remove",
-
   "pwd.old": "Current password",
   "pwd.new": "New password",
   "pwd.confirm": "Confirm new password",
@@ -294,12 +282,10 @@
   "pwd.mismatch": "The two new passwords do not match",
   "pwd.changed": "Password changed",
   "pwd.changeFail": "Change failed",
-
   "prof.title": "Profile",
   "prof.username": "Username",
   "prof.nickname": "Nickname",
   "prof.saved": "Profile saved",
-
   "key.title": "API Keys",
   "key.manage": "API Keys",
   "key.new": "New key",
@@ -328,7 +314,6 @@
   "key.filterOwner": "Key owner",
   "key.confirmReset": "Resetting invalidates the old Secret immediately. Reset \"{0}\"?",
   "key.confirmDel": "Deleting revokes this key immediately and cannot be undone. Delete \"{0}\"?",
-
   "apidoc.title": "Integration guide",
   "apidoc.tocPick": "Jump to section",
   "apidoc.secIntro": "Overview",
@@ -399,7 +384,6 @@
   "apidoc.respExample": "Response example",
   "apidoc.thCode": "Status",
   "apidoc.thErrMsg": "Error message",
-
   "err.param": "Invalid parameter",
   "err.server": "Server error",
   "err.notLogin": "Not signed in",
@@ -474,7 +458,6 @@
   "err.fileType": "Unsupported file type",
   "err.fileSave": "Failed to save file",
   "err.shareFail": "Operation failed",
-
   "err.noOwnerDoc": "You may not modify another owner's document",
   "err.netCreate": "Create failed: network error or service unavailable",
   "err.netSave": "Save failed: network error or service unavailable",
@@ -554,7 +537,6 @@
   "share.ownerShare": "{0} shared a document with you",
   "key.info": "Key details",
   "apidoc.sampleComment": "List my documents",
-
   "err.projCatIllegal": "Invalid project or category",
   "err.shareSetFail": "Failed to update share settings",
   "err.loginEmpty": "Username and password are required",
@@ -806,5 +788,12 @@
   "site.107": "One-click PDF / Word to Markdown import",
   "site.108": "Team collaboration with role-based access",
   "site.110": "Team collaboration enabled · 3 members",
-  "site.111": "GitHub repository"
+  "site.111": "GitHub repository",
+  "msg.title": "Messages",
+  "msg.readAll": "Mark all read",
+  "msg.loading": "Loading…",
+  "msg.empty": "No messages",
+  "msg.loadFail": "Failed to load",
+  "share.createdAt": "Created {0}",
+  "share.updatedAt": "Updated {0}"
 }
