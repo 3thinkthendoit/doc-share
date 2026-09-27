@@ -10,15 +10,17 @@ name: mirror-drawio
 #   ACR_PASSWORD  —— ACR 密码（固定密码或临时 Token）
 # 注意：ACR 个人版不会在 push 时自动建仓，请先在控制台创建名为 drawio 的仓库。
 #
-# 触发：手动（可指定 drawio 版本 tag）；每周一自动同步默认版本。
+# 版本输入自动兼容 "24.7.5" 与 "v24.7.5" 两种 tag 格式（Docker Hub 与 GitHub
+# release tag 的前缀习惯不同，探测到哪个存在就拉哪个），转存到 ACR 时统一
+# 使用去掉 v 前缀的版本号。
 
 on:
   workflow_dispatch:
     inputs:
       drawio_version:
-        description: 'jgraph/drawio 镜像 tag（如 v24.7.5）'
+        description: 'drawio 版本（如 24.7.5，自动兼容 v 前缀）'
         required: true
-        default: 'v24.7.5'
+        default: '24.7.5'
   schedule:
     - cron: '0 3 * * 1' # 每周一 03:00 UTC
 
@@ -26,17 +28,62 @@ jobs:
   mirror:
     runs-on: ubuntu-latest
     steps:
+      - name: Validate secrets
+        env:
+          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+          ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+        run: |
+          set -e
+          missing=0
+          for var in ACR_REGISTRY ACR_NAMESPACE ACR_USERNAME ACR_PASSWORD; do
+            if [ -z "${!var}" ]; then
+              echo "::error::Secret ${var} 未配置：GitHub 仓库 → Settings → Secrets and variables → Actions → New repository secret"
+              missing=1
+            fi
+          done
+          if [ "${missing}" = "1" ]; then exit 1; fi
+          # ACR 命名空间只允许小写字母/数字/中划线；顺手挡掉误填完整 registry 或带斜杠的情况
+          case "${ACR_NAMESPACE}" in
+            *[!a-z0-9-]*)
+              echo "::error::ACR_NAMESPACE 格式非法（只允许小写字母/数字/中划线，如 my-ns；不要填 registry 域名或带斜杠）"
+              exit 1
+              ;;
+          esac
+
+      - name: Resolve source tag
+        id: resolve
+        env:
+          VERSION_INPUT: ${{ github.event.inputs.drawio_version || '24.7.5' }}
+        run: |
+          set -e
+          VER="${VERSION_INPUT#v}" # 统一去掉 v 前缀
+          SOURCE=""
+          for tag in "${VER}" "v${VER}"; do
+            echo "探测 jgraph/drawio:${tag} ..."
+            if docker manifest inspect "jgraph/drawio:${tag}" >/dev/null 2>&1; then
+              SOURCE="jgraph/drawio:${tag}"
+              break
+            fi
+          done
+          if [ -z "${SOURCE}" ]; then
+            echo "::error::Docker Hub 上不存在 jgraph/drawio 的 ${VER} / v${VER} 标签，请到 https://hub.docker.com/r/jgraph/drawio/tags 核对版本号"
+            exit 1
+          fi
+          echo "source=${SOURCE}" >> "$GITHUB_OUTPUT"
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+
       - name: Pull & push to Aliyun ACR
         env:
           ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
           ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
           ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
           ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
-          VERSION: ${{ github.event.inputs.drawio_version || 'v24.7.5' }}
         run: |
           set -e
-          SOURCE="jgraph/drawio:${VERSION}"
-          TARGET="${ACR_REGISTRY}/${ACR_NAMESPACE}/drawio:${VERSION}"
+          SOURCE="${{ steps.resolve.outputs.source }}"
+          TARGET="${ACR_REGISTRY}/${ACR_NAMESPACE}/drawio:${{ steps.resolve.outputs.version }}"
           echo "同步 ${SOURCE} -> ${TARGET}"
           docker pull "${SOURCE}"
           echo "${ACR_PASSWORD}" | docker login "${ACR_REGISTRY}" -u "${ACR_USERNAME}" --password-stdin
