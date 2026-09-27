@@ -185,8 +185,20 @@ func (a *App) filterOptions(c *gin.Context) ([]model.Project, []model.Category) 
 	return projects, categories
 }
 
-// NewDocPage 新建文档页
+// NewDocPage 新建文档页；?type=mindmap|board 时进入结构化画布编辑页
 func (a *App) NewDocPage(c *gin.Context) {
+	docType := c.Query("type")
+	if model.IsJSONType(docType) {
+		a.render(c, "json_edit.html", gin.H{
+			"title":      "新建文档",
+			"rawTitle":   true,
+			"doc":        nil,
+			"docKind":    docType,
+			"canEditDoc": true,
+			"isOwner":    true,
+		})
+		return
+	}
 	projects, categories := a.filterOptions(c)
 	a.render(c, "doc_edit.html", gin.H{
 		"title":      "新建文档",
@@ -247,6 +259,21 @@ func (a *App) EditDocPage(c *gin.Context) {
 		a.renderHTMLDocEdit(c, doc, shareOrNil(hasShare, &share), shareURL(c, &share, hasShare), canEditDoc, projects, categories)
 		return
 	}
+	// 结构化画布（思维导图/画板）：专用编辑页
+	if model.IsJSONType(doc.Type) {
+		a.render(c, "json_edit.html", gin.H{
+			"title":            doc.Title,
+			"rawTitle":         true,
+			"doc":              doc,
+			"docKind":          doc.Type,
+			"share":            shareOrNil(hasShare, &share),
+			"shareURL":         shareURL(c, &share, hasShare),
+			"canEditDoc":       canEditDoc,
+			"isOwner":          user != nil && (user.IsAdmin() || user.ID == doc.OwnerID),
+			"ShareLockCanEdit": true, // 画布不可分享页编辑：隐藏「可编辑」选项
+		})
+		return
+	}
 	a.render(c, "doc_edit.html", gin.H{
 		"title":      "编辑文档",
 		"doc":        doc,
@@ -274,16 +301,17 @@ func (a *App) renderHTMLDocEdit(c *gin.Context, doc *model.Document, share *mode
 		isOwner = true
 	}
 	a.render(c, "html_edit.html", gin.H{
-		"title":      doc.Title,
-		"rawTitle":   true,
-		"doc":        doc,
-		"share":      share,
-		"shareURL":   shareURL,
-		"canEditDoc": canEditDoc,
-		"isOwner":    isOwner,
-		"projects":   projects,
-		"categories": categories,
-		"manifest":   manifest,
+		"title":           doc.Title,
+		"rawTitle":        true,
+		"doc":             doc,
+		"share":           share,
+		"shareURL":        shareURL,
+		"canEditDoc":      canEditDoc,
+		"isOwner":         isOwner,
+		"projects":        projects,
+		"categories":      categories,
+		"manifest":        manifest,
+		"ShareLockCanEdit": true, // HTML 整站不可分享页编辑：隐藏「可编辑」选项
 	})
 }
 
@@ -374,10 +402,11 @@ func isAjax(c *gin.Context) bool {
 }
 
 type docReq struct {
-	Title      string `json:"title" form:"title"`
-	Content    string `json:"content" form:"content"`
-	ProjectID  *uint  `json:"project_id" form:"project_id"`   // nil 表示未传，不修改；0 表示清空
-	CategoryID *uint  `json:"category_id" form:"category_id"` // 同上
+	Title      string  `json:"title" form:"title"`
+	Content    *string `json:"content" form:"content"`         // nil = 未传：更新时不修改；传值 = 整体覆盖
+	Type       string  `json:"type" form:"type"`               // 创建时可选：markdown（默认）/ mindmap / board；html 走专用上传接口
+	ProjectID  *uint   `json:"project_id" form:"project_id"`   // nil 表示未传，不修改；0 表示清空
+	CategoryID *uint   `json:"category_id" form:"category_id"` // 同上
 }
 
 // validProjectRef 项目引用校验：0 合法；与当前值相同（未改动）合法；否则必须存在且非 admin 只能用自己的
@@ -412,11 +441,22 @@ func (a *App) validCategoryRef(c *gin.Context, categoryID, current uint) bool {
 	return true
 }
 
-// CreateDoc 新建文档；标题留空时写入「未命名文档」
+// CreateDoc 新建文档；标题留空时写入「未命名文档」。
+// type 可选：markdown（默认）/ mindmap / board；html 整站走专用上传接口，此处拒绝。
 func (a *App) CreateDoc(c *gin.Context) {
 	var req docReq
 	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": errParam})
+		return
+	}
+	docType := strings.TrimSpace(req.Type)
+	if docType == "" {
+		docType = model.DocTypeMarkdown
+	}
+	switch docType {
+	case model.DocTypeMarkdown, model.DocTypeMindmap, model.DocTypeBoard:
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "不支持的文档类型"})
 		return
 	}
 	title := strings.TrimSpace(req.Title)
@@ -424,10 +464,15 @@ func (a *App) CreateDoc(c *gin.Context) {
 		title = a.tr(c, "edit.untitled")
 	}
 	user := middleware.CurrentUser(c)
+	content := ""
+	if req.Content != nil {
+		content = *req.Content
+	}
 	doc := model.Document{
 		Title:   title,
 		Slug:    util.RandomSlug(8),
-		Content: req.Content,
+		Type:    docType,
+		Content: content,
 		OwnerID: user.ID,
 	}
 	if req.ProjectID != nil {
@@ -471,18 +516,25 @@ func (a *App) UpdateDoc(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": errParam})
 		return
 	}
-	// HTML 整站文档：内容（manifest）只经整站替换接口变更，普通更新一律忽略 content 字段
-	if doc.Type == model.DocTypeHTML && req.Content != "" && req.Content != doc.Content {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "HTML 整站文档不支持在线编辑内容，请使用整站替换"})
-		return
-	}
-	if doc.Type == model.DocTypeHTML {
-		req.Content = oldContent
+	// 内容更新语义：未传 content = 不修改（防止 MCP 等客户端只改标题时清空正文/画布）；
+	// 显式传值 = 整体覆盖。HTML 整站的内容（manifest）只经整站替换接口变更。
+	var newContent *string
+	if req.Content != nil {
+		if doc.Type == model.DocTypeHTML {
+			if *req.Content != doc.Content {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "HTML 整站文档不支持在线编辑内容，请使用整站替换"})
+				return
+			}
+		} else {
+			newContent = req.Content
+		}
 	}
 	if req.Title != "" {
 		doc.Title = strings.TrimSpace(req.Title)
 	}
-	doc.Content = req.Content
+	if newContent != nil {
+		doc.Content = *newContent
+	}
 	// 指针语义：未传 = 不修改，传 0 = 清空；项目未改动时跳过归属校验（M-1：避免 viewer 保存他人项目下的文档被拒）
 	if req.ProjectID != nil && *req.ProjectID != doc.ProjectID {
 		if !a.validProjectRef(c, *req.ProjectID, doc.ProjectID) {
@@ -535,10 +587,11 @@ func (a *App) DeleteDoc(c *gin.Context) {
 }
 
 type shareReq struct {
-	Enabled    bool   `json:"enabled" form:"enabled"`
-	CanEdit    bool   `json:"can_edit" form:"can_edit"` // 登录用户可编辑
-	Password   string `json:"password" form:"password"`
-	ExpireDays int    `json:"expire_days" form:"expire_days"` // 0 表示永不过期
+	Enabled        bool   `json:"enabled" form:"enabled"`
+	CanEdit        bool   `json:"can_edit" form:"can_edit"`                 // 登录用户可编辑
+	Password       string `json:"password" form:"password"`                 // 非空 = 设置密码；空 = 不修改（新建时无密码）
+	RemovePassword bool   `json:"remove_password" form:"remove_password"`   // true = 清除已设密码（优先级低于 Password 非空）
+	ExpireDays     int    `json:"expire_days" form:"expire_days"`           // 0 表示永不过期
 }
 
 // ---- 编辑占用心跳（HTTP 轮询）：提示他人正在编辑同一文档 ----
@@ -612,6 +665,17 @@ func (a *App) PreviewDoc(c *gin.Context) {
 		c.String(http.StatusForbidden, "无权查看该文档")
 		return
 	}
+	// 结构化画布（思维导图/画板）：全屏只读渲染
+	if model.IsJSONType(doc.Type) {
+		a.render(c, "json_view.html", gin.H{
+			"title":    doc.Title,
+			"rawTitle": true,
+			"doc":      doc,
+			"docKind":  doc.Type,
+			"user":     user,
+		})
+		return
+	}
 	// HTML 整站：iframe sandbox 渲染，入口用短时签名（无需会话 cookie，子资源同前缀继承）
 	if doc.Type == model.DocTypeHTML {
 		a.render(c, "html_view.html", gin.H{
@@ -676,10 +740,12 @@ func (a *App) UpsertShare(c *gin.Context) {
 		share = model.Share{DocumentID: doc.ID, ShareToken: util.RandomHex(16)}
 	}
 	share.CanEdit = req.CanEdit // 编辑权限每次按当前设置覆盖
-	// 密码：留空表示不修改（已存在时）/ 无密码（新建时）
+	// 密码：非空 = 设置密码；空 + remove_password = 清除已设密码；空 = 不修改（新建时无密码）
 	if req.Password != "" {
 		hash, _ := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 		share.Password = string(hash)
+	} else if req.RemovePassword {
+		share.Password = ""
 	} else if !found {
 		share.Password = ""
 	}

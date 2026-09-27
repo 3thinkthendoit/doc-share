@@ -58,7 +58,7 @@ function clean(obj) {
   return out;
 }
 
-async function apiCall(method, pathname, query, body) {
+async function apiCall(method, pathname, query, body, extraHeaders) {
   if (!cfg.appKey || !cfg.secret) {
     throw new Error('未配置密钥：请设置环境变量 DOC_SHARE_APP_KEY / DOC_SHARE_SECRET，或在 mcp/ 目录创建 mcp.config.json（参考 mcp/mcp.config.example.json）');
   }
@@ -66,23 +66,26 @@ async function apiCall(method, pathname, query, body) {
   const qs = new URLSearchParams(clean(query)).toString();
   if (qs) url += '?' + qs;
 
-  const bodyStr = body ? JSON.stringify(body) : '';
+  // body 可为对象（JSON）或 Buffer（multipart 二进制）；签名为 sha256(原始字节)，两者通用
+  const bodyBuf = Buffer.isBuffer(body) ? body : Buffer.from(body ? JSON.stringify(body) : '', 'utf8');
   const ts = String(Math.floor(Date.now() / 1000));
   const nonce = crypto.randomBytes(16).toString('hex'); // 32 位，满足服务端 8~64 位要求
-  const bodyHash = crypto.createHash('sha256').update(bodyStr, 'utf8').digest('hex');
+  const bodyHash = crypto.createHash('sha256').update(bodyBuf).digest('hex');
   const sts = [cfg.appKey, method, pathname, ts, nonce, bodyHash].join('\n');
   const sig = crypto.createHmac('sha256', cfg.secret).update(sts, 'utf8').digest('hex');
 
+  const headers = {
+    'Content-Type': extraHeaders && extraHeaders.contentType ? extraHeaders.contentType : 'application/json',
+    'X-App-Key': cfg.appKey,
+    'X-Timestamp': ts,
+    'X-Nonce': nonce,
+    'X-Signature': sig,
+  };
+
   const res = await fetch(url, {
     method,
-    headers: {
-      'Content-Type': 'application/json',
-      'X-App-Key': cfg.appKey,
-      'X-Timestamp': ts,
-      'X-Nonce': nonce,
-      'X-Signature': sig,
-    },
-    body: method === 'GET' || method === 'DELETE' ? undefined : bodyStr,
+    headers,
+    body: method === 'GET' || method === 'DELETE' ? undefined : bodyBuf,
   });
   const text = await res.text();
   if (!res.ok) {
@@ -102,8 +105,8 @@ const docSchema = {
   type: 'object',
   properties: {
     id: { ...num, description: '文档 ID' },
-    title: { type: 'string', description: '文档标题（必填；更新时留空表示不修改）' },
-    content: { type: 'string', description: 'Markdown 正文；更新时总是整体覆盖' },
+    title: { type: 'string', description: '文档标题（更新时留空表示不修改）' },
+    content: { type: 'string', description: '内容（markdown 正文 / mindmap·board 画布 JSON）；更新时可选，未传表示不修改，传值整体覆盖' },
     project_id: { type: 'number', description: '所属项目 ID（0=未分组；只能归属到密钥属主自己的项目）' },
     category_id: { type: 'number', description: '所属分类 ID（0=未分类；同上）' },
   },
@@ -113,7 +116,7 @@ const docSchema = {
 const TOOLS = [
   {
     name: 'docshare_list_docs',
-    description: '列出 DocShare 文档（分页，不含正文），可按项目/分类过滤',
+    description: '列出 DocShare 文档（分页，不含正文），含 type 字段（markdown/mindmap/board/html），可按项目/分类过滤',
     schema: {
       type: 'object',
       properties: {
@@ -129,7 +132,7 @@ const TOOLS = [
   },
   {
     name: 'docshare_get_doc',
-    description: '读取单个文档的完整内容（含 Markdown 正文）',
+    description: '读取单个文档完整内容：markdown 返回正文；mindmap/board 返回画布 JSON；html 返回站点 manifest',
     schema: docSchema,
     async run(args) {
       return apiCall('GET', `/openapi/v1/docs/${Number(args.id)}`);
@@ -137,12 +140,13 @@ const TOOLS = [
   },
   {
     name: 'docshare_create_doc',
-    description: '创建 Markdown 文档',
+    description: '创建文档：type=markdown（默认，content 为 Markdown 正文）或 mindmap/board（content 为画布 JSON）；html 整站不支持经此接口创建',
     schema: {
       type: 'object',
       properties: {
         title: { type: 'string', description: '文档标题（必填）' },
-        content: { type: 'string', description: 'Markdown 正文' },
+        type: { type: 'string', enum: ['markdown', 'mindmap', 'board'], description: '文档类型，默认 markdown' },
+        content: { type: 'string', description: 'markdown 正文或画布 JSON 字符串' },
         project_id: { type: 'number', description: '所属项目 ID（可选，0=未分组）' },
         category_id: { type: 'number', description: '所属分类 ID（可选，0=未分类）' },
       },
@@ -150,20 +154,52 @@ const TOOLS = [
     },
     async run(args) {
       return apiCall('POST', '/openapi/v1/docs', null, clean({
-        title: args.title, content: args.content || '',
+        title: args.title, type: args.type, content: args.content,
         project_id: args.project_id, category_id: args.category_id,
       }));
     },
   },
   {
     name: 'docshare_update_doc',
-    description: '更新文档：content 总是整体覆盖；title 留空表示不修改',
+    description: '更新文档：content 未传 = 不修改（只改标题/归属安全）；传值 = 整体覆盖。html 整站类型拒绝修改内容',
     schema: docSchema,
     async run(args) {
       return apiCall('PUT', `/openapi/v1/docs/${Number(args.id)}`, null, clean({
-        title: args.title, content: args.content || '',
+        title: args.title, content: args.content,
         project_id: args.project_id, category_id: args.category_id,
       }));
+    },
+  },
+  {
+    name: 'docshare_upload_html',
+    description: '上传 HTML 整站 zip 创建文档（multipart 二进制直传，站点根须含 index.html；zip 被单层目录包裹时自动剥落）。创建后可经 docshare_update_doc 改标题/归属，分享后整站预览、不支持编辑',
+    schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: '文档标题（必填）' },
+        zip_path: { type: 'string', description: '本地 zip 文件绝对路径（MCP 运行机器上可读）' },
+        project_id: { type: 'number', description: '所属项目 ID（可选，0=未分组）' },
+        category_id: { type: 'number', description: '所属分类 ID（可选，0=未分类）' },
+      },
+      required: ['title', 'zip_path'],
+    },
+    async run(args) {
+      const zipData = fs.readFileSync(args.zip_path);
+      const boundary = '----docshare' + crypto.randomBytes(12).toString('hex');
+      const parts = [];
+      // 文本字段清洗 CRLF：防止标题中的换行破坏 multipart 分帧结构
+      const textPart = (name, value) =>
+        Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${String(value).replace(/\r?\n/g, ' ')}\r\n`, 'utf8');
+      parts.push(textPart('title', args.title || ''));
+      if (args.project_id !== undefined) parts.push(textPart('project_id', String(args.project_id)));
+      if (args.category_id !== undefined) parts.push(textPart('category_id', String(args.category_id)));
+      parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="site.zip"\r\nContent-Type: application/zip\r\n\r\n`, 'utf8'));
+      parts.push(zipData);
+      parts.push(Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8'));
+      const body = Buffer.concat(parts);
+      return apiCall('POST', '/openapi/v1/docs/html', null, body, {
+        contentType: `multipart/form-data; boundary=${boundary}`,
+      });
     },
   },
   {
@@ -172,6 +208,43 @@ const TOOLS = [
     schema: docSchema,
     async run(args) {
       return apiCall('DELETE', `/openapi/v1/docs/${Number(args.id)}`);
+    },
+  },
+  {
+    name: 'docshare_get_share',
+    description: '查询文档分享状态（是否开启、链接、是否有密码、有效期）',
+    schema: { type: 'object', properties: { id: num }, required: ['id'] },
+    async run(args) {
+      return apiCall('GET', `/openapi/v1/docs/${Number(args.id)}/share`);
+    },
+  },
+  {
+    name: 'docshare_set_share',
+    description: '开启/更新分享链接：默认登录用户不可编辑（can_edit 默认 false，需显式传 true 才开放）。enabled=false 时关闭分享',
+    schema: {
+      type: 'object',
+      properties: {
+        id: num,
+        enabled: { type: 'boolean', description: 'true=开启/更新分享；false=关闭分享' },
+        can_edit: { type: 'boolean', description: '登录用户是否可在线编辑，默认 false（不可编辑）' },
+        password: { type: 'string', description: '访问密码（可选；留空表示不修改）' },
+        remove_password: { type: 'boolean', description: 'true = 清除已设访问密码（无密码访问）' },
+        expire_days: { type: 'number', description: '有效期天数（0=永久，默认 0）' },
+      },
+      required: ['id', 'enabled'],
+    },
+    async run(args) {
+      const id = Number(args.id);
+      if (!args.enabled) {
+        return apiCall('DELETE', `/openapi/v1/docs/${id}/share`);
+      }
+      return apiCall('POST', `/openapi/v1/docs/${id}/share`, null, clean({
+        enabled: true,
+        can_edit: args.can_edit === true, // 默认登录用户不可编辑
+        password: args.password,
+        remove_password: args.remove_password === true,
+        expire_days: args.expire_days,
+      }));
     },
   },
   {

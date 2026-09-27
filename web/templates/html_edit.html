@@ -97,45 +97,11 @@
 </main>
 
 {{if .isOwner}}
-<!-- 分享设置弹窗：与文档列表同一套接口（POST/DELETE /admin/api/docs/:id/share） -->
-<div class="modal-overlay" id="shareModal" hidden>
-  <div class="modal" role="dialog" aria-modal="true" aria-label="{{$.T "分享设置"}}">
-    <div class="modal-head">
-      <h2>{{$.T "分享设置"}}</h2>
-      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
-    </div>
-    <div class="modal-body share-body">
-      <label class="check"><input type="checkbox" id="shareEnabled" {{if .share}}checked{{end}}> {{$.T "开启分享链接"}}</label>
-      <div id="shareConfig" class="share-config" {{if not .share}}style="display:none"{{end}}>
-        <label>{{$.T "访问密码（留空则不修改 / 无密码）"}}
-          <div class="pwd-row">
-            <input type="text" id="sharePassword" autocomplete="off" placeholder="{{if .share}}{{if .share.HasPassword}}{{$.T "已设置密码"}}{{end}}{{end}}">
-            <button type="button" class="btn btn-sm" id="genPwdBtn">{{$.T "share.genPwd"}}</button>
-          </div>
-        </label>
-        <label>{{$.T "有效期"}}
-          <select id="shareExpire">
-            <option value="0">{{$.T "永久有效"}}</option>
-            <option value="1">{{$.T "1 天"}}</option>
-            <option value="7">{{$.T "7 天"}}</option>
-            <option value="30">{{$.T "30 天"}}</option>
-          </select>
-        </label>
-        <div id="shareLink" class="share-link" style="display:none">
-          {{$.T "分享链接："}}<code id="shareURLText"></code>
-          <button type="button" class="btn btn-sm" onclick="copyShare()">{{$.T "复制"}}</button>
-        </div>
-        <label class="check"><input type="checkbox" disabled> {{$.T "share.canEdit"}}{{$.T "html.canEditNA"}}</label>
-      </div>
-    </div>
-    <div class="modal-foot">
-      <button type="button" class="btn" data-close-modal>{{$.T "关闭"}}</button>
-      <button type="button" id="saveShareBtn" class="btn btn-primary">{{$.T "应用分享设置"}}</button>
-    </div>
-  </div>
-</div>
+<!-- 分享设置弹窗（公共壳）：状态由 share_modal.js 注入；HTML 整站不可分享页编辑 -->
+{{template "shareSettingsModal" .}}
 {{end}}
 
+<script src="/static/share_modal.js"></script>
 <script>
 (function () {
   var DOC_ID = {{.doc.ID}};
@@ -296,68 +262,24 @@
     }
   });
 
-  /* ---- 分享设置：与文档列表页同一套接口 ---- */
-  var shareModal = document.getElementById('shareModal');
-  if (shareModal) {
-    UI.bindModal(shareModal);
-    var shareURL = {{if .shareURL}}{{.shareURL}}{{else}}''{{end}};
-    document.getElementById('shareBtn').addEventListener('click', function () {
-      var enabled = document.getElementById('shareEnabled').checked;
-      document.getElementById('shareConfig').style.display = enabled ? 'block' : 'none';
-      var linkEl = document.getElementById('shareLink');
-      if (enabled && shareURL) {
-        document.getElementById('shareURLText').textContent = shareURL;
-        linkEl.style.display = 'flex';
-      } else {
-        linkEl.style.display = 'none';
-      }
-      UI.openModal(shareModal);
-    });
-    document.getElementById('shareEnabled').addEventListener('change', function () {
-      document.getElementById('shareConfig').style.display = this.checked ? 'block' : 'none';
-    });
-    function genPassword() {
-      var chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-      var out = '', buf = new Uint32Array(6);
-      (window.crypto || window.msCrypto).getRandomValues(buf);
-      for (var i = 0; i < 6; i++) out += chars[buf[i] % chars.length];
-      return out;
+  /* ---- 分享设置（公共组件 share_modal.js）：HTML 整站不可分享页编辑，保存后刷新 ---- */
+  ShareModal.bind({
+    onChanged: function () {
+      setTimeout(function () { location.reload(); }, 600);
     }
-    document.getElementById('genPwdBtn').addEventListener('click', function () {
-      document.getElementById('sharePassword').value = genPassword();
-    });
-    window.copyShare = async function () {
-      var url = document.getElementById('shareURLText').textContent;
-      try { await navigator.clipboard.writeText(url); UI.toast(UI.t('common.copyOk'), 'success'); }
-      catch (e) { UI.toast(UI.t('复制失败'), 'error'); }
-    };
-    document.getElementById('saveShareBtn').addEventListener('click', async function () {
-      var enabledEl = document.getElementById('shareEnabled');
-      var payload = {
-        enabled: enabledEl.checked,
-        can_edit: false, // HTML 整站不支持在线编辑
-        password: document.getElementById('sharePassword').value,
-        expire_days: parseInt(document.getElementById('shareExpire').value, 10) || 0
-      };
-      this.disabled = true;
-      try {
-        var res = await fetch('/admin/api/docs/' + DOC_ID + '/share', {
-          method: enabledEl.checked ? 'POST' : 'DELETE',
-          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-          body: JSON.stringify(payload)
-        });
-        var data = await res.json().catch(function () { return {}; });
-        if (!res.ok) { UI.alert((data && data.error) || UI.t('操作失败')); return; }
-        if (data.url) shareURL = data.url;
-        UI.toast(UI.t(enabledEl.checked ? '分享设置已更新' : '已关闭分享'), 'success');
-        setTimeout(function () { location.reload(); }, 600);
-      } catch (e) {
-        UI.toast(UI.t('common.netErr'), 'error');
-      } finally {
-        this.disabled = false;
-      }
-    });
-  }
+  });
+  var shareState = {
+    docId: DOC_ID,
+    title: {{.doc.Title}},
+    shared: {{if .share}}true{{else}}false{{end}},
+    canEdit: false,
+    hasPwd: {{if .share}}{{if .share.HasPassword}}true{{else}}false{{end}}{{else}}false{{end}},
+    token: {{if .share}}{{.share.ShareToken}}{{else}}""{{end}},
+    shareURL: {{if .shareURL}}{{.shareURL}}{{else}}""{{end}}
+  };
+  document.getElementById('shareBtn').addEventListener('click', function () {
+    ShareModal.openFor(shareState);
+  });
 })();
 </script>
 {{template "adminfoot" .}}

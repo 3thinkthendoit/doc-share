@@ -105,8 +105,14 @@ func (a *App) RequireAppKey() gin.HandlerFunc {
 			openAbort(c, http.StatusUnauthorized, errAppKeyBad)
 			return
 		}
-		body, err := io.ReadAll(io.LimitReader(c.Request.Body, openBodyLimit+1))
-		if err != nil || len(body) > openBodyLimit {
+		// HTML 整站上传（POST /docs/html）body 为 multipart zip，按配置放宽限制；
+		// 其余接口维持 2MB 上限
+		limit := int64(openBodyLimit)
+		if c.Request.Method == http.MethodPost && c.Request.URL.Path == openAPIBase+"/docs/html" {
+			limit = int64(a.Cfg.Upload.HTMLMaxSizeMB)<<20 + (8 << 20)
+		}
+		body, err := io.ReadAll(io.LimitReader(c.Request.Body, limit+1))
+		if err != nil || int64(len(body)) > limit {
 			openAbort(c, http.StatusBadRequest, errBodyTooLarge)
 			return
 		}
@@ -217,6 +223,30 @@ func (a *App) OpenListProjects(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": items, "total": pg.Total, "page": pg.Page, "size": pg.Size})
 }
 
+// OpenGetShare 查询文档分享状态（属主/admin）：GET /openapi/v1/docs/:id/share
+func (a *App) OpenGetShare(c *gin.Context) {
+	doc := a.loadDoc(c)
+	if doc == nil {
+		return
+	}
+	if !a.requireDocOwner(c, doc) {
+		return
+	}
+	var share model.Share
+	if a.DB.Where("document_id = ?", doc.ID).First(&share).Error != nil {
+		c.JSON(http.StatusOK, gin.H{"data": gin.H{"enabled": false}})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{
+		"enabled":      true,
+		"url":          a.siteBaseURL(c) + "/s/" + share.ShareToken,
+		"share_token":  share.ShareToken,
+		"has_password": share.HasPassword(),
+		"can_edit":     share.CanEdit,
+		"expire_at":    share.ExpireAt,
+	}})
+}
+
 // OpenListDocs 文档分页列表；可按 project_id / category_id 过滤；不返回正文
 func (a *App) OpenListDocs(c *gin.Context) {
 	user := middleware.CurrentUser(c)
@@ -239,7 +269,7 @@ func (a *App) OpenListDocs(c *gin.Context) {
 	tx.Count(&total)
 	pg = pg.withTotal(total)
 	var docs []model.Document
-	tx.Select("id, title, slug, owner_id, project_id, category_id, is_shared, view_count, created_at, updated_at").
+	tx.Select("id, title, slug, type, owner_id, project_id, category_id, is_shared, view_count, created_at, updated_at").
 		Order("updated_at desc").Offset(pg.Offset).Limit(pg.Size).Find(&docs)
 	c.JSON(http.StatusOK, gin.H{"data": docs, "total": pg.Total, "page": pg.Page, "size": pg.Size})
 }

@@ -118,11 +118,19 @@ type ApiKey struct {
 	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
-// 文档类型：markdown 正文编辑；html 整站（Content 存 manifest JSON，不可在线编辑）
+// 文档类型：markdown 正文编辑；html 整站（Content 存 manifest JSON，不可在线编辑）；
+// mindmap/board 结构化画布（Content 存编辑器 JSON，专用编辑页）
 const (
 	DocTypeMarkdown = "markdown"
 	DocTypeHTML     = "html"
+	DocTypeMindmap  = "mindmap"
+	DocTypeBoard    = "board"
 )
+
+// IsJSONType 结构化画布类型：Content 为编辑器 JSON，走专用编辑页
+func IsJSONType(t string) bool {
+	return t == DocTypeMindmap || t == DocTypeBoard
+}
 
 // Document Markdown 文档
 type Document struct {

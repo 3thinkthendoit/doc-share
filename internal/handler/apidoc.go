@@ -22,8 +22,9 @@ type apiEndpoint struct {
 	LabelKey    string // 侧边目录短标签（业务化命名，如「新增分类」）
 	Anchor      string // 页内锚点 id，供侧边目录跳转/滚动高亮
 	Params      []apiParam
-	ReqExample  string // 请求示例（格式化 JSON）
+	ReqExample  string // 请求示例（格式化 JSON；非 JSON 格式时设 CodeLang）
 	RespExample string // 响应示例（格式化 JSON）
+	CodeLang    string // 示例代码语言标签（默认 JSON；multipart 等非 JSON 示例设为 HTTP，不做 JSON 高亮）
 }
 
 // apiGroup 按资源分组的接口列表
@@ -175,6 +176,7 @@ func openAPIGroups() []apiGroup {
     "id": 12,
     "title": "接入指南",
     "slug": "aB3xY9kQ",
+    "type": "markdown",
     "content": "# 接入指南\n\n正文 Markdown…",
     "owner_id": 2,
     "project_id": 3,
@@ -188,6 +190,7 @@ func openAPIGroups() []apiGroup {
 			{Method: "POST", Path: openAPIBase + "/docs", DescKey: "ep.docCreate", LabelKey: "ep.tDocCreate",
 				ReqExample: `{
   "title": "接入指南",
+  "type": "markdown",
   "content": "# 接入指南\n\n正文 Markdown…",
   "project_id": 3,
   "category_id": 1
@@ -198,6 +201,33 @@ func openAPIGroups() []apiGroup {
     "title": "接入指南",
     "slug": "aB3xY9kQ",
     "content": "# 接入指南\n\n正文 Markdown…",
+    "owner_id": 2,
+    "project_id": 3,
+    "category_id": 1,
+    "is_shared": false,
+    "view_count": 0
+  }
+}`},
+			{Method: "POST", Path: openAPIBase + "/docs/html", DescKey: "ep.docCreateHTML", LabelKey: "ep.tDocCreateHTML", CodeLang: "HTTP",
+				ReqExample: `Content-Type: multipart/form-data; boundary=----docshare
+
+------docshare
+Content-Disposition: form-data; name="title"
+
+产品官网
+------docshare
+Content-Disposition: form-data; name="file"; filename="dist.zip"
+Content-Type: application/zip
+
+<zip 二进制内容>
+------docshare--`,
+				RespExample: `{
+  "data": {
+    "id": 13,
+    "title": "产品官网",
+    "slug": "kQ3xZ9mP",
+    "type": "html",
+    "content": "{\"prefix\":\"html/13/ab3f/\",\"entry\":\"index.html\",\"files\":[\"index.html\"]}",
     "owner_id": 2,
     "project_id": 3,
     "category_id": 1,
@@ -217,6 +247,7 @@ func openAPIGroups() []apiGroup {
     "id": 12,
     "title": "接入指南（修订）",
     "slug": "aB3xY9kQ",
+    "type": "markdown",
     "content": "# 接入指南 v2\n\n更新后的正文…",
     "owner_id": 2,
     "project_id": 0,
@@ -226,6 +257,34 @@ func openAPIGroups() []apiGroup {
   }
 }`},
 			{Method: "DELETE", Path: openAPIBase + "/docs/:id", DescKey: "ep.docDelete", LabelKey: "ep.tDocDelete",
+				RespExample: `{
+  "ok": true
+}`},
+			{Method: "GET", Path: openAPIBase + "/docs/:id/share", DescKey: "ep.shareGet", LabelKey: "ep.tShareGet",
+				RespExample: `{
+  "data": {
+    "enabled": true,
+    "url": "https://example.com/s/0123abcd0123abcd0123abcd0123abcd",
+    "share_token": "0123abcd0123abcd0123abcd0123abcd",
+    "has_password": true,
+    "can_edit": false,
+    "expire_at": null
+  }
+}`},
+			{Method: "POST", Path: openAPIBase + "/docs/:id/share", DescKey: "ep.shareSet", LabelKey: "ep.tShareSet",
+				ReqExample: `{
+  "enabled": true,
+  "can_edit": false,
+  "password": "a1b2c3",
+  "expire_days": 7
+}`,
+				RespExample: `{
+  "ok": true,
+  "enabled": true,
+  "url": "https://example.com/s/0123abcd0123abcd0123abcd0123abcd",
+  "hasPassword": false
+}`},
+			{Method: "DELETE", Path: openAPIBase + "/docs/:id/share", DescKey: "ep.shareDelete", LabelKey: "ep.tShareDel",
 				RespExample: `{
   "ok": true
 }`},

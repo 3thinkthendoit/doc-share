@@ -185,7 +185,7 @@ func (a *App) collectSiteFiles(c *gin.Context) ([]siteFile, error) {
 	return out, nil
 }
 
-// unzipSite 解包 zip：逐条校验路径与累计大小（防 zip bomb / 路径穿越）
+// unzipSite 解包 multipart 上传的 zip：逐条校验路径与累计大小（防 zip bomb / 路径穿越）
 func unzipSite(fh *multipart.FileHeader, maxBytes int64, maxFiles int) ([]siteFile, error) {
 	src, err := fh.Open()
 	if err != nil {
@@ -196,6 +196,11 @@ func unzipSite(fh *multipart.FileHeader, maxBytes int64, maxFiles int) ([]siteFi
 	if err != nil {
 		return nil, fmt.Errorf("读取 zip 失败（可能超过大小限制）")
 	}
+	return unzipSiteBytes(data, maxBytes, maxFiles)
+}
+
+// unzipSiteBytes 从 zip 字节解包（multipart 上传与 openapi 共用管线）
+func unzipSiteBytes(data []byte, maxBytes int64, maxFiles int) ([]siteFile, error) {
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return nil, fmt.Errorf("不是有效的 zip 文件")
@@ -395,6 +400,99 @@ func (a *App) cleanupHTMLDoc(doc *model.Document) {
 
 // ---- API：创建 / 替换 ----
 
+// createHTMLDocFromFiles 由站点文件清单建档并写入存储（multipart 与 openapi 共用）。
+// 失败时负责清理已写入文件与已建文档记录。
+func (a *App) createHTMLDocFromFiles(c *gin.Context, files []siteFile, title string, projectID, categoryID uint) (*model.Document, error) {
+	user := middleware.CurrentUser(c)
+	if user == nil {
+		return nil, fmt.Errorf("未登录")
+	}
+	doc := model.Document{
+		Title:    title,
+		Slug:     util.RandomSlug(8),
+		Type:     model.DocTypeHTML,
+		OwnerID:  user.ID,
+		ProjectID: projectID, CategoryID: categoryID,
+	}
+	for {
+		var n int64
+		a.DB.Model(&model.Document{}).Where("slug = ?", doc.Slug).Count(&n)
+		if n == 0 {
+			break
+		}
+		doc.Slug = util.RandomSlug(8)
+	}
+	if err := a.DB.Create(&doc).Error; err != nil {
+		return nil, fmt.Errorf("创建失败")
+	}
+	prefix := fmt.Sprintf("html/%d/%s/", doc.ID, util.RandomSlug(8))
+	m, written, err := a.putSiteFiles(c.Request.Context(), prefix, files)
+	if err != nil {
+		a.deleteSiteFilesAsync(written)
+		a.DB.Delete(&model.Document{}, doc.ID)
+		log.Printf("[htmldoc] 创建站点文件失败 doc=%d: %v", doc.ID, err)
+		return nil, fmt.Errorf("保存站点文件失败")
+	}
+	content, err := m.toJSON()
+	if err != nil {
+		a.deleteSiteFilesAsync(written)
+		a.DB.Delete(&model.Document{}, doc.ID)
+		return nil, fmt.Errorf("生成站点清单失败")
+	}
+	if err := a.DB.Model(&model.Document{}).Where("id = ?", doc.ID).Update("content", content).Error; err != nil {
+		a.deleteSiteFilesAsync(written)
+		a.DB.Delete(&model.Document{}, doc.ID)
+		return nil, fmt.Errorf("保存站点清单失败")
+	}
+	doc.Content = content
+	return &doc, nil
+}
+
+// OpenCreateHTMLDoc 创建 HTML 整站文档（openapi）：POST /openapi/v1/docs/html。
+// multipart 表单：title、project_id?、category_id?、file（zip）；解包校验与后台接口同管线。
+func (a *App) OpenCreateHTMLDoc(c *gin.Context) {
+	user := middleware.CurrentUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未登录"})
+		return
+	}
+	files, err := a.collectSiteFiles(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	files, err = finalizeSiteFiles(files)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	title := strings.TrimSpace(c.PostForm("title"))
+	if title == "" {
+		title = a.tr(c, "edit.untitled")
+	}
+	var projectID, categoryID uint
+	if v := c.PostForm("project_id"); v != "" {
+		if pid, e := strconv.ParseUint(v, 10, 32); e == nil {
+			projectID = uint(pid)
+		}
+	}
+	if v := c.PostForm("category_id"); v != "" {
+		if cid, e := strconv.ParseUint(v, 10, 32); e == nil {
+			categoryID = uint(cid)
+		}
+	}
+	if !a.validProjectRef(c, projectID, 0) || !a.validCategoryRef(c, categoryID, 0) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": errProjCatBad})
+		return
+	}
+	doc, err := a.createHTMLDocFromFiles(c, files, title, projectID, categoryID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": doc})
+}
+
 // CreateHTMLDoc 创建 HTML 整站文档：POST /admin/api/docs/html（multipart）
 func (a *App) CreateHTMLDoc(c *gin.Context) {
 	user := middleware.CurrentUser(c)
@@ -417,62 +515,26 @@ func (a *App) CreateHTMLDoc(c *gin.Context) {
 	if title == "" {
 		title = a.tr(c, "edit.untitled")
 	}
-	doc := model.Document{
-		Title:   title,
-		Slug:    util.RandomSlug(8),
-		Type:    model.DocTypeHTML,
-		OwnerID: user.ID,
-	}
+	var projectID, categoryID uint
 	if v := c.PostForm("project_id"); v != "" {
 		if pid, e := strconv.ParseUint(v, 10, 32); e == nil {
-			doc.ProjectID = uint(pid)
+			projectID = uint(pid)
 		}
 	}
 	if v := c.PostForm("category_id"); v != "" {
 		if cid, e := strconv.ParseUint(v, 10, 32); e == nil {
-			doc.CategoryID = uint(cid)
+			categoryID = uint(cid)
 		}
 	}
-	if !a.validProjectRef(c, doc.ProjectID, 0) || !a.validCategoryRef(c, doc.CategoryID, 0) {
+	if !a.validProjectRef(c, projectID, 0) || !a.validCategoryRef(c, categoryID, 0) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": errProjCatBad})
 		return
 	}
-	for {
-		var n int64
-		a.DB.Model(&model.Document{}).Where("slug = ?", doc.Slug).Count(&n)
-		if n == 0 {
-			break
-		}
-		doc.Slug = util.RandomSlug(8)
-	}
-	if err := a.DB.Create(&doc).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建失败"})
-		return
-	}
-
-	prefix := fmt.Sprintf("html/%d/%s/", doc.ID, util.RandomSlug(8))
-	m, written, err := a.putSiteFiles(c.Request.Context(), prefix, files)
+	doc, err := a.createHTMLDocFromFiles(c, files, title, projectID, categoryID)
 	if err != nil {
-		a.deleteSiteFilesAsync(written)
-		a.DB.Delete(&model.Document{}, doc.ID)
-		log.Printf("[htmldoc] 创建站点文件失败 doc=%d: %v", doc.ID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存站点文件失败"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	content, err := m.toJSON()
-	if err != nil {
-		a.deleteSiteFilesAsync(written)
-		a.DB.Delete(&model.Document{}, doc.ID)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成站点清单失败"})
-		return
-	}
-	if err := a.DB.Model(&model.Document{}).Where("id = ?", doc.ID).Update("content", content).Error; err != nil {
-		a.deleteSiteFilesAsync(written)
-		a.DB.Delete(&model.Document{}, doc.ID)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存站点清单失败"})
-		return
-	}
-	doc.Content = content
 	c.JSON(http.StatusOK, gin.H{"data": doc})
 }
 

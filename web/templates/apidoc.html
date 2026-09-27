@@ -1,7 +1,26 @@
 {{define "apidoc.html"}}
 <!DOCTYPE html>
 <html lang="{{.Lang}}">
-<head>{{template "head" .}}</head>
+<head>{{template "head" .}}
+{{/* 代码块（.api-code）恒为暗色背景，高亮主题固定 github-dark，不随站点明暗切换 */}}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.9.0/styles/github-dark.min.css">
+<style>
+/* 代码块配色：one-dark 风格（暗底 #1e1e2e、紫键名、粉字符串），JSON 自绘与 bash(hljs) 统一 */
+.api-code{color:#abb2bf}
+.api-code.hljs{background:#1e1e2e;color:#abb2bf}
+.api-code .t-key{color:#c678dd}
+.api-code .t-str{color:#98c379}
+.api-code .t-num,.api-code .t-lit{color:#d19a66}
+.api-code .hljs-attr,.api-code .hljs-attribute{color:#c678dd}
+.api-code .hljs-string{color:#98c379}
+.api-code .hljs-number,.api-code .hljs-literal{color:#d19a66}
+.api-code .hljs-comment{color:#5c6370;font-style:italic}
+/* 快速开始：多语言示例标签栏 */
+.code-tabs{display:flex;gap:4px;margin:12px 0 0}
+.code-tab{border:1px solid var(--border);background:var(--bg-soft);color:var(--muted);border-radius:8px 8px 0 0;padding:6px 16px;font-size:12.5px;font-family:inherit;cursor:pointer;transition:all .15s}
+.code-tab.active{background:#1e1e2e;border-color:#2c2c40;color:#d6d3f0;font-weight:600}
+</style>
+</head>
 <body>
 {{template "nav" .}}
 <main class="container doc-wrap">
@@ -22,6 +41,7 @@
       {{range .Items}}<a class="side-lv2" href="#ep-{{.Anchor}}"><span class="m-dot m-{{.Class}}"></span>{{$.T .LabelKey}}</a>{{end}}
       {{end}}
       <a href="#sec-errors" class="side-parent">{{$.T "apidoc.secErrors"}}</a>
+      {{range $i, $g := .errGroups}}<a class="side-lv2" href="#errg-{{$i}}">{{$.T $g.Key}}</a>{{end}}
     </aside>
 
     <div class="doc-main">
@@ -39,6 +59,53 @@
           <li>{{$.TH "apidoc.qs2"}}</li>
           <li>{{$.TH "apidoc.qs3"}}</li>
         </ol>
+        <p class="muted">{{$.T "apidoc.qsSample"}}</p>
+        <div class="code-tabs">
+          <button type="button" class="code-tab active" data-ct="curl">cURL</button>
+          <button type="button" class="code-tab" data-ct="python">Python</button>
+          <button type="button" class="code-tab" data-ct="node">Node.js</button>
+        </div>
+        <div class="code-wrap" data-panel="curl">
+          <div class="code-bar"><span class="code-lang">cURL</span><button type="button" class="code-copy">{{$.T "common.copy"}}</button></div>
+          <pre class="api-code"># 先计算签名（详见下方「签名算法」）
+TS=$(date +%s)  NONCE=$(openssl rand -hex 16)
+SIGN=$(printf "%s\n%s\n%s\n%s\n%s\n%s" "$APP_KEY" "GET" "/openapi/v1/docs" "$TS" "$NONCE" \
+  "$(printf '' | sha256sum | cut -d' ' -f1)" | openssl dgst -sha256 -hmac "$SECRET" -hex | awk '{print $NF}')
+
+curl "$BASE_URL/openapi/v1/docs?page=1&amp;size=15" \
+  -H "X-App-Key: $APP_KEY" \
+  -H "X-Timestamp: $TS" \
+  -H "X-Nonce: $NONCE" \
+  -H "X-Signature: $SIGN"</pre>
+        </div>
+        <div class="code-wrap" data-panel="python" hidden>
+          <div class="code-bar"><span class="code-lang">Python</span><button type="button" class="code-copy">{{$.T "common.copy"}}</button></div>
+          <pre class="api-code">import hashlib, hmac, time, uuid, requests
+
+BASE, APP_KEY, SECRET = "https://your-server", "ak_xxx", "sk_xxx"
+method, path, body = "GET", "/openapi/v1/docs", ""
+ts, nonce = str(int(time.time())), uuid.uuid4().hex
+sts = "\n".join([APP_KEY, method, path, ts, nonce,
+                 hashlib.sha256(body.encode()).hexdigest()])
+sign = hmac.new(SECRET.encode(), sts.encode(), hashlib.sha256).hexdigest()
+print(requests.get(BASE + path, params={"page": 1, "size": 15}, headers={
+    "X-App-Key": APP_KEY, "X-Timestamp": ts, "X-Nonce": nonce, "X-Signature": sign,
+}).json())</pre>
+        </div>
+        <div class="code-wrap" data-panel="node" hidden>
+          <div class="code-bar"><span class="code-lang">Node.js</span><button type="button" class="code-copy">{{$.T "common.copy"}}</button></div>
+          <pre class="api-code">const crypto = require("crypto");
+const BASE = "https://your-server", APP_KEY = "ak_xxx", SECRET = "sk_xxx";
+const method = "GET", path = "/openapi/v1/docs", body = "";
+const ts = String(Math.floor(Date.now() / 1000));
+const nonce = crypto.randomBytes(16).toString("hex");
+const sts = [APP_KEY, method, path, ts, nonce,
+  crypto.createHash("sha256").update(body).digest("hex")].join("\n");
+const sign = crypto.createHmac("sha256", SECRET).update(sts).digest("hex");
+fetch(`${BASE}${path}?page=1&amp;size=15`, { headers: {
+  "X-App-Key": APP_KEY, "X-Timestamp": ts, "X-Nonce": nonce, "X-Signature": sign,
+}}).then((r) => r.json()).then(console.log);</pre>
+        </div>
       </section>
 
       <section class="panel doc-sec" id="sec-headers">
@@ -59,12 +126,16 @@
         <p>{{$.TH "apidoc.algo"}}</p>
         <div class="code-wrap">
           <div class="code-bar"><span class="code-lang">cURL</span><button type="button" class="code-copy">{{$.T "common.copy"}}</button></div>
-          <pre class="api-code"># {{$.T "apidoc.sampleComment"}}
-METHOD=GET  PATH=/openapi/v1/docs  BODY=
-sign=$(printf "%s\n%s\n%s\n%s\n%s\n%s" "$APP_KEY" "GET" "$PATH" "$TS" "$NONCE" \
-       "$(printf '' | sha256sum | cut -d' ' -f1)" | openssl dgst -sha256 -hmac "$SECRET" -hex | awk '{print $NF}')
-curl -H "X-App-Key: $APP_KEY" -H "X-Timestamp: $TS" -H "X-Nonce: $NONCE" -H "X-Signature: $sign" \
-     {{$.BaseURL}}/openapi/v1/docs?page=1&amp;size=15</pre>
+          <pre class="api-code"># 先计算签名（待签串见上方说明）
+TS=$(date +%s)  NONCE=$(openssl rand -hex 16)
+SIGN=$(printf "%s\n%s\n%s\n%s\n%s\n%s" "$APP_KEY" "GET" "/openapi/v1/docs" "$TS" "$NONCE" \
+  "$(printf '' | sha256sum | cut -d' ' -f1)" | openssl dgst -sha256 -hmac "$SECRET" -hex | awk '{print $NF}')
+
+curl "{{$.BaseURL}}/openapi/v1/docs?page=1&amp;size=15" \
+  -H "X-App-Key: $APP_KEY" \
+  -H "X-Timestamp: $TS" \
+  -H "X-Nonce: $NONCE" \
+  -H "X-Signature: $SIGN"</pre>
         </div>
       </section>
 
@@ -97,7 +168,7 @@ curl -H "X-App-Key: $APP_KEY" -H "X-Timestamp: $TS" -H "X-Nonce: $NONCE" -H "X-S
           <div class="ep-ex">
             <span class="ep-ex-label">{{$.T "apidoc.reqExample"}}</span>
             <div class="code-wrap">
-              <div class="code-bar"><span class="code-lang">JSON</span><button type="button" class="code-copy">{{$.T "common.copy"}}</button></div>
+              <div class="code-bar"><span class="code-lang">{{if .CodeLang}}{{.CodeLang}}{{else}}JSON{{end}}</span><button type="button" class="code-copy">{{$.T "common.copy"}}</button></div>
               <pre class="api-code">{{.ReqExample}}</pre>
             </div>
           </div>
@@ -119,8 +190,8 @@ curl -H "X-App-Key: $APP_KEY" -H "X-Timestamp: $TS" -H "X-Nonce: $NONCE" -H "X-S
       <section class="panel doc-sec" id="sec-errors">
         <h2>{{$.T "apidoc.secErrors"}}</h2>
         <p class="muted">{{$.T "apidoc.errNote"}}</p>
-        {{range .errGroups}}
-        <h3 class="ep-group">{{$.T .Key}}</h3>
+        {{range $i, $g := .errGroups}}
+        <h3 class="ep-group" id="errg-{{$i}}">{{$.T $g.Key}}</h3>
         <table class="table ep-params err-table">
           <thead><tr><th>{{$.T "apidoc.thCode"}}</th><th>{{$.T "apidoc.thErrMsg"}}</th></tr></thead>
           <tbody>
@@ -138,8 +209,54 @@ curl -H "X-App-Key: $APP_KEY" -H "X-Timestamp: $TS" -H "X-Nonce: $NONCE" -H "X-S
   </div>
 </main>
 
+<!-- 代码高亮：hljs 只负责 cURL(bash) 块；JSON 块用自绘着色器（单遍正则，避免 hljs grammar 对转义序列的解析怪癖） -->
+<script src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.9.0/highlight.min.js"></script>
 <script>
 (function(){
+  /* JSON 自绘着色器：单遍正则，键名紫 / 字符串粉 / 数字·字面量橙，所有块风格完全一致 */
+  function highlightJSON(src) {
+    var esc = src.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return esc.replace(
+      /("(?:[^"\\]|\\.)*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
+      function (m, str, colon, lit, num) {
+        if (str) {
+          if (colon) return '<span class="t-key">' + str + '</span>' + colon;
+          return '<span class="t-str">' + str + '</span>';
+        }
+        if (lit) return '<span class="t-lit">' + lit + '</span>';
+        if (num) return '<span class="t-num">' + num + '</span>';
+        return m;
+      }
+    );
+  }
+  /* 按 code-lang 标签分发：JSON → 自绘；cURL/Python/Node.js → hljs；HTTP → 不高亮 */
+  var LANG_MAP = { json: 'json', curl: 'bash', python: 'python', 'node.js': 'javascript' };
+  if (window.hljs || true) {
+    document.querySelectorAll('.code-wrap').forEach(function(w){
+      var label = w.querySelector('.code-lang');
+      var pre = w.querySelector('pre');
+      if (!label || !pre) return;
+      var name = label.textContent.trim().toLowerCase();
+      try {
+        if (name === 'json') {
+          pre.innerHTML = highlightJSON(pre.textContent);
+        } else if (LANG_MAP[name] && window.hljs && hljs.getLanguage(LANG_MAP[name])) {
+          hljs.highlightElement(pre);
+        }
+      } catch (e) {}
+    });
+  }
+  /* 快速开始：语言标签切换 */
+  document.querySelectorAll('.code-tab').forEach(function(tab){
+    tab.addEventListener('click', function () {
+      document.querySelectorAll('.code-tab').forEach(function (t) { t.classList.remove('active'); });
+      tab.classList.add('active');
+      var k = tab.getAttribute('data-ct');
+      document.querySelectorAll('[data-panel]').forEach(function (p) {
+        p.hidden = p.getAttribute('data-panel') !== k;
+      });
+    });
+  });
   /* 代码块复制：页内所有 .code-wrap 的复制按钮通用 */
   document.querySelectorAll('.code-copy').forEach(function(btn){
     btn.addEventListener('click',async function(){

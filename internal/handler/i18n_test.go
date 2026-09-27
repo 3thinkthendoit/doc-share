@@ -52,6 +52,12 @@ func TestPagesRender(t *testing.T) {
 	owner := model.User{ID: 1, Username: "alice", Nickname: "Alice"}
 	doc := model.Document{ID: 1, Title: "Design Doc", Slug: "design-doc", Owner: owner, ViewCount: 3, UpdatedAt: now,
 		Share: &model.Share{ShareToken: "tok123"}}
+	canvasDoc := model.Document{ID: 2, Title: "Mind Map", Slug: "mind-map", Type: model.DocTypeMindmap,
+		Content: `{"root":{"data":{"text":"中心主题"}},"layout":"mindMap","theme":"classicBlue"}`,
+		Owner: owner, ViewCount: 1, UpdatedAt: now, Share: &model.Share{ShareToken: "tok456"}}
+	htmlDoc := model.Document{ID: 3, Title: "Site", Slug: "site", Type: model.DocTypeHTML,
+		Content: `{"prefix":"html/3/ab12/","entry":"index.html","files":["index.html"],"size":10,"count":1}`,
+		Owner: owner, UpdatedAt: now, Share: &model.Share{ShareToken: "tok789"}}
 	pj := model.Project{ID: 1, Name: "Platform", Owner: owner, UpdatedAt: now}
 	ct := model.Category{ID: 1, Name: "Requirements", Owner: owner}
 	key := model.ApiKey{ID: 1, Name: "sync", AppKey: "ak_1", Owner: owner, Status: 1, CreatedAt: now}
@@ -116,6 +122,34 @@ func TestPagesRender(t *testing.T) {
 			v["error"] = "share.pwdWrong"
 			v["applyStatus"] = ""
 			v["applyName"] = ""
+			return v
+		}},
+		// 结构化画布：编辑页（新建 doc=nil / 已保存含 JSON content）与只读分享页
+		{"json_edit.html", func() View {
+			v := base()
+			v["doc"], v["docKind"], v["canEditDoc"], v["isOwner"] = nil, model.DocTypeMindmap, true, true
+			return v
+		}},
+		{"json_edit.html", func() View {
+			v := base()
+			v["doc"] = &canvasDoc
+			v["docKind"] = model.DocTypeBoard
+			v["share"], v["shareURL"] = doc.Share, "/s/tok123"
+			v["canEditDoc"], v["isOwner"], v["ShareLockCanEdit"] = true, true, true
+			return v
+		}},
+		{"json_view.html", func() View {
+			v := base()
+			v["user"] = nil
+			v["doc"], v["docKind"] = &canvasDoc, model.DocTypeMindmap
+			return v
+		}},
+		{"html_edit.html", func() View {
+			v := base()
+			v["doc"] = &htmlDoc
+			v["share"], v["shareURL"], v["canEditDoc"], v["isOwner"] = doc.Share, "/s/tok123", true, true
+			v["projects"], v["categories"], v["ShareLockCanEdit"] = []model.Project{pj}, []model.Category{ct}, true
+			v["manifest"] = map[string]any{}
 			return v
 		}},
 	}

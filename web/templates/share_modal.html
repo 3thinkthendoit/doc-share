@@ -1,0 +1,49 @@
+{{define "shareSettingsModal"}}
+{{/* 分享设置弹窗公共壳：状态（docId/title/shared/canEdit/hasPwd/token/shareURL）由 share_modal.js 在打开时注入。
+     View 键 ShareLockCanEdit 为真时隐藏「可编辑」选项（HTML 整站 / 画布等不支持分享页编辑的类型）。 */}}
+<div class="modal-overlay" id="shareModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="{{$.T "分享设置"}}">
+    <div class="modal-head">
+      <h2>{{$.T "分享设置"}}<span id="shDocTitle" class="muted" style="font-size:14px;font-weight:500"></span></h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+    </div>
+    <div class="modal-body share-body">
+      <label class="check"><input type="checkbox" id="shareEnabled"> {{$.T "开启分享链接"}}</label>
+      <div id="shareConfig" class="share-config" style="display:none">
+        {{if not .ShareLockCanEdit}}
+        <label class="check"><input type="checkbox" id="shareCanEdit"> {{$.T "share.canEdit"}}</label>
+        {{end}}
+        <label>{{$.T "访问密码（留空则不修改 / 无密码）"}}
+          <div class="pwd-row">
+            <input type="text" id="sharePassword" autocomplete="off">
+            <button type="button" class="btn btn-sm" id="genPwdBtn">{{$.T "share.genPwd"}}</button>
+          </div>
+        </label>
+        <label>{{$.T "有效期"}}
+          <select id="shareExpire">
+            <option value="0">{{$.T "永久有效"}}</option>
+            <option value="1">{{$.T "1 天"}}</option>
+            <option value="7">{{$.T "7 天"}}</option>
+            <option value="30">{{$.T "30 天"}}</option>
+          </select>
+        </label>
+        <div id="shareLink" class="share-link" style="display:none">
+          {{$.T "分享链接："}}<code id="shareURL"></code>
+          <button type="button" class="btn btn-sm" id="copyShareBtn">{{$.T "复制"}}</button>
+        </div>
+        <div id="accessReqBox" class="share-access-box" hidden>
+          <div class="share-access-head">
+            <strong>{{$.T "share.applyListTitle"}}</strong>
+            <button type="button" class="btn btn-sm" id="refreshAccessReq">{{$.T "docs.query"}}</button>
+          </div>
+          <div id="accessReqList" class="share-access-list"><div class="muted">{{$.T "share.applyListEmpty"}}</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn" data-close-modal>{{$.T "关闭"}}</button>
+      <button type="button" id="saveShareBtn" class="btn btn-primary">{{$.T "应用分享设置"}}</button>
+    </div>
+  </div>
+</div>
+{{end}}

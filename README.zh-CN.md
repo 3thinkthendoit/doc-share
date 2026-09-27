@@ -96,6 +96,10 @@ CREATE DATABASE doc_share DEFAULT CHARSET utf8mb4;
 
 站点名称、Logo、注册方式、SMTP、RustFS 等可在登录后于 **系统设置**（`/admin/settings`）调整，无需改配置文件。
 
+> **存储安全提示**：选择 RustFS（S3 兼容）时，建议将 bucket 设为**私有**读写。若 bucket 允许匿名公共读取，
+> HTML 整站 / 上传文件的对象 URL 可被直连访问，绕过分享密码门（站点文件在本站侧的访问已经凭短时签名控制，
+> 但无法约束对象存储自身的直链策略）。本地磁盘存储无此问题（`html/` 前缀已从 `/uploads` 静态映射中排除）。
+
 ### 3. 启动
 
 ```bash

@@ -328,6 +328,19 @@ func (a *App) serveDoc(c *gin.Context, doc *model.Document, share *model.Share, 
 		UpdateColumn("view_count", gorm.Expr("view_count + 1"))
 	doc.ViewCount++
 	user := a.sessionUser(c)
+	// 结构化画布（思维导图/画板）：全屏只读渲染
+	if model.IsJSONType(doc.Type) {
+		a.render(c, "json_view.html", gin.H{
+			"title":       doc.Title,
+			"rawTitle":    true,
+			"doc":         doc,
+			"docKind":     doc.Type,
+			"user":        user,
+			"canModerate": user != nil && (user.ID == doc.OwnerID || user.IsAdmin()),
+			"visitors":    a.recordVisitor(c, doc),
+		})
+		return
+	}
 	// HTML 整站：iframe sandbox 隔离渲染，入口 URL 内嵌短时签名（子资源凭相对路径继承）
 	if doc.Type == model.DocTypeHTML {
 		entry := a.htmlEntryURL(token)

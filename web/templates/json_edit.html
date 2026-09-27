@@ -1,0 +1,127 @@
+{{define "json_edit.html"}}
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>
+{{template "head" .}}
+<style>
+.json-edit-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 0}
+.json-edit-head .input-title{flex:1;min-width:220px;margin-bottom:0}
+/* 挂载容器复用 embed-mount 体系（style.css：mindmap 需清零 margin/padding、excalidraw 需子层满宽高） */
+.json-mount{height:calc(100vh - 130px);min-height:420px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--panel)}
+</style>
+</head>
+<body>
+{{template "nav" .}}
+<main class="container wide">
+  <div class="json-edit-head">
+    <span class="tag tag-embed">{{if eq .docKind "mindmap"}}{{$.T "docs.tagMindmap"}}{{else}}{{$.T "docs.tagBoard"}}{{end}}</span>
+    <input type="text" id="docTitle" class="input-title" style="max-width:480px" placeholder="{{$.T "edit.titlePh"}}" value="{{if .doc}}{{.doc.Title}}{{end}}">
+    <a href="/admin/docs" class="btn">{{$.T "返回列表"}}</a>
+    {{if .doc}}<a href="/admin/docs/{{.doc.ID}}/preview" target="_blank" class="btn">{{$.T "edit.preview"}}</a>{{end}}
+    {{if .isOwner}}<button type="button" id="shareBtn" class="btn">{{$.T "分享"}}</button>{{end}}
+    {{if .canEditDoc}}<button type="button" id="saveBtn" class="btn btn-primary">{{$.T "保存"}}</button>{{end}}
+  </div>
+  <div id="jsonMount" class="json-mount {{if eq .docKind "mindmap"}}embed-mount embed-mount-mindmap{{else}}embed-mount embed-mount-excalidraw{{end}}"></div>
+</main>
+
+{{if .isOwner}}
+<!-- 分享设置弹窗（公共壳）：状态由 share_modal.js 注入；画布不可分享页编辑 -->
+{{template "shareSettingsModal" .}}
+{{end}}
+
+<script>
+    window.JSON_DOC = {
+      kind: "{{.docKind}}",
+      docId: {{if .doc}}{{.doc.ID}}{{else}}0{{end}},
+      canEdit: {{if .canEditDoc}}true{{else}}false{{end}},
+      content: {{if .doc}}{{.doc.Content}}{{else}}""{{end}}
+    };
+</script>
+<script src="/static/json_editor.js"></script>
+<script src="/static/share_modal.js"></script>
+<script>
+(function () {
+  var DOC_ID = window.JSON_DOC.docId;
+  var KIND = window.JSON_DOC.kind;
+  var editor = null;
+  var mount = document.getElementById('jsonMount');
+  if (!window.JsonDoc) return;
+  editor = JsonDoc.init({
+    kind: KIND,
+    mode: window.JSON_DOC.canEdit ? 'edit' : 'view',
+    content: window.JSON_DOC.content,
+    mount: mount,
+    onError: function (msg) { if (window.UI) UI.toast(msg, 'error'); }
+  });
+
+  function currentJSON() {
+    var json = editor ? editor.getJSON() : null;
+    return json || window.JSON_DOC.content || '';
+  }
+
+  /* ---- 保存：新建 POST，已有 PUT（JSON 类型允许 content 更新） ---- */
+  var saveBtn = document.getElementById('saveBtn');
+  if (saveBtn) saveBtn.addEventListener('click', async function () {
+    saveBtn.disabled = true;
+    var title = document.getElementById('docTitle').value;
+    try {
+      var url, method, body;
+      if (DOC_ID) {
+        url = '/admin/api/docs/' + DOC_ID; method = 'PUT';
+        body = { title: title, content: currentJSON() };
+      } else {
+        url = '/admin/api/docs'; method = 'POST';
+        body = { title: title, type: KIND, content: currentJSON() };
+      }
+      var res = await fetch(url, {
+        method: method,
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify(body)
+      });
+      var data = await res.json().catch(function () { return {}; });
+      if (!res.ok) { UI.alert((data && data.error) || UI.t('保存失败')); return; }
+      if (!DOC_ID && data.data && data.data.id) {
+        DOC_ID = data.data.id;
+        window.JSON_DOC.docId = DOC_ID;
+        shareState.docId = DOC_ID;
+        history.replaceState(null, '', '/admin/docs/' + DOC_ID + '/edit');
+        // 出现文档后补出预览/分享入口
+        if (!document.getElementById('previewLink')) {
+          var a = document.createElement('a');
+          a.id = 'previewLink';
+          a.href = '/admin/docs/' + DOC_ID + '/preview';
+          a.target = '_blank';
+          a.className = 'btn';
+          a.textContent = UI.t('edit.preview');
+          saveBtn.parentNode.insertBefore(a, saveBtn);
+        }
+      }
+      UI.toast(UI.t('common.saved'), 'success');
+    } catch (e) {
+      UI.toast(UI.t('common.netErr'), 'error');
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+
+  /* ---- 分享设置（公共组件 share_modal.js）：画布不可分享页编辑，未保存时提示先保存 ---- */
+  ShareModal.bind({});
+  var shareState = {
+    docId: DOC_ID,
+    title: document.getElementById('docTitle').value,
+    shared: {{if .share}}true{{else}}false{{end}},
+    canEdit: false,
+    hasPwd: {{if .share}}{{if .share.HasPassword}}true{{else}}false{{end}}{{else}}false{{end}},
+    token: {{if .share}}{{.share.ShareToken}}{{else}}""{{end}},
+    shareURL: {{if .shareURL}}{{.shareURL}}{{else}}""{{end}}
+  };
+  document.getElementById('shareBtn').addEventListener('click', function () {
+    shareState.title = document.getElementById('docTitle').value;
+    ShareModal.openFor(shareState);
+  });
+})();
+</script>
+{{template "adminfoot" .}}
+</body>
+</html>
+{{end}}

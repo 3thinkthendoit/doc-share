@@ -159,8 +159,12 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		open.GET("/docs", app.OpenListDocs)
 		open.GET("/docs/:id", app.OpenGetDoc)
 		open.POST("/docs", app.CreateDoc)
+		open.POST("/docs/html", app.OpenCreateHTMLDoc)
 		open.PUT("/docs/:id", app.UpdateDoc)
 		open.DELETE("/docs/:id", app.DeleteDoc)
+		open.GET("/docs/:id/share", app.OpenGetShare)
+		open.POST("/docs/:id/share", app.UpsertShare)
+		open.DELETE("/docs/:id/share", app.DeleteShare)
 	}
 
 	// 分享

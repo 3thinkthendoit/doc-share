@@ -1,0 +1,33 @@
+{{define "json_view.html"}}
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>
+{{template "head" .}}
+<style>
+/* 结构化画布阅读页：纯全屏只读渲染（思维导图 / 画板）；挂载容器复用 embed-mount 体系 */
+html,body{height:100%;margin:0}
+.json-view-mount{width:100%;height:100%;background:var(--panel)}
+</style>
+</head>
+<body>
+  <div id="jsonViewMount" class="json-view-mount {{if eq .docKind "mindmap"}}embed-mount embed-mount-mindmap{{else}}embed-mount embed-mount-excalidraw{{end}}"></div>
+  <script>
+    window.JSON_DOC = {
+      kind: "{{.docKind}}",
+      content: {{.doc.Content}}
+    };
+  </script>
+  <script src="/static/json_editor.js"></script>
+  <script>
+    if (window.JsonDoc) {
+      JsonDoc.init({
+        kind: window.JSON_DOC.kind,
+        mode: 'view',
+        content: window.JSON_DOC.content,
+        mount: document.getElementById('jsonViewMount')
+      });
+    }
+  </script>
+</body>
+</html>
+{{end}}
