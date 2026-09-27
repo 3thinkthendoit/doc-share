@@ -593,106 +593,6 @@
     });
   }
 
-  var MINDMAP_LAYOUTS = [
-    { value: 'logicalStructure', labelKey: 'edit.layoutLogical', fallback: '逻辑结构' },
-    { value: 'logicalStructureLeft', labelKey: 'edit.layoutLogicalLeft', fallback: '逻辑结构（左）' },
-    { value: 'mindMap', labelKey: 'edit.layoutMindMap', fallback: '思维导图' },
-    { value: 'catalogOrganization', labelKey: 'edit.layoutCatalog', fallback: '目录组织' },
-    { value: 'organizationStructure', labelKey: 'edit.layoutOrg', fallback: '组织结构' },
-    { value: 'timeline', labelKey: 'edit.layoutTimeline', fallback: '时间轴' },
-    { value: 'timeline2', labelKey: 'edit.layoutTimeline2', fallback: '交替时间轴' },
-    { value: 'fishbone', labelKey: 'edit.layoutFishbone', fallback: '鱼骨图' },
-    { value: 'verticalTimeline', labelKey: 'edit.layoutVTimeline', fallback: '竖向时间轴' }
-  ];
-
-  function mindmapThemeOptions(MindMap) {
-    var list = [{ name: t('edit.themeDefault', '默认'), value: 'default', dark: false }];
-    var Themes = MindMap && MindMap.__dsThemes;
-    if (Themes) {
-      (Themes.lightList || []).forEach(function (item) {
-        list.push({ name: item.name, value: item.value, dark: false });
-      });
-      (Themes.darkList || []).forEach(function (item) {
-        list.push({ name: item.name, value: item.value, dark: true });
-      });
-    }
-    return list;
-  }
-
-  function buildMindmapToolbar(ui, MindMap, opts) {
-    opts = opts || {};
-    var bar = document.createElement('div');
-    bar.className = 'embed-toolbar';
-
-    function field(label, select) {
-      var wrap = document.createElement('label');
-      wrap.className = 'embed-toolbar-field';
-      var span = document.createElement('span');
-      span.textContent = label;
-      wrap.appendChild(span);
-      wrap.appendChild(select);
-      return wrap;
-    }
-
-    var themeSel = document.createElement('select');
-    themeSel.className = 'embed-toolbar-select';
-    mindmapThemeOptions(MindMap).forEach(function (item) {
-      var opt = document.createElement('option');
-      opt.value = item.value;
-      opt.textContent = item.name + (item.dark ? ' · dark' : '');
-      themeSel.appendChild(opt);
-    });
-    themeSel.value = opts.theme || 'classicBlue';
-    if (![].some.call(themeSel.options, function (o) { return o.value === themeSel.value; })) {
-      themeSel.value = 'default';
-    }
-
-    var layoutSel = document.createElement('select');
-    layoutSel.className = 'embed-toolbar-select';
-    MINDMAP_LAYOUTS.forEach(function (item) {
-      var opt = document.createElement('option');
-      opt.value = item.value;
-      opt.textContent = t(item.labelKey, item.fallback);
-      layoutSel.appendChild(opt);
-    });
-    layoutSel.value = opts.layout || 'mindMap';
-    if (![].some.call(layoutSel.options, function (o) { return o.value === layoutSel.value; })) {
-      layoutSel.value = 'logicalStructure';
-    }
-
-    themeSel.disabled = !!opts.readonly;
-    layoutSel.disabled = !!opts.readonly;
-    bar.appendChild(field(t('edit.embedTheme', '主题'), themeSel));
-    bar.appendChild(field(t('edit.embedLayout', '结构'), layoutSel));
-
-    // 插在提示行与画布之间
-    if (ui.mount && ui.mount.parentNode) {
-      ui.mount.parentNode.insertBefore(bar, ui.mount);
-    }
-
-    return {
-      themeSel: themeSel,
-      layoutSel: layoutSel,
-      getTheme: function () { return themeSel.value; },
-      getLayout: function () { return layoutSel.value; },
-      bind: function (instance) {
-        if (!instance) return;
-        themeSel.addEventListener('change', function () {
-          try {
-            instance.setTheme(themeSel.value);
-            if (instance.view && instance.view.fit) instance.view.fit();
-          } catch (e) {}
-        });
-        layoutSel.addEventListener('change', function () {
-          try {
-            instance.setLayout(layoutSel.value);
-            if (instance.view && instance.view.fit) instance.view.fit();
-          } catch (e) {}
-        });
-      }
-    };
-  }
-
   function ensureExcalidraw() {
     loadCss(CDN.excalidrawCss);
     if (window.ExcalidrawEmbed && ExcalidrawEmbed.renderExcalidraw) {
@@ -943,13 +843,17 @@
       // 新图默认用更耐看的主题/放射结构；已有数据保留原 theme/layout
       var theme = cfg.theme || 'classicBlue';
       var layout = cfg.layout || 'mindMap';
-      var toolbar = buildMindmapToolbar(ui, MindMap, {
+      var toolbar = window.MindmapToolbar ? window.MindmapToolbar.build({
+        MindMap: MindMap,
+        mount: ui.mount,
         theme: theme,
         layout: layout,
         readonly: readonly
-      });
-      theme = toolbar.getTheme();
-      layout = toolbar.getLayout();
+      }) : null;
+      if (toolbar) {
+        theme = toolbar.getTheme();
+        layout = toolbar.getLayout();
+      }
 
       requestAnimationFrame(function () {
         if (closed) return;
@@ -968,7 +872,7 @@
             viewData: cfg.view,
             customInnerElsAppendTo: ui.mount
           });
-          toolbar.bind(instance);
+          if (toolbar) toolbar.bind(instance);
         } catch (err) {
           ui.status.hidden = false;
           ui.status.textContent = t('edit.embedLoadFail', '编辑器加载失败');

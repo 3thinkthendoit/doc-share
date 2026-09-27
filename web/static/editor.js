@@ -72,8 +72,10 @@
   }
   function markDirty() {
     dirty = true;
+    autoSaveFails = 0; // 有新的编辑动作就恢复自动重试资格
     if (saveStatusTimer) { clearTimeout(saveStatusTimer); saveStatusTimer = null; }
     if (!saving) setSaveBtn(saveLabelDefault, false);
+    scheduleAutoSave();
   }
   function hasSaveableContent() {
     return !!(String(titleEl && titleEl.value || '').trim() || String(contentEl.value || '').trim());
@@ -822,14 +824,17 @@
       saving = false;
       setSaveBtn(saveLabelDefault, false);
       if (!opts.auto) UI.toast('网络错误，保存失败，内容仍在编辑页，请勿刷新', 'error');
-      return;
+      else onAutoSaveFailed();
+      return false;
     }
     saving = false;
     if (!res.ok) {
       setSaveBtn(saveLabelDefault, false);
       if (!opts.auto) UI.alert((data && data.error) || '保存失败');
-      return;
+      else onAutoSaveFailed();
+      return false;
     }
+    autoSaveFails = 0;
     if (!id && data && data.data && data.data.id) {
       window.DOC_ID = data.data.id;
       try {
@@ -851,7 +856,9 @@
     dirty = stillDirty;
     if (stillDirty) {
       setSaveBtn(saveLabelDefault, false);
+      scheduleAutoSave(); // 还有未落库的改动：继续排程兜底
     } else {
+      cancelAutoSave();
       setSaveBtn(UI.t('edit.autosaved'), false);
       if (saveStatusTimer) clearTimeout(saveStatusTimer);
       saveStatusTimer = setTimeout(function () {
@@ -859,14 +866,45 @@
         if (!dirty && !saving) setSaveBtn(saveLabelDefault, false);
       }, 2500);
     }
+    return true;
   }
   if (saveBtn) saveBtn.addEventListener('click', function () { save({}); });
 
-  // 有改动且有内容时每 15 秒自动保存到服务端
-  if (saveBtn) {
-    setInterval(function () {
+  // 自动保存：内容变动后停止编辑 2 秒落库；持续输入时最长 15 秒强制保存一次；
+  // 失败 5 秒后自动重试，连续失败 5 次暂停并提示（继续编辑可恢复）；离开页面前仍有 keepalive 补存兜底
+  var autoSaveTimer = null;
+  var autoDirtySince = 0;
+  var autoSaveFails = 0;
+  var AUTO_SAVE_IDLE = 2000;
+  var AUTO_SAVE_MAX_WAIT = 15000;
+  var AUTO_SAVE_MAX_FAILS = 5;
+  function onAutoSaveFailed() {
+    autoSaveFails++;
+    if (autoSaveFails > AUTO_SAVE_MAX_FAILS) {
+      if (autoSaveFails === AUTO_SAVE_MAX_FAILS + 1) {
+        UI.toast('自动保存已暂停，请手动保存', 'error');
+      }
+      return;
+    }
+    scheduleAutoSave(5000);
+  }
+  function cancelAutoSave() {
+    if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null; }
+    autoDirtySince = 0;
+  }
+  function scheduleAutoSave(delay) {
+    if (!saveBtn) return;
+    if (autoSaveTimer) clearTimeout(autoSaveTimer);
+    var wait = (typeof delay === 'number') ? delay : AUTO_SAVE_IDLE;
+    if (typeof delay !== 'number') {
+      var now = Date.now();
+      if (!autoDirtySince) autoDirtySince = now;
+      if (now - autoDirtySince >= AUTO_SAVE_MAX_WAIT) wait = 0;
+    }
+    autoSaveTimer = setTimeout(function () {
+      autoSaveTimer = null;
       if (dirty && !saving) save({ auto: true });
-    }, 15000);
+    }, wait);
   }
 
   // 分享设置弹窗（开关/遮罩/ESC 由 UI.bindModal 统一处理）

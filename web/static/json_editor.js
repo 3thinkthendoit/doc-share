@@ -88,7 +88,10 @@ window.JsonDoc = (function () {
       return loadScript(CDN.mindmapThemesJs).then(function () {
         var Themes = window.simpleMindMapPluginThemes;
         if (Themes && Themes.default) Themes = Themes.default;
-        if (Themes && typeof Themes.init === 'function') Themes.init(MindMap);
+        if (Themes && typeof Themes.init === 'function') {
+          Themes.init(MindMap);
+          MindMap.__dsThemes = Themes;
+        }
         MindMap.__jdThemesReady = true;
         return MindMap;
       });
@@ -122,12 +125,13 @@ window.JsonDoc = (function () {
         var full = instance.getData(true); // {root, layout, theme, view}
         return JSON.stringify(full);
       }
-      if (!apiRef) return null;
+      // apiRef 未就绪时退回 onChange 捕获的场景，避免保存丢失改动
+      if (!apiRef && !latest) return null;
       var scene = {
         type: 'excalidraw', version: 2, source: 'doc-share',
-        elements: apiRef.getSceneElements ? apiRef.getSceneElements() : (latest.elements || []),
-        appState: apiRef.getAppState ? apiRef.getAppState() : (latest.appState || {}),
-        files: apiRef.getFiles ? apiRef.getFiles() : (latest.files || {})
+        elements: (apiRef && apiRef.getSceneElements) ? apiRef.getSceneElements() : ((latest && latest.elements) || []),
+        appState: (apiRef && apiRef.getAppState) ? apiRef.getAppState() : ((latest && latest.appState) || {}),
+        files: (apiRef && apiRef.getFiles) ? apiRef.getFiles() : ((latest && latest.files) || {})
       };
       // 精简 appState，避免把 UI 瞬态状态写进文档
       if (scene.appState) {
@@ -147,16 +151,26 @@ window.JsonDoc = (function () {
         if (destroyed) return;
         var parsed = parseJSON(opts.content, 'mindmap');
         var cfg = (parsed && parsed.root) ? parsed : {};
+        // 工具栏先于实例构建：回读下拉实际值（缺项补齐后的），保证与实例一致
+        var toolbar = window.MindmapToolbar ? window.MindmapToolbar.build({
+          MindMap: MindMap,
+          mount: mount,
+          standalone: true,
+          readonly: readonly,
+          theme: cfg.theme,
+          layout: cfg.layout
+        }) : null;
         instance = new MindMap({
           el: mount,
           data: mindmapRoot(parsed),
           readonly: readonly,
           fit: true,
-          theme: cfg.theme || 'classicBlue',
-          layout: cfg.layout || 'mindMap',
+          theme: toolbar ? toolbar.getTheme() : (cfg.theme || 'classicBlue'),
+          layout: toolbar ? toolbar.getLayout() : (cfg.layout || 'mindMap'),
           viewData: cfg.view,
           customInnerElsAppendTo: mount
         });
+        if (toolbar) toolbar.bind(instance);
         if (typeof opts.onReady === 'function') opts.onReady();
       }).catch(function () {
         if (!destroyed && typeof opts.onError === 'function') opts.onError('编辑器加载失败，请检查网络');
@@ -175,6 +189,10 @@ window.JsonDoc = (function () {
           viewModeEnabled: readonly,
           zenModeEnabled: false,
           gridModeEnabled: false,
+          // renderExcalidraw 只返回 React Root，imperative API 必须经此回调获取（与 embeds.js 弹窗一致）
+          excalidrawAPI: function (api) {
+            if (api && typeof api.getSceneElements === 'function') apiRef = api;
+          },
           onChange: function (elements, appState, files) {
             latest = {
               type: 'excalidraw', version: 2, source: 'doc-share',

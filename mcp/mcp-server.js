@@ -101,6 +101,27 @@ async function apiCall(method, pathname, query, body, extraHeaders) {
 /* ---------- 工具定义 ---------- */
 
 const num = { type: 'number', description: '数字 ID' };
+
+// 画布 JSON schema 说明（与前端 json_editor.js / embeds.js 的解析逻辑严格对齐），
+// 拼进工具描述里，LLM 在 tools/list 阶段即可学到格式
+const CANVAS_DOC = [
+  '',
+  '【画布 content 格式】mindmap/board 的 content 必须是 JSON.stringify 后的字符串，两种格式：',
+  '',
+  '【mindmap】simple-mind-map 节点树。最小可用结构（推荐，编辑器自动补布局/主题）：',
+  '{"data":{"text":"中心主题"},"children":[{"data":{"text":"分支一"}},{"data":{"text":"分支二"},"children":[{"data":{"text":"子节点"}}]}]}',
+  '节点字段：data:{text(必填), note, icon:[], tag:[], image, hyperlink}；children 为子节点数组（可省略）。',
+  '完整包装形态（系统保存后的存储格式，二者均被接受）：{"root":<根节点>,"layout":"mindMap|logicalStructure|organizationStructure|timeline|fishbone 等","theme":"classicBlue|classicGreen|blueSky 等主题名","view":{"transform":{"scale":1,"x":0,"y":0},"state":{}}}',
+  '',
+  '【board】标准 Excalidraw scene：',
+  '{"type":"excalidraw","version":2,"source":"doc-share","elements":[...],"appState":{"viewBackgroundColor":"#ffffff"},"files":{}}',
+  '元素通用字段：type("rectangle"|"ellipse"|"diamond"|"text"|"arrow"|"line"|"freedraw"|"image"), id, x, y, width, height, angle:0, strokeColor:"#1e1e1e", backgroundColor("transparent"=无填充), fillStyle("solid"|"hachure"), strokeWidth:2, strokeStyle("solid"|"dashed"), roughness:1, opacity:100, roundness:null, seed/version/versionNonce(任意整数), isDeleted:false, boundElements:null, updated(毫秒时间戳), link:null, locked:false。',
+  '矩形示例：{"type":"rectangle","id":"r1","x":100,"y":80,"width":180,"height":70,"angle":0,"strokeColor":"#1e1e1e","backgroundColor":"#a5d8ff","fillStyle":"solid","strokeWidth":2,"strokeStyle":"solid","roughness":1,"opacity":100,"roundness":null,"seed":101,"version":1,"versionNonce":101,"isDeleted":false,"boundElements":null,"updated":1700000000000,"link":null,"locked":false}',
+  '文本示例：{"type":"text","id":"t1","x":110,"y":95,"width":80,"height":25,"text":"节点文字","fontSize":20,"fontFamily":1,"textAlign":"left","verticalAlign":"top","containerId":null,"originalText":"节点文字","lineHeight":1.25}（其余字段同通用字段）',
+  '箭头示例：{"type":"arrow","id":"a1","x":280,"y":115,"width":100,"height":0,"points":[[0,0],[100,0]],"startBinding":null,"endBinding":null,"startArrowhead":null,"endArrowhead":"arrow","lastCommittedPoint":null,"elbowed":false}（其余字段同通用字段）',
+  '生成技巧：先规划坐标再成批生成元素，id 用短随机串且全局唯一；次要字段可省略，渲染端会补默认值。拿不准时先用 docshare_get_doc 读一篇同类文档作为范例。',
+].join('\n');
+
 const docSchema = {
   type: 'object',
   properties: {
@@ -112,6 +133,7 @@ const docSchema = {
   },
   required: ['id'],
 };
+docSchema.properties.content.description += CANVAS_DOC;
 
 const TOOLS = [
   {
@@ -132,7 +154,7 @@ const TOOLS = [
   },
   {
     name: 'docshare_get_doc',
-    description: '读取单个文档完整内容：markdown 返回正文；mindmap/board 返回画布 JSON；html 返回站点 manifest',
+    description: '读取单个文档完整内容：markdown 返回正文；mindmap/board 返回画布 JSON（其结构可直接作为创建/更新同类文档的 content 范例）；html 返回站点 manifest',
     schema: docSchema,
     async run(args) {
       return apiCall('GET', `/openapi/v1/docs/${Number(args.id)}`);
@@ -146,7 +168,7 @@ const TOOLS = [
       properties: {
         title: { type: 'string', description: '文档标题（必填）' },
         type: { type: 'string', enum: ['markdown', 'mindmap', 'board'], description: '文档类型，默认 markdown' },
-        content: { type: 'string', description: 'markdown 正文或画布 JSON 字符串' },
+        content: { type: 'string', description: 'markdown 正文或画布 JSON 字符串' + CANVAS_DOC },
         project_id: { type: 'number', description: '所属项目 ID（可选，0=未分组）' },
         category_id: { type: 'number', description: '所属分类 ID（可选，0=未分类）' },
       },
