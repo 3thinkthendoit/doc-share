@@ -40,6 +40,40 @@ func (l *Local) Put(ctx context.Context, key string, body io.Reader, _ int64, _ 
 	return PutResult{URL: "/uploads/" + key}, nil
 }
 
+func (l *Local) Get(_ context.Context, key string) (io.ReadCloser, int64, error) {
+	key = stringsCleanKey(key)
+	if key == "" || strings.Contains(key, "..") {
+		return nil, 0, fmt.Errorf("非法存储 key")
+	}
+	absDir, err := filepath.Abs(l.Dir)
+	if err != nil {
+		return nil, 0, fmt.Errorf("解析上传目录失败: %w", err)
+	}
+	dst := filepath.Join(absDir, filepath.FromSlash(key))
+	absDst, err := filepath.Abs(dst)
+	if err != nil {
+		return nil, 0, fmt.Errorf("解析目标路径失败: %w", err)
+	}
+	sep := string(os.PathSeparator)
+	if absDst != absDir && !strings.HasPrefix(absDst, absDir+sep) {
+		return nil, 0, fmt.Errorf("非法存储 key")
+	}
+	f, err := os.Open(absDst)
+	if err != nil {
+		return nil, 0, fmt.Errorf("读取文件失败: %w", err)
+	}
+	st, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return nil, 0, fmt.Errorf("读取文件信息失败: %w", err)
+	}
+	if st.IsDir() {
+		_ = f.Close()
+		return nil, 0, fmt.Errorf("目标是一个目录")
+	}
+	return f, st.Size(), nil
+}
+
 func (l *Local) Delete(ctx context.Context, key string) error {
 	if err := ctx.Err(); err != nil {
 		return err

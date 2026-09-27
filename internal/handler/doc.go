@@ -242,6 +242,11 @@ func (a *App) EditDocPage(c *gin.Context) {
 			}
 		}
 	}
+	// HTML 整站文档：进入替换/设置页（不可编辑正文）
+	if doc.Type == model.DocTypeHTML {
+		a.renderHTMLDocEdit(c, doc, shareOrNil(hasShare, &share), shareURL(c, &share, hasShare), canEditDoc, projects, categories)
+		return
+	}
 	a.render(c, "doc_edit.html", gin.H{
 		"title":      "编辑文档",
 		"doc":        doc,
@@ -258,6 +263,28 @@ func shareOrNil(ok bool, s *model.Share) *model.Share {
 		return s
 	}
 	return nil
+}
+
+// renderHTMLDocEdit HTML 整站文档的编辑页（替换 / 标题与归属 / 分享设置）
+func (a *App) renderHTMLDocEdit(c *gin.Context, doc *model.Document, share *model.Share, shareURL string, canEditDoc bool, projects []model.Project, categories []model.Category) {
+	manifest, _ := parseHTMLManifest(doc.Content)
+	// 整站替换与分享设置为属主级操作
+	isOwner := false
+	if user := middleware.CurrentUser(c); user != nil && (user.IsAdmin() || user.ID == doc.OwnerID) {
+		isOwner = true
+	}
+	a.render(c, "html_edit.html", gin.H{
+		"title":      doc.Title,
+		"rawTitle":   true,
+		"doc":        doc,
+		"share":      share,
+		"shareURL":   shareURL,
+		"canEditDoc": canEditDoc,
+		"isOwner":    isOwner,
+		"projects":   projects,
+		"categories": categories,
+		"manifest":   manifest,
+	})
 }
 
 func shareURL(c *gin.Context, s *model.Share, ok bool) string {
@@ -444,6 +471,14 @@ func (a *App) UpdateDoc(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": errParam})
 		return
 	}
+	// HTML 整站文档：内容（manifest）只经整站替换接口变更，普通更新一律忽略 content 字段
+	if doc.Type == model.DocTypeHTML && req.Content != "" && req.Content != doc.Content {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "HTML 整站文档不支持在线编辑内容，请使用整站替换"})
+		return
+	}
+	if doc.Type == model.DocTypeHTML {
+		req.Content = oldContent
+	}
 	if req.Title != "" {
 		doc.Title = strings.TrimSpace(req.Title)
 	}
@@ -482,6 +517,8 @@ func (a *App) DeleteDoc(c *gin.Context) {
 	if !a.requireDocEdit(c, doc) {
 		return
 	}
+	// HTML 整站：后台清理存储中的站点文件
+	a.cleanupHTMLDoc(doc)
 	if err := a.DB.Where("document_id = ?", doc.ID).Delete(&model.Share{}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
 		return
@@ -573,6 +610,22 @@ func (a *App) PreviewDoc(c *gin.Context) {
 	}
 	if !allowed {
 		c.String(http.StatusForbidden, "无权查看该文档")
+		return
+	}
+	// HTML 整站：iframe sandbox 渲染，入口用短时签名（无需会话 cookie，子资源同前缀继承）
+	if doc.Type == model.DocTypeHTML {
+		a.render(c, "html_view.html", gin.H{
+			"title":       doc.Title,
+			"rawTitle":    true, // 用户文档标题，跳过词典反查避免误译
+			"doc":         doc,
+			"share":       nil,
+			"token":       "",
+			"user":        user,
+			"canModerate": user != nil && (user.ID == doc.OwnerID || user.IsAdmin()),
+			"entryURL":    a.adminEntryURL(doc.ID),
+			// 预览承诺“不计浏览数”，只读展示最近访客，不写访客记录
+			"visitors": a.recentVisitors(doc.ID),
+		})
 		return
 	}
 	a.render(c, "share_view.html", gin.H{

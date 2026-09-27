@@ -328,6 +328,25 @@ func (a *App) serveDoc(c *gin.Context, doc *model.Document, share *model.Share, 
 		UpdateColumn("view_count", gorm.Expr("view_count + 1"))
 	doc.ViewCount++
 	user := a.sessionUser(c)
+	// HTML 整站：iframe sandbox 隔离渲染，入口 URL 内嵌短时签名（子资源凭相对路径继承）
+	if doc.Type == model.DocTypeHTML {
+		entry := a.htmlEntryURL(token)
+		if token == "" { // 防御：无 token 上下文退回管理预览入口
+			entry = a.adminEntryURL(doc.ID)
+		}
+		a.render(c, "html_view.html", gin.H{
+			"title":       doc.Title,
+			"rawTitle":    true,
+			"doc":         doc,
+			"share":       share,
+			"token":       token,
+			"user":        user,
+			"canModerate": user != nil && (user.ID == doc.OwnerID || user.IsAdmin()),
+			"entryURL":    entry,
+			"visitors":    a.recordVisitor(c, doc),
+		})
+		return
+	}
 	a.render(c, "share_view.html", gin.H{
 		"title":       doc.Title,
 		"rawTitle":    true, // 用户文档标题，跳过词典反查避免误译

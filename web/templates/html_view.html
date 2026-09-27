@@ -1,0 +1,22 @@
+{{define "html_view.html"}}
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>
+{{template "head" .}}
+<style>
+/* HTML 整站阅读页：纯 iframe 全屏铺开（sandbox 隔离，站点 JS 无法触达本站 cookie/API） */
+html,body{height:100%;margin:0}
+.htmlview-frame{width:100%;height:100%;border:0;display:block;background:#fff}
+</style>
+</head>
+<body>
+  {{/*
+    sandbox 不含 allow-same-origin：整站脚本运行在隔离源，无法读写本站 cookie / 调用 /admin API。
+    允许 scripts/forms/popups/downloads 以兼容常见打包产物（vite/webpack dist 等）。
+  */}}
+  <iframe class="htmlview-frame" src="{{.entryURL}}"
+    sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"
+    referrerpolicy="no-referrer" title="{{.doc.Title}}"></iframe>
+</body>
+</html>
+{{end}}

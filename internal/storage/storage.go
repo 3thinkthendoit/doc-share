@@ -31,6 +31,8 @@ type PutResult struct {
 type Storage interface {
 	// Put 写入对象；key 形如 202609/abc.png；contentType 可为空
 	Put(ctx context.Context, key string, body io.Reader, size int64, contentType string) (PutResult, error)
+	// Get 读取对象流与大小；调用方负责关闭。key 不存在返回错误。
+	Get(ctx context.Context, key string) (io.ReadCloser, int64, error)
 	// Delete 删除对象；key 不存在视为成功
 	Delete(ctx context.Context, key string) error
 	// Ping 连通性检测（凭证、endpoint、bucket）

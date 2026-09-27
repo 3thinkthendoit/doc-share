@@ -60,6 +60,22 @@ func (r *RustFS) Put(ctx context.Context, key string, body io.Reader, size int64
 	return PutResult{URL: ObjectURL(r.cfg.Endpoint, r.cfg.Bucket, key)}, nil
 }
 
+// Get 拉取对象流；不额外加超时，读取随请求 ctx 取消（大文件流式转发）
+func (r *RustFS) Get(ctx context.Context, key string) (io.ReadCloser, int64, error) {
+	key = strings.TrimLeft(key, "/")
+	if key == "" || strings.Contains(key, "..") {
+		return nil, 0, fmt.Errorf("非法存储 key")
+	}
+	out, err := r.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(r.cfg.Bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("RustFS 读取失败: %w", err)
+	}
+	return out.Body, aws.ToInt64(out.ContentLength), nil
+}
+
 func (r *RustFS) Delete(ctx context.Context, key string) error {
 	ctx, cancel := context.WithTimeout(ctx, opTimeout)
 	defer cancel()

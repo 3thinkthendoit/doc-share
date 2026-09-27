@@ -32,3 +32,7 @@ upload:
   dir: "${DOC_SHARE_UPLOAD_DIR:-./uploads}"
   # 单张图片大小上限（MB）
   max_size_mb: ${DOC_SHARE_UPLOAD_MAX_MB:-10}
+  # HTML 整站文档（上传 zip / 文件夹）解包后总大小上限（MB）
+  html_max_size_mb: ${DOC_SHARE_HTML_MAX_MB:-100}
+  # HTML 整站文档文件数上限
+  html_max_files: ${DOC_SHARE_HTML_MAX_FILES:-2000}

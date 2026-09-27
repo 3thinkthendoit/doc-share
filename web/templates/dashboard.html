@@ -20,11 +20,12 @@
   <div class="panel">
     <div class="panel-head"><h2>{{$.T "最近更新"}}</h2></div>
     <table class="table">
-      <thead><tr><th>{{$.T "标题"}}</th><th>{{$.T "所有者"}}</th><th>{{$.T "浏览"}}</th><th>{{$.T "状态"}}</th><th>{{$.T "更新时间"}}</th><th class="col-actions">{{$.T "操作"}}</th></tr></thead>
+      <thead><tr><th>{{$.T "标题"}}</th><th>{{$.T "docs.typeCol"}}</th><th>{{$.T "所有者"}}</th><th>{{$.T "浏览"}}</th><th>{{$.T "状态"}}</th><th>{{$.T "更新时间"}}</th><th class="col-actions">{{$.T "操作"}}</th></tr></thead>
       <tbody>
       {{range .recent}}
         <tr>
           <td><a href="/admin/docs/{{.ID}}/edit">{{.Title}}</a></td>
+          <td>{{if eq .Type "html"}}<span class="tag tag-embed">HTML</span>{{else}}<span class="muted">Markdown</span>{{end}}</td>
           <td>{{if .Owner.ID}}<span class="owner-link" data-name="{{.Owner.DisplayName}}" data-username="{{.Owner.Username}}" data-avatar="{{.Owner.Avatar}}" data-email="{{.Owner.MaskedEmail}}" data-phone="{{.Owner.MaskedPhone}}" data-active="{{if .Owner.LastActiveAt}}{{.Owner.LastActiveAt.Format "2006-01-02 15:04"}}{{end}}">{{.Owner.DisplayName}}</span>{{else}}—{{end}}</td>
           <td>{{.ViewCount}}</td>
           <td>{{if .IsShared}}<span class="tag tag-green">{{$.T "已分享"}}</span>{{else}}<span class="tag">{{$.T "未分享"}}</span>{{end}}</td>
@@ -35,7 +36,7 @@
           </td>
         </tr>
       {{else}}
-        <tr><td colspan="6" class="empty">{{$.T "还没有文档"}}</td></tr>
+        <tr><td colspan="7" class="empty">{{$.T "还没有文档"}}</td></tr>
       {{end}}
       </tbody>
     </table>

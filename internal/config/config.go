@@ -54,8 +54,10 @@ type AuthConfig struct {
 
 // UploadConfig 图片上传存储配置
 type UploadConfig struct {
-	Dir       string `yaml:"dir"`         // 本地存储根目录
-	MaxSizeMB int    `yaml:"max_size_mb"` // 单张图片大小上限（MB）
+	Dir          string `yaml:"dir"`             // 本地存储根目录
+	MaxSizeMB    int    `yaml:"max_size_mb"`     // 单张图片大小上限（MB）
+	HTMLMaxSizeMB int   `yaml:"html_max_size_mb"` // HTML 整站解包后总大小上限（MB）
+	HTMLMaxFiles int    `yaml:"html_max_files"`  // HTML 整站文件数上限
 }
 
 // Load 从 YAML 文件加载配置。
@@ -217,5 +219,11 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Upload.MaxSizeMB <= 0 {
 		c.Upload.MaxSizeMB = 10
+	}
+	if c.Upload.HTMLMaxSizeMB <= 0 {
+		c.Upload.HTMLMaxSizeMB = 100
+	}
+	if c.Upload.HTMLMaxFiles <= 0 {
+		c.Upload.HTMLMaxFiles = 2000
 	}
 }

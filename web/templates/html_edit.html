@@ -1,0 +1,366 @@
+{{define "html_edit.html"}}
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>
+{{template "head" .}}
+<style>
+.html-edit-grid{display:grid;grid-template-columns:1fr 380px;gap:18px;align-items:start}
+.html-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;margin-bottom:16px}
+.html-card h2{font-size:15px;margin:0 0 12px}
+.html-kv{display:flex;gap:26px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-bottom:14px}
+.html-kv b{color:var(--text);font-weight:600;margin-left:6px}
+.html-drop{display:flex;flex-direction:column;align-items:center;gap:6px;padding:26px 16px;border:2px dashed var(--border-strong);border-radius:var(--radius-sm);text-align:center;cursor:pointer;transition:all .15s}
+.html-drop:hover,.html-drop.dragover{border-color:var(--primary);background:var(--bg-soft)}
+.html-drop strong{font-size:14px}
+.html-drop .muted{font-size:12.5px}
+.html-pick{display:flex;gap:10px;justify-content:center;margin-top:12px}
+.html-files{margin-top:10px;font-size:13px;line-height:1.6;max-height:150px;overflow:auto}
+.html-warn{margin-top:10px;font-size:12.5px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 10px}
+@media (max-width:960px){.html-edit-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+{{template "nav" .}}
+<main class="container wide">
+  <div class="page-head page-head-edit">
+    <div class="head-title">
+      <h1>{{.doc.Title}} <span class="tag tag-embed">HTML</span></h1>
+      <div class="head-meta">
+        <label class="meta-select">{{$.T "项目"}}
+          <select id="docProject">
+            <option value="0">{{$.T "未分组"}}</option>
+            {{range .projects}}<option value="{{.ID}}" {{if eq $.doc.ProjectID .ID}}selected{{end}}>{{.Name}}</option>{{end}}
+          </select>
+        </label>
+        <label class="meta-select">{{$.T "分类"}}
+          <select id="docCategory">
+            <option value="0">{{$.T "未分类"}}</option>
+            {{range .categories}}<option value="{{.ID}}" {{if eq $.doc.CategoryID .ID}}selected{{end}}>{{.Name}}</option>{{end}}
+          </select>
+        </label>
+      </div>
+    </div>
+    <div class="head-side">
+      <a href="/admin/docs" class="btn">{{$.T "返回列表"}}</a>
+      <a href="/admin/docs/{{.doc.ID}}/preview" target="_blank" class="btn">{{$.T "edit.preview"}}</a>
+      {{if .isOwner}}<button id="shareBtn" class="btn" type="button">{{$.T "分享"}}</button>{{end}}
+      {{if .canEditDoc}}<button id="saveBtn" class="btn btn-primary" type="button">{{$.T "保存"}}</button>{{end}}
+    </div>
+  </div>
+
+  <div class="html-edit-grid">
+    <div>
+      <div class="html-card">
+        <h2>{{$.T "html.siteInfo"}}</h2>
+        {{if .manifest}}
+        <div class="html-kv">
+          <span>{{$.T "html.fileCount"}}<b>{{.manifest.Count}}</b></span>
+          <span>{{$.T "html.totalSize"}}<b id="mfSize">{{.manifest.Size}}</b></span>
+          <span>{{$.T "更新时间"}}<b>{{.manifest.UpdatedAt}}</b></span>
+          <span>{{$.T "html.entry"}}<b>{{.manifest.Entry}}</b></span>
+        </div>
+        {{else}}
+        <div class="muted">{{$.T "html.noManifest"}}</div>
+        {{end}}
+      </div>
+
+      {{if .isOwner}}
+      <div class="html-card">
+        <h2>{{$.T "html.replaceTitle"}}</h2>
+        <p class="muted" style="font-size:13px;margin:0 0 12px">{{$.T "html.replaceHint"}}</p>
+        <div id="dropZone" class="html-drop">
+          <strong>{{$.T "html.dropZone"}}</strong>
+          <span class="muted">{{$.T "html.dropHint"}}</span>
+        </div>
+        <div class="html-pick">
+          <button type="button" class="btn" id="pickZip">{{$.T "html.pickZip"}}</button>
+          <button type="button" class="btn" id="pickFolder">{{$.T "html.pickFolder"}}</button>
+          <button type="button" class="btn btn-primary" id="doReplace" disabled>{{$.T "html.doReplace"}}</button>
+        </div>
+        <input type="file" id="zipInput" accept=".zip" hidden>
+        <input type="file" id="folderInput" webkitdirectory directory multiple hidden>
+        <div id="fileList" class="html-files muted" hidden></div>
+        <div id="replaceProgress" class="muted" style="margin-top:10px;font-size:13px" hidden></div>
+        <div class="html-warn">{{$.T "html.pathWarn"}}</div>
+      </div>
+      {{end}}
+    </div>
+
+    <div>
+      <div class="html-card">
+        <h2>{{$.T "html.metaTitle"}}</h2>
+        <input type="text" id="docTitle" class="input-title" style="margin-bottom:10px" placeholder="{{$.T "edit.titlePh"}}" value="{{.doc.Title}}">
+        <p class="muted" style="font-size:12.5px;margin:0">{{$.T "html.metaHint"}}</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+{{if .isOwner}}
+<!-- 分享设置弹窗：与文档列表同一套接口（POST/DELETE /admin/api/docs/:id/share） -->
+<div class="modal-overlay" id="shareModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="{{$.T "分享设置"}}">
+    <div class="modal-head">
+      <h2>{{$.T "分享设置"}}</h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+    </div>
+    <div class="modal-body share-body">
+      <label class="check"><input type="checkbox" id="shareEnabled" {{if .share}}checked{{end}}> {{$.T "开启分享链接"}}</label>
+      <div id="shareConfig" class="share-config" {{if not .share}}style="display:none"{{end}}>
+        <label>{{$.T "访问密码（留空则不修改 / 无密码）"}}
+          <div class="pwd-row">
+            <input type="text" id="sharePassword" autocomplete="off" placeholder="{{if .share}}{{if .share.HasPassword}}{{$.T "已设置密码"}}{{end}}{{end}}">
+            <button type="button" class="btn btn-sm" id="genPwdBtn">{{$.T "share.genPwd"}}</button>
+          </div>
+        </label>
+        <label>{{$.T "有效期"}}
+          <select id="shareExpire">
+            <option value="0">{{$.T "永久有效"}}</option>
+            <option value="1">{{$.T "1 天"}}</option>
+            <option value="7">{{$.T "7 天"}}</option>
+            <option value="30">{{$.T "30 天"}}</option>
+          </select>
+        </label>
+        <div id="shareLink" class="share-link" style="display:none">
+          {{$.T "分享链接："}}<code id="shareURLText"></code>
+          <button type="button" class="btn btn-sm" onclick="copyShare()">{{$.T "复制"}}</button>
+        </div>
+        <label class="check"><input type="checkbox" disabled> {{$.T "share.canEdit"}}{{$.T "html.canEditNA"}}</label>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn" data-close-modal>{{$.T "关闭"}}</button>
+      <button type="button" id="saveShareBtn" class="btn btn-primary">{{$.T "应用分享设置"}}</button>
+    </div>
+  </div>
+</div>
+{{end}}
+
+<script>
+(function () {
+  var DOC_ID = {{.doc.ID}};
+  var CAN_EDIT = {{.canEditDoc}};
+
+  /* ---- 标题 / 归属保存：复用普通文档更新接口（服务端会忽略 html 文档的 content） ---- */
+  var saveBtn = document.getElementById('saveBtn');
+  if (saveBtn) saveBtn.addEventListener('click', async function () {
+    saveBtn.disabled = true;
+    try {
+      var res = await fetch('/admin/api/docs/' + DOC_ID, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({
+          title: document.getElementById('docTitle').value,
+          project_id: parseInt(document.getElementById('docProject').value, 10) || 0,
+          category_id: parseInt(document.getElementById('docCategory').value, 10) || 0
+        })
+      });
+      var data = await res.json().catch(function () { return {}; });
+      if (!res.ok) { UI.alert((data && data.error) || UI.t('保存失败')); return; }
+      UI.toast(UI.t('common.saved'), 'success');
+    } catch (e) {
+      UI.toast(UI.t('common.netErr'), 'error');
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+
+  /* ---- 整站替换：zip 文件或文件夹（file[] + path[]） ---- */
+  var dropZone = document.getElementById('dropZone');
+  var zipInput = document.getElementById('zipInput');
+  var folderInput = document.getElementById('folderInput');
+  var fileList = document.getElementById('fileList');
+  var doReplace = document.getElementById('doReplace');
+  var progress = document.getElementById('replaceProgress');
+  var pending = null; // {kind:'zip',file} | {kind:'folder',files:[{file,path}]}
+
+  function setZip(file) {
+    if (!file) return clear();
+    if (!/\.zip$/i.test(file.name)) { UI.toast(UI.t('html.onlyZip'), 'error'); return clear(); }
+    pending = { kind: 'zip', file: file };
+    fileList.textContent = file.name + '（' + fmtSize(file.size) + '）';
+    show();
+  }
+  function setFolder(items) {
+    if (!items.length) return clear();
+    pending = { kind: 'folder', files: items };
+    fileList.textContent = items.length + ' ' + UI.t('html.fileUnit') + '：' +
+      items.slice(0, 5).map(function (x) { return x.path; }).join('、') +
+      (items.length > 5 ? ' …' : '');
+    show();
+  }
+  function show() { fileList.hidden = false; doReplace.disabled = false; progress.hidden = true; }
+  function clear() { pending = null; fileList.hidden = true; doReplace.disabled = true; }
+
+  function fmtSize(n) {
+    if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+    if (n >= 1024) return (n / 1024).toFixed(1) + ' KB';
+    return n + ' B';
+  }
+  var mfSize = document.getElementById('mfSize');
+  if (mfSize) { var n = parseInt(mfSize.textContent, 10); if (!isNaN(n)) mfSize.textContent = fmtSize(n); }
+
+  document.getElementById('pickZip').addEventListener('click', function () { zipInput.click(); });
+  document.getElementById('pickFolder').addEventListener('click', function () { folderInput.click(); });
+  zipInput.addEventListener('change', function () { setZip(zipInput.files[0]); zipInput.value = ''; });
+  folderInput.addEventListener('change', function () {
+    var items = [];
+    for (var i = 0; i < folderInput.files.length; i++) {
+      var f = folderInput.files[i];
+      var rel = (f.webkitRelativePath || f.name).replace(/\\/g, '/');
+      items.push({ file: f, path: rel });
+    }
+    setFolder(items);
+    folderInput.value = '';
+  });
+
+  /* 拖拽：zip 文件直接收；目录走 entry API 递归展开 */
+  function entriesFromDrop(dt) {
+    var out = [];
+    var items = dt.items ? Array.prototype.slice.call(dt.items) : [];
+    var entries = items.map(function (it) { return it.webkitGetAsEntry && it.webkitGetAsEntry(); });
+    if (entries.some(function (e) { return e && e.isDirectory; })) {
+      return new Promise(function (resolve) {
+        var files = [];
+        var waiting = 0;
+        function readEntry(entry, prefix) {
+          waiting++;
+          if (entry.isFile) {
+            entry.file(function (f) {
+              files.push({ file: f, path: prefix + f.name });
+              if (--waiting === 0) resolve(files);
+            }, function () { if (--waiting === 0) resolve(files); });
+          } else {
+            var reader = entry.createReader();
+            (function readBatch() {
+              reader.readEntries(function (batch) {
+                if (!batch.length) { if (--waiting === 0) resolve(files); return; }
+                for (var i = 0; i < batch.length; i++) readEntry(batch[i], prefix + entry.name + '/');
+                readBatch(); // readEntries 每次最多返回 100 条，需轮询至空
+              }, function () { if (--waiting === 0) resolve(files); });
+            })();
+          }
+        }
+        for (var i = 0; i < entries.length; i++) {
+          if (entries[i]) readEntry(entries[i], '');
+        }
+        if (!entries.some(function (e) { return e; })) resolve([]);
+      });
+    }
+    var file = dt.files && dt.files[0];
+    if (file) out.push({ file: file, path: file.name });
+    return Promise.resolve(out);
+  }
+
+  ['dragover', 'dragenter'].forEach(function (ev) {
+    dropZone.addEventListener(ev, function (e) { e.preventDefault(); e.stopPropagation(); dropZone.classList.add('dragover'); });
+  });
+  ['dragleave', 'dragend'].forEach(function (ev) {
+    dropZone.addEventListener(ev, function (e) { e.preventDefault(); dropZone.classList.remove('dragover'); });
+  });
+  dropZone.addEventListener('drop', function (e) {
+    e.preventDefault(); e.stopPropagation();
+    dropZone.classList.remove('dragover');
+    entriesFromDrop(e.dataTransfer).then(function (items) {
+      if (!items.length) return;
+      if (items.length === 1 && /\.zip$/i.test(items[0].file.name)) setZip(items[0].file);
+      else setFolder(items);
+    });
+  });
+
+  doReplace.addEventListener('click', async function () {
+    if (!pending) return;
+    if (!await UI.confirm(UI.t('html.replaceConfirm'), { danger: true })) return;
+    doReplace.disabled = true;
+    progress.hidden = false;
+    progress.textContent = UI.t('html.uploading');
+    try {
+      var fd = new FormData();
+      if (pending.kind === 'zip') {
+        fd.append('file', pending.file);
+      } else {
+        pending.files.forEach(function (x) { fd.append('file', x.file); fd.append('path', x.path); });
+      }
+      var res = await fetch('/admin/api/docs/' + DOC_ID + '/html', {
+        method: 'PUT',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: fd
+      });
+      var data = await res.json().catch(function () { return {}; });
+      if (!res.ok) { UI.alert((data && data.error) || UI.t('html.replaceFail')); return; }
+      UI.toast(UI.t('html.replaceOk'), 'success');
+      setTimeout(function () { location.reload(); }, 700);
+    } catch (e) {
+      UI.toast(UI.t('common.netErr'), 'error');
+      doReplace.disabled = false;
+    }
+  });
+
+  /* ---- 分享设置：与文档列表页同一套接口 ---- */
+  var shareModal = document.getElementById('shareModal');
+  if (shareModal) {
+    UI.bindModal(shareModal);
+    var shareURL = {{if .shareURL}}{{.shareURL}}{{else}}''{{end}};
+    document.getElementById('shareBtn').addEventListener('click', function () {
+      var enabled = document.getElementById('shareEnabled').checked;
+      document.getElementById('shareConfig').style.display = enabled ? 'block' : 'none';
+      var linkEl = document.getElementById('shareLink');
+      if (enabled && shareURL) {
+        document.getElementById('shareURLText').textContent = shareURL;
+        linkEl.style.display = 'flex';
+      } else {
+        linkEl.style.display = 'none';
+      }
+      UI.openModal(shareModal);
+    });
+    document.getElementById('shareEnabled').addEventListener('change', function () {
+      document.getElementById('shareConfig').style.display = this.checked ? 'block' : 'none';
+    });
+    function genPassword() {
+      var chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      var out = '', buf = new Uint32Array(6);
+      (window.crypto || window.msCrypto).getRandomValues(buf);
+      for (var i = 0; i < 6; i++) out += chars[buf[i] % chars.length];
+      return out;
+    }
+    document.getElementById('genPwdBtn').addEventListener('click', function () {
+      document.getElementById('sharePassword').value = genPassword();
+    });
+    window.copyShare = async function () {
+      var url = document.getElementById('shareURLText').textContent;
+      try { await navigator.clipboard.writeText(url); UI.toast(UI.t('common.copyOk'), 'success'); }
+      catch (e) { UI.toast(UI.t('复制失败'), 'error'); }
+    };
+    document.getElementById('saveShareBtn').addEventListener('click', async function () {
+      var enabledEl = document.getElementById('shareEnabled');
+      var payload = {
+        enabled: enabledEl.checked,
+        can_edit: false, // HTML 整站不支持在线编辑
+        password: document.getElementById('sharePassword').value,
+        expire_days: parseInt(document.getElementById('shareExpire').value, 10) || 0
+      };
+      this.disabled = true;
+      try {
+        var res = await fetch('/admin/api/docs/' + DOC_ID + '/share', {
+          method: enabledEl.checked ? 'POST' : 'DELETE',
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+          body: JSON.stringify(payload)
+        });
+        var data = await res.json().catch(function () { return {}; });
+        if (!res.ok) { UI.alert((data && data.error) || UI.t('操作失败')); return; }
+        if (data.url) shareURL = data.url;
+        UI.toast(UI.t(enabledEl.checked ? '分享设置已更新' : '已关闭分享'), 'success');
+        setTimeout(function () { location.reload(); }, 600);
+      } catch (e) {
+        UI.toast(UI.t('common.netErr'), 'error');
+      } finally {
+        this.disabled = false;
+      }
+    });
+  }
+})();
+</script>
+{{template "adminfoot" .}}
+</body>
+</html>
+{{end}}

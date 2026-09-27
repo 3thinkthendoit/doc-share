@@ -494,6 +494,11 @@ func (a *App) ShareSaveContent(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "该分享未开启编辑权限"})
 		return
 	}
+	// HTML 整站文档不支持在线编辑（整站替换走后台接口）
+	if doc.Type != model.DocTypeMarkdown {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "该文档类型不支持在线编辑"})
+		return
+	}
 	// 带密码的分享须已解锁（属主/管理员、密码凭证或已批准的申请查看），防止绕过密码直接改内容
 	if !a.shareUnlocked(c, token, doc, share) {
 		return

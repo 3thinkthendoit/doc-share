@@ -3,6 +3,8 @@ package router
 import (
 	"io/fs"
 	"net/http"
+	"path"
+	"strings"
 
 	"doc-share/internal/handler"
 	"doc-share/internal/middleware"
@@ -27,8 +29,18 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		r.GET("/static/*filepath", gin.WrapH(http.StripPrefix("/static/", fileServer)))
 	}
 
-	// 上传的图片：本地磁盘目录映射到 /uploads
-	r.Static("/uploads", app.Cfg.Upload.Dir)
+	// 上传的图片：本地磁盘目录映射到 /uploads。
+	// HTML 整站文件（html/ 前缀）不公开直出：一律经 /s/:token/raw 或 /admin/raw 凭短时签名访问，
+	// 否则 /uploads/html/{docID}/{rand}/... 会成为密码分享与未分享文档的公开旁路。
+	uploadsFS := http.FileServer(http.Dir(app.Cfg.Upload.Dir))
+	r.GET("/uploads/*filepath", func(c *gin.Context) {
+		p := path.Clean(c.Param("filepath"))
+		if p == "/html" || strings.HasPrefix(p, "/html/") {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		http.StripPrefix("/uploads", uploadsFS).ServeHTTP(c.Writer, c.Request)
+	})
 
 	admin := r.Group("/admin", middleware.RequireAuth(app.DB, app.Signer))
 	{
@@ -85,6 +97,8 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.POST("/api/docs", app.CreateDoc)
 		admin.PUT("/api/docs/:id", app.UpdateDoc)
 		admin.DELETE("/api/docs/:id", app.DeleteDoc)
+		admin.POST("/api/docs/html", app.CreateHTMLDoc)
+		admin.PUT("/api/docs/:id/html", app.ReplaceHTMLDoc)
 		admin.POST("/api/docs/:id/editing", app.MarkEditing)
 		admin.POST("/api/docs/:id/share", app.UpsertShare)
 		admin.DELETE("/api/docs/:id/share", app.DeleteShare)
@@ -157,6 +171,11 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 	r.GET("/s/:token/comments", app.ShareListComments)
 	r.POST("/s/:token/comments", app.ShareAddComment)
 	r.PUT("/s/:token/content", app.ShareSaveContent)
+	// HTML 整站文件（分享侧）：/s/:token/raw/<sig>/<path>。
+	// 不走 cookie 鉴权——sandbox iframe 子资源是跨站请求带不上 cookie，凭路径内短时签名。
+	r.GET("/s/:token/raw/*path", app.ShareRaw)
+	// HTML 整站文件（管理预览侧）：/admin/raw/:id/<sig>/<path>，同为签名鉴权故不挂 RequireAuth
+	r.GET("/admin/raw/:id/*path", app.AdminRaw)
 
 	// 官网首页（公开）；可选认证注入登录态，供首页按用户状态切换 CTA
 	r.GET("/", middleware.OptionalAuth(app.DB, app.Signer), app.Home)

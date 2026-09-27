@@ -118,11 +118,18 @@ type ApiKey struct {
 	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
+// 文档类型：markdown 正文编辑；html 整站（Content 存 manifest JSON，不可在线编辑）
+const (
+	DocTypeMarkdown = "markdown"
+	DocTypeHTML     = "html"
+)
+
 // Document Markdown 文档
 type Document struct {
 	ID         uint      `gorm:"primaryKey" json:"id"`
 	Title      string    `gorm:"size:255;not null" json:"title"`
 	Slug       string    `gorm:"size:32;uniqueIndex;not null" json:"slug"`
+	Type       string    `gorm:"size:16;not null;default:markdown" json:"type"` // markdown | html
 	Content    string    `gorm:"type:longtext" json:"content"`
 	OwnerID    uint      `gorm:"index;not null" json:"owner_id"`
 	Owner      User      `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
