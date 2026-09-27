@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"strings"
 
 	"doc-share/internal/i18n"
 	"doc-share/internal/middleware"
@@ -34,6 +35,16 @@ func (a *App) render(c *gin.Context, name string, data gin.H) {
 	data["SiteName"] = s.SiteName
 	data["SiteLogo"] = s.SiteLogo
 	data["SiteDomain"] = s.SiteDomain
+	// drawio 编辑器 URL：显式配置的 editor_url 优先，其次内嵌编辑器 /drawio（CI 构建
+	// 期下载并编入二进制时存在）；两者皆无则留空，前端降级为「未配置」提示
+	drawioURL := ""
+	if a.Cfg != nil {
+		drawioURL = strings.TrimSpace(a.Cfg.Drawio.EditorURL)
+	}
+	if drawioURL == "" && a.DrawioFS != nil {
+		drawioURL = "/drawio"
+	}
+	data["DrawioURL"] = drawioURL
 	// 部分页面直接拿 handler 传入的中文标题 / 表单错误文案，这里统一反查词典；
 	// rawTitle=true 表示 title 是用户内容（文档标题等），跳过反查避免与词典原文撞车被误译
 	if _, raw := data["rawTitle"]; !raw {

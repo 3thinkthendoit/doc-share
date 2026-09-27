@@ -1,7 +1,8 @@
-// 结构化画布文档（独立类型）：思维导图（mindmap）/ 画板（board）。
+// 结构化画布文档（独立类型）：思维导图（mindmap）/ 画板（board）/ drawio 图表。
 // 数据 schema 与 Markdown 围栏（embeds.js）同源：
 //   mindmap: {root, layout, theme, view}（getData(true) 包装）
 //   board:   标准 Excalidraw scene {type, version, source, elements, appState, files}
+//   drawio:  mxfile XML（iframe 自托管编辑器 + postMessage，见 drawio_editor.js）
 // 用法：JsonDoc.init({ kind, mode: 'edit'|'view', content, mount }) → { getJSON, destroy }
 window.JsonDoc = (function () {
   'use strict';
@@ -111,7 +112,15 @@ window.JsonDoc = (function () {
 
   function init(opts) {
     opts = opts || {};
-    var kind = opts.kind === 'board' ? 'board' : 'mindmap';
+    var kind = opts.kind === 'board' ? 'board' : (opts.kind === 'drawio' ? 'drawio' : 'mindmap');
+    // drawio 走独立 iframe 模块（需模板注入 window.DRAWIO_URL），其余本地渲染
+    if (kind === 'drawio') {
+      if (!window.DrawioDoc || typeof window.DrawioDoc.init !== 'function') {
+        if (typeof opts.onError === 'function') opts.onError('drawio 编辑器模块未加载');
+        return { getJSON: function () { return null; }, destroy: function () {} };
+      }
+      return window.DrawioDoc.init(opts);
+    }
     var readonly = opts.mode === 'view';
     var mount = opts.mount;
     var destroyed = false;

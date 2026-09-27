@@ -1,8 +1,8 @@
-// Markdown 围栏嵌入：```mindmap / ```excalidraw
+// Markdown 围栏嵌入：```mindmap / ```excalidraw / ```drawio
 // 编辑页用卡片占位；预览/分享页若有 previewUrl 则展示大图。
-// 弹层保存时导出 PNG 上传，URL 写入围栏 JSON 的 previewUrl。
+// 弹层保存时导出 PNG 上传，URL 写入围栏 JSON 的 previewUrl（drawio 为 XML 尾部注释）。
 (function () {
-  var FENCE_LANGS = { mindmap: true, excalidraw: true };
+  var FENCE_LANGS = { mindmap: true, excalidraw: true, drawio: true };
   var CDN = {
     mindmapJs: 'https://cdn.jsdelivr.net/npm/simple-mind-map@0.14.0/dist/simpleMindMap.umd.min.js',
     mindmapCss: 'https://cdn.jsdelivr.net/npm/simple-mind-map@0.14.0/dist/simpleMindMap.esm.css',
@@ -54,7 +54,14 @@
     };
   }
 
+  function defaultDrawioXml() {
+    return (window.DrawioDoc && typeof window.DrawioDoc.defaultXml === 'function')
+      ? window.DrawioDoc.defaultXml()
+      : '<mxfile host="doc-share"><diagram id="page-1" name="Page-1"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>';
+  }
+
   function defaultBody(kind) {
+    if (kind === 'drawio') return defaultDrawioXml();
     var data = kind === 'excalidraw' ? defaultExcalidraw() : defaultMindmap();
     return JSON.stringify(data, null, 2);
   }
@@ -120,8 +127,21 @@
   }
 
   function previewUrlFromBody(bodyText, kind) {
+    // drawio 围栏内容是 XML：预览 URL 存于尾部注释 <!-- previewUrl: url -->（保持 XML 纯净）
+    if (kind === 'drawio') {
+      var m = /<!--\s*previewUrl:\s*(https?:\/\/[^\s>]+?)\s*-->/.exec(String(bodyText || ''));
+      return m ? sanitizePreviewUrl(m[1]) : '';
+    }
     var parsed = parseJSON(bodyText, kind || 'mindmap');
     return sanitizePreviewUrl(parsed && parsed.previewUrl);
+  }
+
+  // drawio：更新/移除围栏 XML 尾部的预览图注释
+  function applyDrawioPreview(bodyText, url) {
+    var stripped = String(bodyText || '').replace(/\s*<!--\s*previewUrl:[^>]*-->\s*/g, '').replace(/\s+$/, '');
+    var clean = sanitizePreviewUrl(url);
+    if (clean) stripped += '\n<!-- previewUrl: ' + clean + ' -->';
+    return stripped;
   }
 
   function dataURLToBlob(dataURL) {
@@ -386,6 +406,7 @@
       var kind = null;
       if (fenceOpenRe('mindmap').test(line)) kind = 'mindmap';
       else if (fenceOpenRe('excalidraw').test(line)) kind = 'excalidraw';
+      else if (fenceOpenRe('drawio').test(line)) kind = 'drawio';
       if (!kind) {
         offset += line.length + 1;
         i++;
@@ -605,9 +626,9 @@
   }
 
   function labelFor(kind) {
-    return kind === 'excalidraw'
-      ? t('edit.embedBoard', '画板')
-      : t('edit.embedMindmap', '思维导图');
+    if (kind === 'excalidraw') return t('edit.embedBoard', '画板');
+    if (kind === 'drawio') return t('edit.embedDrawio', 'drawio 图表');
+    return t('edit.embedMindmap', '思维导图');
   }
 
   function fillPlaceholder(el, kind, editable, customTitle, previewUrl) {
@@ -640,7 +661,7 @@
     }
     el.innerHTML =
       '<div class="md-embed-card">' +
-        '<div class="md-embed-icon" aria-hidden="true">' + (kind === 'excalidraw' ? '◇' : '◎') + '</div>' +
+        '<div class="md-embed-icon" aria-hidden="true">' + (kind === 'excalidraw' ? '◇' : (kind === 'drawio' ? '▣' : '◎')) + '</div>' +
         '<div class="md-embed-meta">' +
           '<strong>' + escapeHtml(title) + '</strong>' +
           '<span>' + escapeHtml(
@@ -1040,8 +1061,92 @@
     });
   }
 
+  function openDrawioEditor(bodyText, opts) {
+    opts = opts || {};
+    var readonly = !!opts.readonly;
+    var editorUrl = String(window.DRAWIO_URL || '').trim();
+    var ui = openModalShell(labelFor('drawio'), {
+      mountClass: 'embed-mount-drawio',
+      embedTitle: opts.title || '',
+      readonly: readonly
+    });
+    ui.setReadonly(readonly);
+    var impl = null;
+    var closed = false;
+    var saving = false;
+    var prevPreviewUrl = previewUrlFromBody(bodyText, 'drawio');
+
+    function destroy() {
+      if (saving) return; // 导出/上传进行中禁止关闭
+      closed = true;
+      try { if (impl && impl.destroy) impl.destroy(); } catch (e) {}
+      closeOverlay(ui.overlay);
+    }
+
+    ui.closeBtn.addEventListener('click', destroy);
+    ui.cancelBtn.addEventListener('click', destroy);
+    ui.overlay.addEventListener('click', function (e) {
+      if (e.target === ui.overlay) destroy();
+    });
+
+    if (!editorUrl) {
+      ui.status.hidden = false;
+      ui.status.textContent = t('edit.drawioNotConfigured', '未配置 drawio 编辑器地址（drawio.editor_url）');
+      ui.saveBtn.disabled = true;
+    } else {
+      impl = window.DrawioDoc.init({
+        content: bodyText,
+        mode: readonly ? 'view' : 'edit',
+        mount: ui.mount,
+        editorUrl: editorUrl,
+        onReady: function () { if (!closed) ui.status.hidden = true; },
+        onError: function (msg) {
+          if (closed) return;
+          ui.status.hidden = false;
+          ui.status.textContent = msg;
+          ui.saveBtn.disabled = true;
+        }
+      });
+    }
+
+    ui.saveBtn.addEventListener('click', function () {
+      if (!impl || readonly || saving) return;
+      var xml = impl.getJSON();
+      if (!xml) return;
+      saving = true;
+      ui.saveBtn.disabled = true;
+      ui.cancelBtn.disabled = true;
+      ui.closeBtn.disabled = true;
+      ui.status.hidden = false;
+      ui.status.textContent = t('edit.embedPreviewSaving', '正在生成预览图…');
+
+      var exportP = impl.exportPNG ? impl.exportPNG() : Promise.reject(new Error('unsupported'));
+      var timed = Promise.race([
+        exportP,
+        new Promise(function (resolve) { setTimeout(function () { resolve(null); }, 25000); })
+      ]);
+      timed.then(function (dataURI) {
+        if (!dataURI) return '';
+        var blob = dataURLToBlob(dataURI);
+        return blob ? uploadPreviewBlob(blob, prevPreviewUrl) : '';
+      }).catch(function () {
+        return '';
+      }).then(function (url) {
+        var next = url || prevPreviewUrl || '';
+        if (!url && window.UI && UI.toast) {
+          UI.toast(t('edit.embedPreviewFail', '预览图生成失败，内容已保存'), 'info');
+        }
+        var body = applyDrawioPreview(xml, next);
+        saving = false;
+        if (typeof opts.onSave === 'function') opts.onSave(body, ui.getTitle());
+        destroy();
+      });
+    });
+  }
+
   function openEditor(kind, bodyText, opts) {
     if (kind === 'excalidraw') openExcalidrawEditor(bodyText, opts);
+    else if (kind === 'drawio') openDrawioEditor(bodyText, opts);
     else openMindmapEditor(bodyText, opts);
   }
 

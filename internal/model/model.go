@@ -119,17 +119,20 @@ type ApiKey struct {
 }
 
 // 文档类型：markdown 正文编辑；html 整站（Content 存 manifest JSON，不可在线编辑）；
-// mindmap/board 结构化画布（Content 存编辑器 JSON，专用编辑页）
+// mindmap/board 结构化画布（Content 存编辑器 JSON）；drawio 图表（Content 存 mxfile XML），
+// 画布类均走专用编辑页
 const (
 	DocTypeMarkdown = "markdown"
 	DocTypeHTML     = "html"
 	DocTypeMindmap  = "mindmap"
 	DocTypeBoard    = "board"
+	DocTypeDrawio   = "drawio"
 )
 
-// IsJSONType 结构化画布类型：Content 为编辑器 JSON，走专用编辑页
-func IsJSONType(t string) bool {
-	return t == DocTypeMindmap || t == DocTypeBoard
+// IsCanvasType 结构化画布类型：Content 为编辑器数据（mindmap/board 为 JSON、drawio 为
+// mxfile XML），走专用编辑/查看页
+func IsCanvasType(t string) bool {
+	return t == DocTypeMindmap || t == DocTypeBoard || t == DocTypeDrawio
 }
 
 // Document Markdown 文档

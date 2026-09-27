@@ -29,6 +29,17 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		r.GET("/static/*filepath", gin.WrapH(http.StripPrefix("/static/", fileServer)))
 	}
 
+	// 内嵌 drawio 编辑器（CI 构建期经 go:embed 编入；未嵌入时不注册该路由）
+	if app.DrawioFS != nil {
+		drawioServer := http.FileServer(http.FS(app.DrawioFS))
+		if app.Cfg.Server.Dev {
+			r.GET("/drawio/*filepath", gin.WrapH(http.StripPrefix("/drawio/", noCache(drawioServer))))
+		} else {
+			// 资源随二进制固定，可长缓存（index.html 也会被 iframe 内部强缓存，无碍）
+			r.GET("/drawio/*filepath", gin.WrapH(http.StripPrefix("/drawio/", cacheDay(drawioServer))))
+		}
+	}
+
 	// 上传的图片：本地磁盘目录映射到 /uploads。
 	// HTML 整站文件（html/ 前缀）不公开直出：一律经 /s/:token/raw 或 /admin/raw 凭短时签名访问，
 	// 否则 /uploads/html/{docID}/{rand}/... 会成为密码分享与未分享文档的公开旁路。
@@ -191,6 +202,14 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 func noCache(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// cacheDay 包一层 1 天缓存响应头（内嵌 drawio 资源用：内容随二进制版本固定）
+func cacheDay(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=86400")
 		next.ServeHTTP(w, r)
 	})
 }

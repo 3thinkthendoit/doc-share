@@ -7,25 +7,30 @@
 /* 结构化画布阅读页：纯全屏只读渲染（思维导图 / 画板）；挂载容器复用 embed-mount 体系 */
 html,body{height:100%;margin:0}
 .json-view-mount{width:100%;height:100%;background:var(--panel)}
+/* drawio iframe 查看器：满幅无内边距（区别于 mindmap/board 的 embed-mount 卡片式容器） */
+.json-view-mount-drawio{padding:0;overflow:hidden}
 </style>
 </head>
 <body>
-  <div id="jsonViewMount" class="json-view-mount {{if eq .docKind "mindmap"}}embed-mount embed-mount-mindmap{{else}}embed-mount embed-mount-excalidraw{{end}}"></div>
+  <div id="jsonViewMount" class="json-view-mount {{if eq .docKind "mindmap"}}embed-mount embed-mount-mindmap{{else if eq .docKind "drawio"}}json-view-mount-drawio{{else}}embed-mount embed-mount-excalidraw{{end}}"></div>
   <script>
     window.JSON_DOC = {
       kind: "{{.docKind}}",
       content: {{.doc.Content}}
     };
+    window.DRAWIO_URL = {{.DrawioURL}};
   </script>
   <script src="/static/mindmap_toolbar.js"></script>
-<script src="/static/json_editor.js"></script>
+  <script src="/static/drawio_editor.js"></script>
+  <script src="/static/json_editor.js"></script>
   <script>
     if (window.JsonDoc) {
       JsonDoc.init({
         kind: window.JSON_DOC.kind,
         mode: 'view',
         content: window.JSON_DOC.content,
-        mount: document.getElementById('jsonViewMount')
+        mount: document.getElementById('jsonViewMount'),
+        editorUrl: window.DRAWIO_URL
       });
     }
   </script>

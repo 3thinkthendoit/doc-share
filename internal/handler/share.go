@@ -328,8 +328,8 @@ func (a *App) serveDoc(c *gin.Context, doc *model.Document, share *model.Share, 
 		UpdateColumn("view_count", gorm.Expr("view_count + 1"))
 	doc.ViewCount++
 	user := a.sessionUser(c)
-	// 结构化画布（思维导图/画板）：全屏只读渲染
-	if model.IsJSONType(doc.Type) {
+	// 结构化画布（思维导图/画板/drawio 图表）：全屏只读渲染
+	if model.IsCanvasType(doc.Type) {
 		a.render(c, "json_view.html", gin.H{
 			"title":       doc.Title,
 			"rawTitle":    true,

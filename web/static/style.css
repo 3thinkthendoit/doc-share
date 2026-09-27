@@ -677,6 +677,9 @@ body.modal-open{overflow:hidden}
 .embed-mount{flex:1;min-height:480px;width:100%;height:100%;position:relative;overflow:hidden;font-size:16px;line-height:normal;background:var(--panel)}
 .embed-mount.embed-mount-mindmap *{margin:0;padding:0}
 .embed-mount.embed-mount-excalidraw > .excalidraw,.embed-mount.embed-mount-excalidraw > div{width:100%;height:100%}
+/* drawio iframe：iframe 自身已 100% 宽高，容器只管布局 */
+.embed-mount.embed-mount-drawio{display:flex}
+.embed-mount.embed-mount-drawio > iframe{flex:1}
 .embed-modal .modal-foot{flex:none}
 
 /* 用户信息悬停卡（所有者 / 成员名） */

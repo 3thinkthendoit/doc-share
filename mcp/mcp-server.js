@@ -106,7 +106,7 @@ const num = { type: 'number', description: '数字 ID' };
 // 拼进工具描述里，LLM 在 tools/list 阶段即可学到格式
 const CANVAS_DOC = [
   '',
-  '【画布 content 格式】mindmap/board 的 content 必须是 JSON.stringify 后的字符串，两种格式：',
+  '【画布 content 格式】mindmap/board 的 content 必须是 JSON.stringify 后的字符串；drawio 的 content 是 mxfile XML 字符串，三种格式：',
   '',
   '【mindmap】simple-mind-map 节点树。最小可用结构（推荐，编辑器自动补布局/主题）：',
   '{"data":{"text":"中心主题"},"children":[{"data":{"text":"分支一"}},{"data":{"text":"分支二"},"children":[{"data":{"text":"子节点"}}]}]}',
@@ -119,6 +119,11 @@ const CANVAS_DOC = [
   '矩形示例：{"type":"rectangle","id":"r1","x":100,"y":80,"width":180,"height":70,"angle":0,"strokeColor":"#1e1e1e","backgroundColor":"#a5d8ff","fillStyle":"solid","strokeWidth":2,"strokeStyle":"solid","roughness":1,"opacity":100,"roundness":null,"seed":101,"version":1,"versionNonce":101,"isDeleted":false,"boundElements":null,"updated":1700000000000,"link":null,"locked":false}',
   '文本示例：{"type":"text","id":"t1","x":110,"y":95,"width":80,"height":25,"text":"节点文字","fontSize":20,"fontFamily":1,"textAlign":"left","verticalAlign":"top","containerId":null,"originalText":"节点文字","lineHeight":1.25}（其余字段同通用字段）',
   '箭头示例：{"type":"arrow","id":"a1","x":280,"y":115,"width":100,"height":0,"points":[[0,0],[100,0]],"startBinding":null,"endBinding":null,"startArrowhead":null,"endArrowhead":"arrow","lastCommittedPoint":null,"elbowed":false}（其余字段同通用字段）',
+  '',
+  '【drawio】未压缩 mxfile XML 字符串（注意：content 传 XML 本身，不是 JSON）：',
+  '<mxfile host="doc-share"><diagram id="page-1" name="Page-1"><mxGraphModel dx="1000" dy="700" grid="1" gridSize="10" guides="1" page="1" pageWidth="850" pageHeight="1100"><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="2" value="开始" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="120" y="80" width="120" height="48" as="geometry"/></mxCell><mxCell id="3" value="处理" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="120" y="200" width="120" height="48" as="geometry"/></mxCell><mxCell id="4" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="2" target="3"><mxGeometry relative="1" as="geometry"/></mxCell></root></mxGraphModel></diagram></mxfile>',
+  '要点：图形 = mxCell(vertex=1, style 决定形状如 rounded=1 圆角框/ellipse 椭圆/rhombus 菱形, mxGeometry 给 x/y/width/height)；连线 = mxCell(edge=1, source/target 指向节点 id)；id 全局唯一；节点文字放 value 属性。常用 style：rounded=1 圆角矩形、ellipse 椭圆、rhombus 菱形、shape=parallelogram 平行四边形、text 纯文字。',
+  '',
   '生成技巧：先规划坐标再成批生成元素，id 用短随机串且全局唯一；次要字段可省略，渲染端会补默认值。拿不准时先用 docshare_get_doc 读一篇同类文档作为范例。',
 ].join('\n');
 
@@ -127,7 +132,7 @@ const docSchema = {
   properties: {
     id: { ...num, description: '文档 ID' },
     title: { type: 'string', description: '文档标题（更新时留空表示不修改）' },
-    content: { type: 'string', description: '内容（markdown 正文 / mindmap·board 画布 JSON）；更新时可选，未传表示不修改，传值整体覆盖' },
+    content: { type: 'string', description: '内容（markdown 正文 / mindmap·board 画布 JSON / drawio mxfile XML）；更新时可选，未传表示不修改，传值整体覆盖' },
     project_id: { type: 'number', description: '所属项目 ID（0=未分组；只能归属到密钥属主自己的项目）' },
     category_id: { type: 'number', description: '所属分类 ID（0=未分类；同上）' },
   },
@@ -138,7 +143,7 @@ docSchema.properties.content.description += CANVAS_DOC;
 const TOOLS = [
   {
     name: 'docshare_list_docs',
-    description: '列出 DocShare 文档（分页，不含正文），含 type 字段（markdown/mindmap/board/html），可按项目/分类过滤',
+    description: '列出 DocShare 文档（分页，不含正文），含 type 字段（markdown/mindmap/board/drawio/html），可按项目/分类过滤',
     schema: {
       type: 'object',
       properties: {
@@ -154,7 +159,7 @@ const TOOLS = [
   },
   {
     name: 'docshare_get_doc',
-    description: '读取单个文档完整内容：markdown 返回正文；mindmap/board 返回画布 JSON（其结构可直接作为创建/更新同类文档的 content 范例）；html 返回站点 manifest',
+    description: '读取单个文档完整内容：markdown 返回正文；mindmap/board 返回画布 JSON、drawio 返回 mxfile XML（其结构可直接作为创建/更新同类文档的 content 范例）；html 返回站点 manifest',
     schema: docSchema,
     async run(args) {
       return apiCall('GET', `/openapi/v1/docs/${Number(args.id)}`);
@@ -167,8 +172,8 @@ const TOOLS = [
       type: 'object',
       properties: {
         title: { type: 'string', description: '文档标题（必填）' },
-        type: { type: 'string', enum: ['markdown', 'mindmap', 'board'], description: '文档类型，默认 markdown' },
-        content: { type: 'string', description: 'markdown 正文或画布 JSON 字符串' + CANVAS_DOC },
+        type: { type: 'string', enum: ['markdown', 'mindmap', 'board', 'drawio'], description: '文档类型，默认 markdown' },
+        content: { type: 'string', description: 'markdown 正文 / 画布 JSON / drawio mxfile XML 字符串' + CANVAS_DOC },
         project_id: { type: 'number', description: '所属项目 ID（可选，0=未分组）' },
         category_id: { type: 'number', description: '所属分类 ID（可选，0=未分类）' },
       },

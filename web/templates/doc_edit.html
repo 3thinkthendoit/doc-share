@@ -62,6 +62,7 @@
         <button type="button" data-md="table" title="{{$.T "插入表格"}}">{{$.T "edit.btnTable"}}</button>
         <button type="button" data-md="mindmap" title="{{$.T "edit.embedMindmap"}}">{{$.T "edit.btnMindmap"}}</button>
         <button type="button" data-md="excalidraw" title="{{$.T "edit.embedBoard"}}">{{$.T "edit.btnBoard"}}</button>
+        <button type="button" data-md="drawio" title="{{$.T "edit.embedDrawio"}}">{{$.T "edit.btnDrawio"}}</button>
         <button type="button" data-md="hr" title="{{$.T "分隔线"}}">―</button>
         <span class="tb-sep"></span>
         <button type="button" data-md="import" title="{{$.T "导入 PDF / doc / docx 并转为 Markdown"}}">{{$.T "导入文档"}}</button>
@@ -146,6 +147,7 @@
   window.DOC_ID = {{if .doc}}{{.doc.ID}}{{else}}0{{end}};
 </script>
 <script src="/static/mindmap_toolbar.js"></script>
+<script src="/static/drawio_editor.js"></script>
 <script src="/static/embeds.js"></script>
 <script src="/static/editor.js"></script>
 </body>

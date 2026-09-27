@@ -185,10 +185,10 @@ func (a *App) filterOptions(c *gin.Context) ([]model.Project, []model.Category) 
 	return projects, categories
 }
 
-// NewDocPage 新建文档页；?type=mindmap|board 时进入结构化画布编辑页
+// NewDocPage 新建文档页；?type=mindmap|board|drawio 时进入结构化画布编辑页
 func (a *App) NewDocPage(c *gin.Context) {
 	docType := c.Query("type")
-	if model.IsJSONType(docType) {
+	if model.IsCanvasType(docType) {
 		a.render(c, "json_edit.html", gin.H{
 			"title":      "新建文档",
 			"rawTitle":   true,
@@ -259,8 +259,8 @@ func (a *App) EditDocPage(c *gin.Context) {
 		a.renderHTMLDocEdit(c, doc, shareOrNil(hasShare, &share), shareURL(c, &share, hasShare), canEditDoc, projects, categories)
 		return
 	}
-	// 结构化画布（思维导图/画板）：专用编辑页
-	if model.IsJSONType(doc.Type) {
+	// 结构化画布（思维导图/画板/drawio 图表）：专用编辑页
+	if model.IsCanvasType(doc.Type) {
 		a.render(c, "json_edit.html", gin.H{
 			"title":            doc.Title,
 			"rawTitle":         true,
@@ -454,7 +454,7 @@ func (a *App) CreateDoc(c *gin.Context) {
 		docType = model.DocTypeMarkdown
 	}
 	switch docType {
-	case model.DocTypeMarkdown, model.DocTypeMindmap, model.DocTypeBoard:
+	case model.DocTypeMarkdown, model.DocTypeMindmap, model.DocTypeBoard, model.DocTypeDrawio:
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "不支持的文档类型"})
 		return
@@ -665,8 +665,8 @@ func (a *App) PreviewDoc(c *gin.Context) {
 		c.String(http.StatusForbidden, "无权查看该文档")
 		return
 	}
-	// 结构化画布（思维导图/画板）：全屏只读渲染
-	if model.IsJSONType(doc.Type) {
+	// 结构化画布（思维导图/画板/drawio 图表）：全屏只读渲染
+	if model.IsCanvasType(doc.Type) {
 		a.render(c, "json_view.html", gin.H{
 			"title":    doc.Title,
 			"rawTitle": true,
@@ -833,5 +833,6 @@ func detectEmbedTags(db *gorm.DB, docs []model.Document) map[uint][]string {
 	}
 	mark("mindmap", "docs.tagMindmap")
 	mark("excalidraw", "docs.tagBoard")
+	mark("drawio", "docs.tagDrawio")
 	return out
 }

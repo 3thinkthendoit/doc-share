@@ -14,7 +14,7 @@
 {{template "nav" .}}
 <main class="container wide">
   <div class="json-edit-head">
-    <span class="tag tag-embed">{{if eq .docKind "mindmap"}}{{$.T "docs.tagMindmap"}}{{else}}{{$.T "docs.tagBoard"}}{{end}}</span>
+    <span class="tag tag-embed">{{if eq .docKind "mindmap"}}{{$.T "docs.tagMindmap"}}{{else if eq .docKind "drawio"}}{{$.T "docs.tagDrawio"}}{{else}}{{$.T "docs.tagBoard"}}{{end}}</span>
     <input type="text" id="docTitle" class="input-title" style="max-width:480px" placeholder="{{$.T "edit.titlePh"}}" value="{{if .doc}}{{.doc.Title}}{{end}}">
     <a href="/admin/docs" class="btn">{{$.T "返回列表"}}</a>
     {{if .doc}}<a href="/admin/docs/{{.doc.ID}}/preview" target="_blank" class="btn">{{$.T "edit.preview"}}</a>{{end}}
@@ -36,8 +36,10 @@
       canEdit: {{if .canEditDoc}}true{{else}}false{{end}},
       content: {{if .doc}}{{.doc.Content}}{{else}}""{{end}}
     };
+    window.DRAWIO_URL = {{.DrawioURL}};
 </script>
 <script src="/static/mindmap_toolbar.js"></script>
+<script src="/static/drawio_editor.js"></script>
 <script src="/static/json_editor.js"></script>
 <script src="/static/share_modal.js"></script>
 <script>
@@ -52,6 +54,7 @@
     mode: window.JSON_DOC.canEdit ? 'edit' : 'view',
     content: window.JSON_DOC.content,
     mount: mount,
+    editorUrl: window.DRAWIO_URL,
     // 编辑器就绪：刷新自动保存基线（消除首轮"规范化"PUT）并放行自动保存
     onReady: function () {
       editorReady = true;

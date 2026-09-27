@@ -132,6 +132,7 @@
       case 'table': insertTableInteractive(); return;
       case 'mindmap': insertEmbed('mindmap'); return;
       case 'excalidraw': insertEmbed('excalidraw'); return;
+      case 'drawio': insertEmbed('drawio'); return;
       case 'image': if (uploadInput) uploadInput.click(); return;
       case 'import': if (importInput) importInput.click(); return;
       default: return;

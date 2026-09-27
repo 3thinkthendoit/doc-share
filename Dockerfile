@@ -10,6 +10,15 @@ RUN go mod download
 
 # 拷贝源码并编译（web/ 模板与静态资源由 go:embed 编入二进制，纯 Go 依赖可关闭 CGO 静态编译）
 COPY . .
+
+# CI 构建期下载 drawio 编辑器（jgraph/drawio webapp，Apache 2.0）到 web/drawio，
+# 经 go:embed 编入二进制 → 单容器内嵌完整编辑器，运行时零外部依赖。
+# 版本由 DRAWIO_VERSION 构建参数锁定：docker build --build-arg DRAWIO_VERSION=24.7.5
+ARG DRAWIO_VERSION=24.7.5
+RUN apk add --no-cache curl tar \
+    && curl -fsSL "https://github.com/jgraph/drawio/archive/refs/tags/v${DRAWIO_VERSION}.tar.gz" \
+       | tar xz --strip-components=4 -C web/drawio "drawio-${DRAWIO_VERSION}/src/main/webapp"
+
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o main .
 
 # ---- runtime stage ----

@@ -32,6 +32,7 @@ type Config struct {
 	Database DatabaseConfig `yaml:"database"`
 	Auth     AuthConfig     `yaml:"auth"`
 	Upload   UploadConfig   `yaml:"upload"`
+	Drawio   DrawioConfig   `yaml:"drawio"`
 }
 
 type ServerConfig struct {
@@ -58,6 +59,13 @@ type UploadConfig struct {
 	MaxSizeMB    int    `yaml:"max_size_mb"`     // 单张图片大小上限（MB）
 	HTMLMaxSizeMB int   `yaml:"html_max_size_mb"` // HTML 整站解包后总大小上限（MB）
 	HTMLMaxFiles int    `yaml:"html_max_files"`  // HTML 整站文件数上限
+}
+
+// DrawioConfig drawio 自托管编辑器（jgraph/drawio webapp，Apache 2.0）接入配置。
+// DocShare 与编辑器仅通过 iframe + postMessage（embed proto=json 协议）耦合，
+// 编辑器以独立容器/静态站点部署，DocShare 只持有其 URL。
+type DrawioConfig struct {
+	EditorURL string `yaml:"editor_url"` // 自托管 drawio 基础 URL，如 http://drawio:8080；留空禁用 drawio 文档
 }
 
 // Load 从 YAML 文件加载配置。
