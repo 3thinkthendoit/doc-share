@@ -44,6 +44,11 @@
         <input type="text" name="site_domain" value="{{.set.SiteDomain}}" placeholder="https://docs.example.com">
         <span class="muted" style="font-size:12.5px">{{$.T "set.siteDomainTip"}}</span>
       </label>
+
+      <label>{{$.T "set.drawioURL"}}
+        <input type="text" name="drawio_url" value="{{.set.DrawioURL}}" placeholder="http://127.0.0.1:8181">
+        <span class="muted" style="font-size:12.5px">{{$.T "set.drawioURLTip"}}</span>
+      </label>
       </section>
 
       <section id="sec-share" class="set-sec">
@@ -282,6 +287,7 @@
       site_name: form.site_name.value.trim(),
       site_logo: logoInput.value,
       site_domain: form.site_domain.value.trim(),
+      drawio_url: form.drawio_url.value.trim(),
       reg_method: form.reg_method.value,
       smtp_host: form.smtp_host.value.trim(),
       smtp_port: parseInt(form.smtp_port.value, 10) || 465,

@@ -569,6 +569,8 @@
   "set.clearLogo": "Clear",
   "set.siteDomain": "Site domain",
   "set.siteDomainTip": "Used to build absolute URLs such as share links; leave empty to use the current host",
+  "set.drawioURL": "drawio editor URL",
+  "set.drawioURLTip": "Base URL of the standalone drawio editor (jgraph/drawio); falls back to drawio.editor_url in config.yaml when empty",
   "set.shareTitle": "Sharing",
   "set.allowShareApply": "Allow visitors to request access",
   "set.allowShareApplyTip": "Password-protected share links show “Request access” on the password page; when off, it is hidden site-wide. Already approved requests still work",

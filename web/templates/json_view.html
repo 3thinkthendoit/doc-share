@@ -9,14 +9,22 @@ html,body{height:100%;margin:0}
 .json-view-mount{width:100%;height:100%;background:var(--panel)}
 /* drawio iframe 查看器：满幅无内边距（区别于 mindmap/board 的 embed-mount 卡片式容器） */
 .json-view-mount-drawio{padding:0;overflow:hidden}
+/* 分享页编辑保存状态角标（仅 canEdit 时显示） */
+.json-save-status{position:fixed;right:16px;bottom:16px;z-index:50;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-sm,6px);padding:6px 12px;font-size:13px;color:var(--text);box-shadow:0 2px 8px rgba(0,0,0,.12);cursor:default}
+.json-save-status.error{color:#c0392b;border-color:#e5b4ae}
 </style>
 </head>
 <body>
   <div id="jsonViewMount" class="json-view-mount {{if eq .docKind "mindmap"}}embed-mount embed-mount-mindmap{{else if eq .docKind "drawio"}}json-view-mount-drawio{{else}}embed-mount embed-mount-excalidraw{{end}}"></div>
+  <div id="jsonSaveStatus" class="json-save-status" hidden></div>
   <script>
     window.JSON_DOC = {
       kind: "{{.docKind}}",
-      content: {{.doc.Content}}
+      content: {{.doc.Content}},
+      // 分享页编辑：分享开启「可编辑」且为登录用户；预览页恒为只读
+      canEdit: {{if .shareCanEdit}}true{{else}}false{{end}},
+      token: "{{.token}}",
+      contentVersion: {{.doc.ContentVersion}}
     };
     window.DRAWIO_URL = {{.DrawioURL}};
   </script>
@@ -24,15 +32,102 @@ html,body{height:100%;margin:0}
   <script src="/static/drawio_editor.js"></script>
   <script src="/static/json_editor.js"></script>
   <script>
-    if (window.JsonDoc) {
-      JsonDoc.init({
-        kind: window.JSON_DOC.kind,
-        mode: 'view',
-        content: window.JSON_DOC.content,
-        mount: document.getElementById('jsonViewMount'),
-        editorUrl: window.DRAWIO_URL
+  (function () {
+    if (!window.JsonDoc) return;
+    var mount = document.getElementById('jsonViewMount');
+    var statusEl = document.getElementById('jsonSaveStatus');
+    var canEdit = !!window.JSON_DOC.canEdit && !!window.JSON_DOC.token;
+    var lastJSON = window.JSON_DOC.content || '';
+    var lastVersion = window.JSON_DOC.contentVersion || 0;
+    var saving = false, paused = false, ready = false;
+    var AUTO_SAVE_CHECK = 4000;
+
+    function setStatus(text, cls) {
+      if (!statusEl) return;
+      statusEl.hidden = false;
+      statusEl.textContent = text;
+      statusEl.className = 'json-save-status' + (cls ? ' ' + cls : '');
+    }
+
+    function currentJSON() {
+      var j = editor ? editor.getJSON() : null;
+      return j || window.JSON_DOC.content || '';
+    }
+
+    var editor = JsonDoc.init({
+      kind: window.JSON_DOC.kind,
+      mode: canEdit ? 'edit' : 'view',
+      content: window.JSON_DOC.content,
+      mount: mount,
+      editorUrl: window.DRAWIO_URL,
+      onReady: function () {
+        ready = true;
+        lastJSON = currentJSON(); // 就绪基线：消除首轮"规范化"误保存
+        if (canEdit) setStatus('自动保存开启');
+      },
+      onError: function (msg) { setStatus(msg, 'error'); }
+    });
+
+    // 乐观锁保存：base_version 不一致收到 409 → 询问覆盖（force）或放弃并刷新
+    function persist(force) {
+      if (saving) return Promise.resolve(false);
+      saving = true;
+      setStatus('保存中…');
+      return fetch('/s/' + window.JSON_DOC.token + '/content', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({ content: currentJSON(), base_version: lastVersion, force: !!force })
+      }).then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) {
+          return { ok: res.ok, status: res.status, data: data };
+        });
+      }).then(function (r) {
+        saving = false;
+        if (r.ok) {
+          lastVersion = (r.data && r.data.content_version) || lastVersion + 1;
+          lastJSON = currentJSON();
+          paused = false;
+          setStatus('已保存');
+          return true;
+        }
+        if (r.status === 409) {
+          paused = true;
+          onConflict();
+          return false;
+        }
+        setStatus((r.data && r.data.error) || '保存失败', 'error');
+        return false;
+      }).catch(function () {
+        saving = false;
+        setStatus('网络错误，稍后重试', 'error');
+        return false;
       });
     }
+
+    function onConflict() {
+      setStatus('内容已被其他人修改', 'error');
+      var msg = '内容已被其他人修改。点「确定」用我的版本强制覆盖；点「取消」放弃我的修改并加载最新内容。';
+      var ask = (window.UI && UI.confirm) ? UI.confirm(msg, { danger: true }) : Promise.resolve(window.confirm(msg));
+      Promise.resolve(ask).then(function (ok) {
+        if (ok) {
+          paused = false;
+          persist(true);
+        } else {
+          location.reload();
+        }
+      });
+    }
+
+    if (canEdit) {
+      setStatus('自动保存开启');
+      setInterval(function () {
+        if (!ready || paused || saving) return;
+        var j = currentJSON();
+        if (j === lastJSON) return;
+        persist(false);
+      }, AUTO_SAVE_CHECK);
+    }
+  })();
   </script>
 </body>
 </html>

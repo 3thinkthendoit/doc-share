@@ -1,0 +1,45 @@
+name: mirror-drawio
+
+# 拉取 jgraph/drawio 官方 Docker 镜像并转存到阿里云 ACR，
+# 供国内服务器/CI 快速拉取（独立部署 drawio 编辑器，DocShare 后台填其地址）。
+#
+# 前置（GitHub 仓库 Settings → Secrets and variables → Actions 配置）：
+#   ACR_REGISTRY  —— ACR 域名，如 registry.cn-beijing.aliyuncs.com
+#   ACR_NAMESPACE —— ACR 命名空间
+#   ACR_USERNAME  —— ACR 用户名
+#   ACR_PASSWORD  —— ACR 密码（固定密码或临时 Token）
+# 注意：ACR 个人版不会在 push 时自动建仓，请先在控制台创建名为 drawio 的仓库。
+#
+# 触发：手动（可指定 drawio 版本 tag）；每周一自动同步默认版本。
+
+on:
+  workflow_dispatch:
+    inputs:
+      drawio_version:
+        description: 'jgraph/drawio 镜像 tag（如 v24.7.5）'
+        required: true
+        default: 'v24.7.5'
+  schedule:
+    - cron: '0 3 * * 1' # 每周一 03:00 UTC
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull & push to Aliyun ACR
+        env:
+          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+          ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+          VERSION: ${{ github.event.inputs.drawio_version || 'v24.7.5' }}
+        run: |
+          set -e
+          SOURCE="jgraph/drawio:${VERSION}"
+          TARGET="${ACR_REGISTRY}/${ACR_NAMESPACE}/drawio:${VERSION}"
+          echo "同步 ${SOURCE} -> ${TARGET}"
+          docker pull "${SOURCE}"
+          echo "${ACR_PASSWORD}" | docker login "${ACR_REGISTRY}" -u "${ACR_USERNAME}" --password-stdin
+          docker tag "${SOURCE}" "${TARGET}"
+          docker push "${TARGET}"
+          echo "完成：${TARGET}"

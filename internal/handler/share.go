@@ -328,16 +328,18 @@ func (a *App) serveDoc(c *gin.Context, doc *model.Document, share *model.Share, 
 		UpdateColumn("view_count", gorm.Expr("view_count + 1"))
 	doc.ViewCount++
 	user := a.sessionUser(c)
-	// 结构化画布（思维导图/画板/drawio 图表）：全屏只读渲染
+	// 结构化画布（思维导图/画板/drawio 图表）：全屏渲染；分享开启编辑时登录用户可编辑（乐观锁）
 	if model.IsCanvasType(doc.Type) {
 		a.render(c, "json_view.html", gin.H{
-			"title":       doc.Title,
-			"rawTitle":    true,
-			"doc":         doc,
-			"docKind":     doc.Type,
-			"user":        user,
-			"canModerate": user != nil && (user.ID == doc.OwnerID || user.IsAdmin()),
-			"visitors":    a.recordVisitor(c, doc),
+			"title":        doc.Title,
+			"rawTitle":     true,
+			"doc":          doc,
+			"docKind":      doc.Type,
+			"user":         user,
+			"canModerate":  user != nil && (user.ID == doc.OwnerID || user.IsAdmin()),
+			"visitors":     a.recordVisitor(c, doc),
+			"shareCanEdit": user != nil && share != nil && share.CanEdit,
+			"token":        token,
 		})
 		return
 	}

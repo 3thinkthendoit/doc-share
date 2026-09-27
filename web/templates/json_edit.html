@@ -34,7 +34,8 @@
       kind: "{{.docKind}}",
       docId: {{if .doc}}{{.doc.ID}}{{else}}0{{end}},
       canEdit: {{if .canEditDoc}}true{{else}}false{{end}},
-      content: {{if .doc}}{{.doc.Content}}{{else}}""{{end}}
+      content: {{if .doc}}{{.doc.Content}}{{else}}""{{end}},
+      contentVersion: {{if .doc}}{{.doc.ContentVersion}}{{else}}0{{end}}
     };
     window.DRAWIO_URL = {{.DrawioURL}};
 </script>
@@ -68,19 +69,20 @@
     return json || window.JSON_DOC.content || '';
   }
 
-  /* ---- 保存：新建 POST，已有 PUT（JSON 类型允许 content 更新） ---- */
+  /* ---- 保存：新建 POST，已有 PUT（JSON 类型允许 content 更新；带乐观锁 base_version） ---- */
   var saveBtn = document.getElementById('saveBtn');
   var saving = false;
   var lastSavedJSON = window.JSON_DOC.content || '';
   var lastSavedTitle = document.getElementById('docTitle').value;
+  var lastVersion = window.JSON_DOC.contentVersion || 0;
 
-  async function persist(isAuto) {
+  async function persist(isAuto, force) {
     var title = document.getElementById('docTitle').value;
     var json = currentJSON();
     var url, method, body;
     if (DOC_ID) {
       url = '/admin/api/docs/' + DOC_ID; method = 'PUT';
-      body = { title: title, content: json };
+      body = { title: title, content: json, base_version: lastVersion, force: !!force };
     } else {
       url = '/admin/api/docs'; method = 'POST';
       body = { title: title, type: KIND, content: json };
@@ -94,6 +96,26 @@
     // HTTP 错误在此只区分手动/自动：手动弹错误详情；自动静默返回 false，
     // 由自动保存的重试逻辑统一计数与节流提示，避免随轮询刷 toast
     if (!res.ok) {
+      // 乐观锁冲突：内容已被其他人修改（如分享页编辑者）
+      if (res.status === 409) {
+        if (isAuto) {
+          // 自动保存遇冲突：暂停自动保存（手动保存成功后自动恢复），
+          // 不能弹确认框——否则 4 秒轮询会变成对话框轰炸
+          autoSavePaused = true;
+          if (autoSaveTimerId) { clearInterval(autoSaveTimerId); autoSaveTimerId = null; }
+          if (window.UI && UI.toast && !autoErrToasted) {
+            UI.toast('内容已被其他人修改，自动保存已暂停，请手动保存', 'error');
+            autoErrToasted = true;
+          }
+          return false;
+        }
+        var overwrite = await (function () {
+          var msg = '内容已被其他人修改。点「确定」用我的版本强制覆盖；点「取消」先保留我的修改（可继续编辑，稍后再保存）。';
+          return (window.UI && UI.confirm) ? UI.confirm(msg, { danger: true }) : Promise.resolve(window.confirm(msg));
+        })();
+        if (overwrite) return persist(isAuto, true);
+        return false;
+      }
       if (!isAuto) UI.alert((data && data.error) || UI.t('保存失败'));
       return false;
     }
@@ -112,6 +134,9 @@
         a.textContent = UI.t('edit.preview');
         saveBtn.parentNode.insertBefore(a, saveBtn);
       }
+    }
+    if (data.data && typeof data.data.content_version !== 'undefined') {
+      lastVersion = data.data.content_version; // 乐观锁：以服务端返回的新版本为基线
     }
     lastSavedJSON = json;
     lastSavedTitle = title;

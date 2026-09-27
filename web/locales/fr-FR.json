@@ -569,6 +569,8 @@
   "set.clearLogo": "Effacer",
   "set.siteDomain": "Domaine du site",
   "set.siteDomainTip": "Utilisé pour construire les URL absolues (liens de partage) ; laisser vide pour utiliser l'hôte courant",
+  "set.drawioURL": "URL de l'éditeur drawio",
+  "set.drawioURLTip": "URL de base de l'éditeur drawio autonome (jgraph/drawio) ; à vide, retombe sur drawio.editor_url dans config.yaml",
   "set.shareTitle": "Partage",
   "set.allowShareApply": "Autoriser les visiteurs à demander l'accès",
   "set.allowShareApplyTip": "Les liens protégés par mot de passe affichent « Demander l'accès » ; désactivé, l'entrée est masquée sur tout le site. Les accès déjà approuvés restent valides",

@@ -569,6 +569,8 @@
   "set.clearLogo": "クリア",
   "set.siteDomain": "サイトドメイン",
   "set.siteDomainTip": "共有リンクなどの絶対 URL に使用。空欄の場合は現在のホストを使用",
+  "set.drawioURL": "drawio エディタ URL",
+  "set.drawioURLTip": "スタンドアロン drawio エディタ（jgraph/drawio）のベース URL。空欄の場合は config.yaml の drawio.editor_url を使用",
   "set.shareTitle": "共有",
   "set.allowShareApply": "閲覧申請を許可",
   "set.allowShareApplyTip": "パスワード付き共有リンクのパスワード画面に「閲覧を申請」を表示。オフにするとサイト全体で非表示。承認済みの申請は引き続き有効",

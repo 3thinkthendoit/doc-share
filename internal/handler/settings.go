@@ -49,6 +49,9 @@ type SiteSettings struct {
 	SiteLogo   string
 	SiteDomain string
 
+	// drawio 编辑器地址（独立部署的 jgraph/drawio webapp 基础 URL，空 = drawio 文档不可编辑）
+	DrawioURL string
+
 	// 注册方式（单选）：username / email / phone
 	RegMethod string
 
@@ -139,6 +142,8 @@ func (a *App) Settings() SiteSettings {
 			s.SiteLogo = strings.TrimSpace(r.Value)
 		case model.SettingSiteDomain:
 			s.SiteDomain = strings.TrimSpace(r.Value)
+		case model.SettingDrawioURL:
+			s.DrawioURL = strings.TrimRight(strings.TrimSpace(r.Value), "/")
 		case keyRegMethod:
 			if m := strings.TrimSpace(r.Value); m == "username" || m == "email" || m == "phone" {
 				s.RegMethod = m
@@ -209,6 +214,8 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		SiteName   string `json:"site_name"`
 		SiteLogo   string `json:"site_logo"`
 		SiteDomain string `json:"site_domain"`
+		// drawio 编辑器地址（独立部署的 jgraph/drawio webapp 基础 URL）
+		DrawioURL string `json:"drawio_url"`
 		// 注册方式（单选）：username / email / phone
 		RegMethod string `json:"reg_method"`
 		// SMTP
@@ -263,6 +270,20 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "set.errDomain")})
 		return
 	}
+	drawioURL := strings.TrimRight(strings.TrimSpace(req.DrawioURL), "/")
+	if drawioURL != "" {
+		// 仅接受带主机的 http(s) 绝对地址（iframe/postMessage 需要完整 origin）；
+		// 用 url.Parse 而非前缀判断，挡掉 "http://" 这类无主机名的输入
+		u, err := url.Parse(drawioURL)
+		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "drawio 编辑器地址仅支持带主机的 http(s) 绝对链接"})
+			return
+		}
+		if len(drawioURL) > 300 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "drawio 编辑器地址过长（≤300 字符）"})
+			return
+		}
+	}
 
 	// 注册方式单选校验
 	if req.RegMethod != "username" && req.RegMethod != "email" && req.RegMethod != "phone" {
@@ -308,6 +329,7 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		model.SettingSiteName:   name,
 		model.SettingSiteLogo:   logo,
 		model.SettingSiteDomain: domain,
+		model.SettingDrawioURL:  drawioURL,
 		keyRegMethod:            req.RegMethod,
 		keySMTPHost:             strings.TrimSpace(req.SMTPHost),
 		keySMTPPort:             strconv.Itoa(port),

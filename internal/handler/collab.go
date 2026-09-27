@@ -465,7 +465,9 @@ func (a *App) RollbackRevision(c *gin.Context) {
 		}).Error; err != nil {
 			return err
 		}
-		if err := tx.Model(&model.Document{}).Where("id = ?", doc.ID).Update("content", rev.Content).Error; err != nil {
+		if err := tx.Model(&model.Document{}).Where("id = ?", doc.ID).Updates(map[string]any{
+			"content": rev.Content, "content_version": gorm.Expr("content_version + 1"),
+		}).Error; err != nil {
 			return err
 		}
 		return pruneRevisions(tx, doc.ID)
@@ -478,7 +480,9 @@ func (a *App) RollbackRevision(c *gin.Context) {
 }
 
 // ShareSaveContent 分享链接编辑保存：PUT /s/:token/content
-// 前置：访客持有有效分享凭证（密码校验后签发/无密码直通），且为登录用户，且分享开启了编辑权限
+// 前置：访客持有有效分享凭证（密码校验后签发/无密码直通），且为登录用户，且分享开启了编辑权限。
+// markdown / 画布类（mindmap/board/drawio）均可保存；乐观锁：base_version 与服务端不一致
+// 返回 409（并发编辑防覆盖），带 force=true 可强制覆盖。HTML 整站除外。
 func (a *App) ShareSaveContent(c *gin.Context) {
 	token := c.Param("token")
 	doc, share := a.loadShare(c, token)
@@ -495,7 +499,7 @@ func (a *App) ShareSaveContent(c *gin.Context) {
 		return
 	}
 	// HTML 整站文档不支持在线编辑（整站替换走后台接口）
-	if doc.Type != model.DocTypeMarkdown {
+	if doc.Type != model.DocTypeMarkdown && !model.IsCanvasType(doc.Type) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "该文档类型不支持在线编辑"})
 		return
 	}
@@ -504,7 +508,9 @@ func (a *App) ShareSaveContent(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Content string `json:"content"`
+		Content     string `json:"content"`
+		BaseVersion *int64 `json:"base_version"`
+		Force       bool   `json:"force"`
 	}
 	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -515,23 +521,50 @@ func (a *App) ShareSaveContent(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "内容过大"})
 		return
 	}
-	// 覆盖前快照当前内容，与内容更新同事务，避免留下与实际内容不符的修订
-	if err := a.DB.Transaction(func(tx *gorm.DB) error {
+	// 乐观锁校验 + 快照 + 内容更新在同一事务；WHERE content_version 保证原子性
+	var conflictVersion int64
+	hasConflict := false
+	newVersion := int64(0)
+	err := a.DB.Transaction(func(tx *gorm.DB) error {
+		var fresh model.Document
+		if err := tx.Select("id", "content", "content_version").First(&fresh, doc.ID).Error; err != nil {
+			return err
+		}
+		if !req.Force && req.BaseVersion != nil && fresh.ContentVersion != *req.BaseVersion {
+			hasConflict = true
+			conflictVersion = fresh.ContentVersion
+			return nil // 无写操作，正常提交
+		}
+		res := tx.Model(&model.Document{}).
+			Where("id = ? AND content_version = ?", doc.ID, fresh.ContentVersion).
+			Updates(map[string]any{"content": req.Content, "content_version": fresh.ContentVersion + 1})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 { // 并发窗口兜底：版本在校验后被抢先
+			hasConflict = true
+			conflictVersion = fresh.ContentVersion + 1
+			return nil
+		}
+		newVersion = fresh.ContentVersion + 1
+		// 覆盖成功后快照被覆盖前的内容，与内容更新同事务，避免留下与实际内容不符的修订
 		if err := tx.Create(&model.DocumentRevision{
-			DocumentID: doc.ID, EditorID: user.ID, EditorName: user.DisplayName(), Content: doc.Content,
+			DocumentID: doc.ID, EditorID: user.ID, EditorName: user.DisplayName(), Content: fresh.Content,
 		}).Error; err != nil {
 			return err
 		}
-		if err := tx.Model(&model.Document{}).Where("id = ?", doc.ID).Update("content", req.Content).Error; err != nil {
-			return err
-		}
 		return pruneRevisions(tx, doc.ID)
-	}); err != nil {
+	})
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
 		return
 	}
+	if hasConflict {
+		c.JSON(http.StatusConflict, gin.H{"error": "内容已被其他人修改", "current_version": conflictVersion})
+		return
+	}
 	a.notifyShareEdited(doc, user.DisplayName(), user.ID)
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, gin.H{"ok": true, "content_version": newVersion})
 }
 
 // maxRevisions 每篇文档保留的修订上限，超出时清理最旧的

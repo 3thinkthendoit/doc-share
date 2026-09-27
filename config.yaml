@@ -38,8 +38,7 @@ upload:
   html_max_files: ${DOC_SHARE_HTML_MAX_FILES:-2000}
 
 drawio:
-  # 外部 drawio 编辑器（jgraph/drawio webapp）基础 URL，如 http://127.0.0.1:8181
-  # drawio 文档经 iframe + postMessage 协议编辑/渲染
-  # 留空时优先使用内嵌编辑器（/drawio，需 Docker/CI 构建期下载，见 Dockerfile DRAWIO_VERSION）；
-  # 两者皆无时 drawio 文档类型不可用（编辑/新建入口提示未配置）
+  # drawio 编辑器（jgraph/drawio webapp）基础 URL 兜底值，如 http://127.0.0.1:8181
+  # 推荐直接在管理员后台「系统设置 → drawio 编辑器地址」配置（无需重启）
+  # 此处留空且后台也未配置时，drawio 文档类型不可用（编辑/新建入口提示未配置）
   editor_url: "${DOC_SHARE_DRAWIO_URL:-}"

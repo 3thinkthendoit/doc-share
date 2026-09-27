@@ -29,7 +29,6 @@ type App struct {
 	I18N       *i18n.Bundle
 	Limiter    *middleware.ShareLimiter
 	CaptchaMgr *base64Captcha.Captcha
-	DrawioFS   fs.FS // 内嵌 drawio 编辑器根目录（未嵌入为 nil，drawio 文档降级为未配置）
 
 	setMu    sync.RWMutex   // 站点设置缓存锁
 	setCache *SiteSettings  // nil 表示未加载

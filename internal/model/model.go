@@ -142,6 +142,9 @@ type Document struct {
 	Slug       string    `gorm:"size:32;uniqueIndex;not null" json:"slug"`
 	Type       string    `gorm:"size:16;not null;default:markdown" json:"type"` // markdown | html
 	Content    string    `gorm:"type:longtext" json:"content"`
+	// ContentVersion 乐观锁版本：每次内容落库原子 +1（见 ShareSaveContent / UpdateDoc）。
+	// 客户端保存时携带 base_version，与服务端不一致返回 409，防止并发编辑互相覆盖
+	ContentVersion int64 `gorm:"not null;default:0" json:"content_version"`
 	OwnerID    uint      `gorm:"index;not null" json:"owner_id"`
 	Owner      User      `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
 	ProjectID  uint      `gorm:"index;not null;default:0" json:"project_id"` // 0 表示未分组
@@ -208,6 +211,7 @@ const (
 	SettingSiteName   = "site_name"   // 网站名称
 	SettingSiteLogo   = "site_logo"   // 系统 Logo 图片 URL
 	SettingSiteDomain = "site_domain" // 系统域名（生成分享链接等绝对地址用，留空取访问域名）
+	SettingDrawioURL  = "drawio_url"  // drawio 编辑器地址（独立部署的 jgraph/drawio webapp 基础 URL）
 )
 
 // SystemSetting 站点级键值设置

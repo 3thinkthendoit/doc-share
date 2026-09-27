@@ -438,13 +438,13 @@ ShareModal.bind({
         desc: UI.t('docs.typeBoardDesc'),
         icon: icon('<path d="M4 20l4.5-1.2L20 7.3a2 2 0 0 0 0-2.8l-.5-.5a2 2 0 0 0-2.8 0L5.2 15.5 4 20z"/><path d="M13.5 6.5l4 4"/>'),
         action: function () { location.href = '/admin/docs/new?type=board'; }
-      },
+      }{{if .DrawioURL}},
       {
         title: UI.t('docs.tagDrawio'),
         desc: UI.t('docs.typeDrawioDesc'),
         icon: icon('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><path d="M10 6.5h4M6.5 10v4M14 17.5h-4"/>'),
         action: function () { location.href = '/admin/docs/new?type=drawio'; }
-      }
+      }{{end}}
       /* 后续扩展示例：
       { title: 'Word 文档', desc: UI.t('...'), icon: icon('...'), action: ... } */
     ];

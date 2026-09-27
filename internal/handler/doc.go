@@ -270,7 +270,6 @@ func (a *App) EditDocPage(c *gin.Context) {
 			"shareURL":         shareURL(c, &share, hasShare),
 			"canEditDoc":       canEditDoc,
 			"isOwner":          user != nil && (user.IsAdmin() || user.ID == doc.OwnerID),
-			"ShareLockCanEdit": true, // 画布不可分享页编辑：隐藏「可编辑」选项
 		})
 		return
 	}
@@ -402,11 +401,13 @@ func isAjax(c *gin.Context) bool {
 }
 
 type docReq struct {
-	Title      string  `json:"title" form:"title"`
-	Content    *string `json:"content" form:"content"`         // nil = 未传：更新时不修改；传值 = 整体覆盖
-	Type       string  `json:"type" form:"type"`               // 创建时可选：markdown（默认）/ mindmap / board；html 走专用上传接口
-	ProjectID  *uint   `json:"project_id" form:"project_id"`   // nil 表示未传，不修改；0 表示清空
-	CategoryID *uint   `json:"category_id" form:"category_id"` // 同上
+	Title       string  `json:"title" form:"title"`
+	Content     *string `json:"content" form:"content"`         // nil = 未传：更新时不修改；传值 = 整体覆盖
+	Type        string  `json:"type" form:"type"`               // 创建时可选：markdown（默认）/ mindmap / board / drawio；html 走专用上传接口
+	ProjectID   *uint   `json:"project_id" form:"project_id"`   // nil 表示未传，不修改；0 表示清空
+	CategoryID  *uint   `json:"category_id" form:"category_id"` // 同上
+	BaseVersion *int64  `json:"base_version"`                   // 乐观锁：内容更新时校验，不一致返回 409
+	Force       bool    `json:"force"`                          // true = 忽略版本冲突强制覆盖
 }
 
 // validProjectRef 项目引用校验：0 合法；与当前值相同（未改动）合法；否则必须存在且非 admin 只能用自己的
@@ -511,6 +512,7 @@ func (a *App) UpdateDoc(c *gin.Context) {
 	}
 	actor := middleware.CurrentUser(c)
 	oldTitle, oldContent := doc.Title, doc.Content
+	oldProj, oldCat := doc.ProjectID, doc.CategoryID
 	var req docReq
 	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": errParam})
@@ -550,7 +552,51 @@ func (a *App) UpdateDoc(c *gin.Context) {
 		}
 		doc.CategoryID = *req.CategoryID
 	}
-	if err := a.DB.Save(doc).Error; err != nil {
+	// 乐观锁 + 字段更新在同一事务：内容变化时按 base_version 原子校验并递增
+	// （WHERE content_version），冲突返回 409；未传 base_version 的旧客户端/MCP
+	// 不校验但版本仍递增。单条 Updates 保证"校验 + 写入"无竞态窗口，且不会用
+	// 事务外读取的旧快照覆盖并发写入者的其他字段。
+	hasConflict := false
+	conflictVersion := int64(0)
+	err := a.DB.Transaction(func(tx *gorm.DB) error {
+		var fresh model.Document
+		if err := tx.Select("id", "content_version").First(&fresh, doc.ID).Error; err != nil {
+			return err
+		}
+		updates := map[string]any{}
+		if newContent != nil {
+			if !req.Force && req.BaseVersion != nil && fresh.ContentVersion != *req.BaseVersion {
+				hasConflict = true
+				conflictVersion = fresh.ContentVersion
+				return nil
+			}
+			updates["content"] = *newContent
+			updates["content_version"] = fresh.ContentVersion + 1
+		}
+		if doc.Title != oldTitle {
+			updates["title"] = doc.Title
+		}
+		if doc.ProjectID != oldProj {
+			updates["project_id"] = doc.ProjectID
+		}
+		if doc.CategoryID != oldCat {
+			updates["category_id"] = doc.CategoryID
+		}
+		if len(updates) == 0 {
+			return nil
+		}
+		return tx.Model(&model.Document{}).Where("id = ?", doc.ID).Updates(updates).Error
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新失败"})
+		return
+	}
+	if hasConflict {
+		c.JSON(http.StatusConflict, gin.H{"error": "内容已被其他人修改", "current_version": conflictVersion})
+		return
+	}
+	// 回读最新状态（版本号/并发写入者的其他字段）用于响应
+	if err := a.DB.First(doc, doc.ID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新失败"})
 		return
 	}
@@ -665,14 +711,16 @@ func (a *App) PreviewDoc(c *gin.Context) {
 		c.String(http.StatusForbidden, "无权查看该文档")
 		return
 	}
-	// 结构化画布（思维导图/画板/drawio 图表）：全屏只读渲染
+	// 结构化画布（思维导图/画板/drawio 图表）：预览页固定只读（编辑走 /edit 页）
 	if model.IsCanvasType(doc.Type) {
 		a.render(c, "json_view.html", gin.H{
-			"title":    doc.Title,
-			"rawTitle": true,
-			"doc":      doc,
-			"docKind":  doc.Type,
-			"user":     user,
+			"title":        doc.Title,
+			"rawTitle":     true,
+			"doc":          doc,
+			"docKind":      doc.Type,
+			"user":         user,
+			"shareCanEdit": false,
+			"token":        "",
 		})
 		return
 	}

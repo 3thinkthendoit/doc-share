@@ -569,6 +569,8 @@
   "set.clearLogo": "清除",
   "set.siteDomain": "系統網域",
   "set.siteDomainTip": "用於產生分享連結等絕對位址，留空自動取目前訪問網域",
+  "set.drawioURL": "drawio 編輯器位址",
+  "set.drawioURLTip": "獨立部署的 drawio 編輯器（jgraph/drawio）基礎 URL；留空回退 config.yaml 的 drawio.editor_url，均未設定時 drawio 文件不可編輯",
   "set.shareTitle": "分享",
   "set.allowShareApply": "允許訪客申請查看",
   "set.allowShareApplyTip": "有密碼的分享連結在密碼頁顯示「申請查看」；關閉後全站不顯示該入口。已通過的申請仍可存取",

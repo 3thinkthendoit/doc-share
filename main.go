@@ -26,12 +26,6 @@ var staticFS embed.FS
 //go:embed web/locales
 var localesFS embed.FS
 
-// drawio 编辑器（jgraph/drawio webapp）：CI/Docker 构建期下载到 web/drawio 后经 go:embed
-// 编入二进制（见 web/drawio/README.md）。本地开发目录仅有占位 README 时视为未嵌入。
-//
-//go:embed all:web/drawio
-var drawioFS embed.FS
-
 func main() {
 	configPath := flag.String("config", "config.yaml", "配置文件路径")
 	flag.Parse()
@@ -85,26 +79,9 @@ func main() {
 		log.Fatalf("加载多语言词典失败: %v", err)
 	}
 
-	// drawio 编辑器：dev 模式直读磁盘 web/drawio；二进制内探测到 index.html 才视为已嵌入
-	var drawioRoot fs.FS
-	if cfg.Server.Dev {
-		if _, err := os.Stat("web/drawio/index.html"); err == nil {
-			drawioRoot = os.DirFS("web/drawio")
-			log.Printf("[dev] drawio 编辑器直读磁盘 web/drawio")
-		}
-	} else if _, err := fs.Stat(drawioFS, "web/drawio/index.html"); err == nil {
-		if drawioRoot, err = fs.Sub(drawioFS, "web/drawio"); err != nil {
-			log.Fatalf("drawio 目录错误: %v", err)
-		}
-	}
-
 	signer := session.NewSigner(cfg.Auth.SessionSecret)
 	app := handler.NewApp(cfg, db, signer, tmpl, bundle)
 	app.TmplRoot = tmplRoot // dev 热载用：render 时据此重新解析模板
-	app.DrawioFS = drawioRoot
-	if drawioRoot != nil {
-		log.Printf("drawio 编辑器已内嵌: /drawio/")
-	}
 
 	gin.SetMode(gin.ReleaseMode)
 	engine := router.New(app, staticRoot)
