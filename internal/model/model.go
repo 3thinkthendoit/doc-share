@@ -153,6 +153,10 @@ type Document struct {
 	Category   *Category `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
 	IsShared   bool      `gorm:"not null;default:false" json:"is_shared"`
 	ViewCount  int64     `gorm:"not null;default:0" json:"view_count"`
+	// 最后更新人：0 = 本字段上线前的历史数据（展示时回退为所有者）；UpdatedVia = api 表示经开放平台更新
+	UpdatedByID uint      `gorm:"index;not null;default:0" json:"updated_by_id"`
+	UpdatedVia  string    `gorm:"size:16;not null;default:''" json:"updated_via"`
+	UpdatedBy   *User     `gorm:"foreignKey:UpdatedByID" json:"updated_by,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 

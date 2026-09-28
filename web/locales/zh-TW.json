@@ -12,6 +12,8 @@
   "common.actions": "操作",
   "common.updatedAt": "更新時間",
   "common.createdAt": "建立時間",
+  "common.updater": "更新人",
+  "openapi.name": "開放平台",
   "common.dash": "—",
   "common.copyOk": "已複製到剪貼簿",
   "common.netErr": "網路錯誤或服務不可用",

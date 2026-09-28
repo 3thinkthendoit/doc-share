@@ -115,7 +115,7 @@ func (a *App) Dashboard(c *gin.Context) {
 	}
 
 	var recent []model.Document
-	recentTx.Preload("Owner").Preload("Share").Order("updated_at desc").Limit(5).Find(&recent)
+	recentTx.Preload("Owner").Preload("Share").Preload("UpdatedBy").Order("updated_at desc").Limit(5).Find(&recent)
 
 	a.render(c, "dashboard.html", gin.H{
 		"title":             "仪表盘",

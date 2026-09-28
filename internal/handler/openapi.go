@@ -134,6 +134,7 @@ func (a *App) RequireAppKey() gin.HandlerFunc {
 		}
 		a.DB.Model(&key).UpdateColumn("last_used_at", time.Now())
 		c.Set(middleware.ContextUser, &owner)
+		c.Set("viaOpenAPI", true) // handler 据此在 updated_via 中标记「开放平台更新」
 		c.Next()
 	}
 }

@@ -467,6 +467,7 @@ func (a *App) RollbackRevision(c *gin.Context) {
 		}
 		if err := tx.Model(&model.Document{}).Where("id = ?", doc.ID).Updates(map[string]any{
 			"content": rev.Content, "content_version": gorm.Expr("content_version + 1"),
+			"updated_by_id": editorID, "updated_via": "",
 		}).Error; err != nil {
 			return err
 		}
@@ -537,7 +538,12 @@ func (a *App) ShareSaveContent(c *gin.Context) {
 		}
 		res := tx.Model(&model.Document{}).
 			Where("id = ? AND content_version = ?", doc.ID, fresh.ContentVersion).
-			Updates(map[string]any{"content": req.Content, "content_version": fresh.ContentVersion + 1})
+			Updates(map[string]any{
+				"content":         req.Content,
+				"content_version": fresh.ContentVersion + 1,
+				"updated_by_id":   user.ID,
+				"updated_via":     "",
+			})
 		if res.Error != nil {
 			return res.Error
 		}

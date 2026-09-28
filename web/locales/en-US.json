@@ -12,6 +12,8 @@
   "common.actions": "Actions",
   "common.updatedAt": "Updated",
   "common.createdAt": "Created",
+  "common.updater": "Updated by",
+  "openapi.name": "Open API",
   "common.dash": "—",
   "common.copyOk": "Copied to clipboard",
   "common.netErr": "Network error or service unavailable",

@@ -83,7 +83,7 @@ func (a *App) DocsPage(c *gin.Context) {
 
 	var docs []model.Document
 	// 列表不拉 Content（longtext）；嵌入标签另用 LIKE 只取 id
-	tx.Omit("Content").Preload("Owner").Preload("Share").Preload("Project").Preload("Category").
+	tx.Omit("Content").Preload("Owner").Preload("Share").Preload("Project").Preload("Category").Preload("UpdatedBy").
 		Order("updated_at desc").Offset(pg.Offset).Limit(pg.Size).Find(&docs)
 
 	embedTags := detectEmbedTags(a.DB, docs)
@@ -400,6 +400,14 @@ func isAjax(c *gin.Context) bool {
 		c.GetHeader("Accept") == "application/json"
 }
 
+// openapiVia 更新来源标记：经开放平台密钥调用的请求返回 "api"，其余为空（Web 端）
+func openapiVia(c *gin.Context) string {
+	if c.GetBool("viaOpenAPI") {
+		return "api"
+	}
+	return ""
+}
+
 type docReq struct {
 	Title       string  `json:"title" form:"title"`
 	Content     *string `json:"content" form:"content"`         // nil = 未传：更新时不修改；传值 = 整体覆盖
@@ -470,11 +478,13 @@ func (a *App) CreateDoc(c *gin.Context) {
 		content = *req.Content
 	}
 	doc := model.Document{
-		Title:   title,
-		Slug:    util.RandomSlug(8),
-		Type:    docType,
-		Content: content,
-		OwnerID: user.ID,
+		Title:       title,
+		Slug:        util.RandomSlug(8),
+		Type:        docType,
+		Content:     content,
+		OwnerID:     user.ID,
+		UpdatedByID: user.ID,
+		UpdatedVia:  openapiVia(c),
 	}
 	if req.ProjectID != nil {
 		doc.ProjectID = *req.ProjectID
@@ -572,6 +582,10 @@ func (a *App) UpdateDoc(c *gin.Context) {
 			}
 			updates["content"] = *newContent
 			updates["content_version"] = fresh.ContentVersion + 1
+		}
+		if actor != nil {
+			updates["updated_by_id"] = actor.ID
+			updates["updated_via"] = openapiVia(c)
 		}
 		if doc.Title != oldTitle {
 			updates["title"] = doc.Title

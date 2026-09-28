@@ -408,11 +408,12 @@ func (a *App) createHTMLDocFromFiles(c *gin.Context, files []siteFile, title str
 		return nil, fmt.Errorf("未登录")
 	}
 	doc := model.Document{
-		Title:    title,
-		Slug:     util.RandomSlug(8),
-		Type:     model.DocTypeHTML,
-		OwnerID:  user.ID,
-		ProjectID: projectID, CategoryID: categoryID,
+		Title:       title,
+		Slug:        util.RandomSlug(8),
+		Type:        model.DocTypeHTML,
+		OwnerID:     user.ID,
+		UpdatedByID: user.ID,
+		ProjectID:   projectID, CategoryID: categoryID,
 	}
 	for {
 		var n int64
@@ -579,8 +580,14 @@ func (a *App) ReplaceHTMLDoc(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成站点清单失败"})
 		return
 	}
+	// 记录最后更新人（属主/管理员操作）
+	updaterID := uint(0)
+	if u := middleware.CurrentUser(c); u != nil {
+		updaterID = u.ID
+	}
 	if err := a.DB.Model(&model.Document{}).Where("id = ?", doc.ID).
-		Updates(map[string]any{"content": content, "updated_at": time.Now()}).Error; err != nil {
+		Updates(map[string]any{"content": content, "updated_at": time.Now(),
+			"updated_by_id": updaterID, "updated_via": ""}).Error; err != nil {
 		a.deleteSiteFilesAsync(written) // 切换失败则清掉新文件，旧版本仍可读
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新站点清单失败"})
 		return

@@ -12,6 +12,8 @@
   "common.actions": "操作",
   "common.updatedAt": "更新日時",
   "common.createdAt": "作成日時",
+  "common.updater": "最終更新者",
+  "openapi.name": "オープン API",
   "common.dash": "—",
   "common.copyOk": "クリップボードにコピーしました",
   "common.netErr": "ネットワークエラーまたはサービスを利用できません",
