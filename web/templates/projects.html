@@ -45,6 +45,7 @@
           <td class="col-actions">
             {{if and $.user (or $.user.IsAdmin (eq .OwnerID $.user.ID))}}
             <button class="btn btn-sm" data-id="{{.ID}}" onclick="openMembers(this)">{{$.T "proj.members"}}</button>
+            <button class="btn btn-sm" data-id="{{.ID}}" data-name="{{.Name}}" onclick="openProjectShare(this)">{{$.T "proj.share"}}</button>
             <button class="btn btn-sm" data-id="{{.ID}}" data-name="{{.Name}}" data-desc="{{.Description}}" onclick="editProject(this)">{{$.T "编辑"}}</button>
             <button class="btn btn-sm btn-danger" data-id="{{.ID}}" data-name="{{.Name}}" onclick="delProject(this)">{{$.T "删除"}}</button>
             {{else}}
@@ -128,6 +129,58 @@
 .member-suggest-item{padding:8px 12px;font-size:13.5px;cursor:pointer}
 .member-suggest-item:hover{background:var(--bg-soft)}
 </style>
+
+<!-- 项目分享设置弹窗：整组文档对外分享（属主/管理员），语义同文档分享 -->
+<div class="modal-overlay" id="projectShareModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="{{$.T "ps.modalTitle"}}">
+    <div class="modal-head">
+      <h2>{{$.T "ps.modalTitle"}}<span id="psProjName" class="muted" style="font-size:14px;font-weight:500"></span></h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+    </div>
+    <div class="modal-body share-body">
+      <label class="check"><input type="checkbox" id="psEnabled"> {{$.T "ps.enable"}}</label>
+      <div id="psConfig" class="share-config" style="display:none">
+        <label class="check"><input type="checkbox" id="psCanEdit"> {{$.T "ps.canEditDoc"}}</label>
+        <label>{{$.T "share.type"}}</label>
+        <div class="share-type-row">
+          <label class="check"><input type="radio" name="psType" value="public" id="psTypePublic"> {{$.T "share.typePublic"}}</label>
+          <label class="check"><input type="radio" name="psType" value="pwd" id="psTypePwd"> {{$.T "share.typePwd"}}</label>
+        </div>
+        <div id="psPwdWrap">
+        <label>{{$.T "访问密码（留空则不修改 / 无密码）"}}
+          <div class="pwd-row">
+            <input type="text" id="psPassword" autocomplete="off">
+            <button type="button" class="btn btn-sm" id="psGenPwd">{{$.T "share.genPwd"}}</button>
+          </div>
+        </label>
+        </div>
+        <label>{{$.T "有效期"}}
+          <select id="psExpire">
+            <option value="0">{{$.T "永久有效"}}</option>
+            <option value="1">{{$.T "1 天"}}</option>
+            <option value="7">{{$.T "7 天"}}</option>
+            <option value="30">{{$.T "30 天"}}</option>
+          </select>
+        </label>
+        <div id="psLinkBox" class="share-link" style="display:none">
+          {{$.T "分享链接："}}<code id="psURL"></code>
+          <button type="button" class="btn btn-sm" id="psCopyBtn">{{$.T "复制"}}</button>
+        </div>
+        <div id="psAccessReqBox" class="share-access-box" hidden>
+          <div class="share-access-head">
+            <strong>{{$.T "share.applyListTitle"}}</strong>
+            <button type="button" class="btn btn-sm" id="psRefreshReq">{{$.T "docs.query"}}</button>
+          </div>
+          <div id="psAccessReqList" class="share-access-list"><div class="muted">{{$.T "share.applyListEmpty"}}</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn" data-close-modal>{{$.T "关闭"}}</button>
+      <button type="button" id="psSaveBtn" class="btn btn-primary">{{$.T "应用分享设置"}}</button>
+    </div>
+  </div>
+</div>
 
 <!-- 项目文档列表弹窗 -->
 <div class="modal-overlay" id="projDocsModal" hidden>

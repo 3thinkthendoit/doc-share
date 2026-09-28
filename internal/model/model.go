@@ -205,6 +205,29 @@ func (s *Share) IsExpired() bool {
 	return s != nil && s.ExpireAt != nil && time.Now().After(*s.ExpireAt)
 }
 
+// ProjectShare 项目分享配置（与 Project 一对一）：整组文档对外分享，
+// 语义与文档级 Share 同构（密码 / 有效期 / 登录可编辑），但作用于项目下的动态文档集合
+type ProjectShare struct {
+	ID         uint       `gorm:"primaryKey" json:"id"`
+	ProjectID  uint       `gorm:"uniqueIndex;not null" json:"project_id"`
+	ShareToken string     `gorm:"size:32;uniqueIndex;not null" json:"share_token"`
+	CanEdit    bool       `gorm:"not null;default:false" json:"can_edit"` // 登录用户可编辑项目内文档
+	Password   string     `gorm:"size:255" json:"-"`                      // bcrypt 哈希，空表示无密码
+	ExpireAt   *time.Time `json:"expire_at"`                              // nil 表示永不过期
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+}
+
+// HasPassword 是否设置了访问密码
+func (s *ProjectShare) HasPassword() bool {
+	return s != nil && s.Password != ""
+}
+
+// IsExpired 链接是否已过期
+func (s *ProjectShare) IsExpired() bool {
+	return s != nil && s.ExpireAt != nil && time.Now().After(*s.ExpireAt)
+}
+
 // 分享访问申请状态
 const (
 	AccessPending  = 0 // 待审批
@@ -212,10 +235,12 @@ const (
 	AccessRejected = 2 // 已拒绝
 )
 
-// ShareAccessRequest 有密码分享下的「申请查看」：登录用户与游客均可提交，属主审批后凭 cookie 放行
+// ShareAccessRequest 有密码分享下的「申请查看」：登录用户与游客均可提交，属主审批后凭 cookie 放行。
+// 文档分享与项目分享共用本表：文档申请置 DocumentID（ProjectID=0），项目申请置 ProjectID（DocumentID=0）
 type ShareAccessRequest struct {
 	ID           uint       `gorm:"primaryKey" json:"id"`
-	DocumentID   uint       `gorm:"index;not null" json:"document_id"`
+	DocumentID   uint       `gorm:"index;not null;default:0" json:"document_id"`
+	ProjectID    uint       `gorm:"index;not null;default:0" json:"project_id"` // >0 表示项目级申请
 	UserID       uint       `gorm:"index;not null;default:0" json:"user_id"` // 0=游客
 	GuestName    string     `gorm:"size:64" json:"guest_name"`               // 称呼（游客必填；登录可预填）
 	GuestContact string     `gorm:"size:128" json:"guest_contact"`           // 可选联系方式

@@ -2,8 +2,10 @@
 (function () {
   var R = window.READER || {};
   if (!R.docId) return;
-  // 评论/编辑接口前缀：分享页走 /s/:token（公开），预览页走 /console/api/docs/:id（登录态）
+  // 评论/编辑接口前缀：项目分享页走 apiBase（/ps/:token/d/:docId），
+  // 文档分享页走 /s/:token（公开），预览页走 /console/api/docs/:id（登录态）
   function api(path) {
+    if (R.apiBase) return R.apiBase + path;
     return R.token ? ('/s/' + R.token + path) : ('/console/api/docs/' + R.docId + path);
   }
   function t(s) { return window.UI ? UI.t(s) : s; }
@@ -58,7 +60,7 @@
         if (content === raw.value) { cancelBtn.click(); return; }
         saveBtn.disabled = true;
         try {
-          var res = await fetch('/s/' + R.token + '/content', {
+          var res = await fetch(api('/content'), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
             body: JSON.stringify({ content: content })

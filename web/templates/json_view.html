@@ -24,6 +24,7 @@ html,body{height:100%;margin:0}
       // 分享页编辑：分享开启「可编辑」且为登录用户；预览页恒为只读
       canEdit: {{if .shareCanEdit}}true{{else}}false{{end}},
       token: "{{.token}}",
+      contentApi: "{{if .contentApi}}{{.contentApi}}{{end}}",
       contentVersion: {{.doc.ContentVersion}}
     };
     window.DRAWIO_URL = {{.DrawioURL}};
@@ -36,7 +37,7 @@ html,body{height:100%;margin:0}
     if (!window.JsonDoc) return;
     var mount = document.getElementById('jsonViewMount');
     var statusEl = document.getElementById('jsonSaveStatus');
-    var canEdit = !!window.JSON_DOC.canEdit && !!window.JSON_DOC.token;
+    var canEdit = !!window.JSON_DOC.canEdit && !!(window.JSON_DOC.contentApi || window.JSON_DOC.token);
     var lastJSON = window.JSON_DOC.content || '';
     var lastVersion = window.JSON_DOC.contentVersion || 0;
     var saving = false, paused = false, ready = false;
@@ -73,7 +74,8 @@ html,body{height:100%;margin:0}
       if (saving) return Promise.resolve(false);
       saving = true;
       setStatus('保存中…');
-      return fetch('/s/' + window.JSON_DOC.token + '/content', {
+      var saveURL = window.JSON_DOC.contentApi || ('/s/' + window.JSON_DOC.token + '/content');
+      return fetch(saveURL, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({ content: currentJSON(), base_version: lastVersion, force: !!force })

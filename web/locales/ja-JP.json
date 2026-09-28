@@ -941,5 +941,16 @@
   "ep.tplUpdate": "テンプレートを更新（所有者 / 管理者のみ）。未指定のフィールドは変更されず、project_id / category_id に 0 を渡すと紐付け解除",
   "ep.tTplUpdate": "テンプレート更新",
   "ep.tplDelete": "テンプレートを削除。作成済みドキュメントには影響しません",
-  "ep.tTplDelete": "テンプレート削除"
+  "ep.tTplDelete": "テンプレート削除",
+  "proj.share": "共有",
+  "ps.modalTitle": "プロジェクト共有設定",
+  "ps.enable": "プロジェクト共有を有効にする",
+  "ps.canEditDoc": "ログインユーザーにプロジェクト内ドキュメントの編集を許可",
+  "ps.docCount": "全{0}件のドキュメント",
+  "ps.canEdit": "編集可能",
+  "ps.readOnly": "読み取り専用",
+  "ps.editHint": "編集権限が有効です：ログインユーザーはドキュメントページで直接編集・保存できます",
+  "ps.viewOnlyHint": "読み取り専用共有：編集権限が必要な場合はプロジェクト所有者にお問い合わせください",
+  "ps.open": "開く",
+  "ps.empty": "このプロジェクトにドキュメントがありません"
 }

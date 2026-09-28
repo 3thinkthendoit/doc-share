@@ -941,5 +941,16 @@
   "ep.tplUpdate": "Update a template (owner / admin only); omitted fields are unchanged, project_id / category_id 0 clears the binding",
   "ep.tTplUpdate": "Update template",
   "ep.tplDelete": "Delete a template; existing documents are not affected",
-  "ep.tTplDelete": "Delete template"
+  "ep.tTplDelete": "Delete template",
+  "proj.share": "Share",
+  "ps.modalTitle": "Project Share Settings",
+  "ps.enable": "Enable project sharing",
+  "ps.canEditDoc": "Allow signed-in users to edit documents in this project",
+  "ps.docCount": "{0} documents",
+  "ps.canEdit": "Editable",
+  "ps.readOnly": "Read-only",
+  "ps.editHint": "Editing enabled: signed-in users can edit and save content directly on the document page",
+  "ps.viewOnlyHint": "Read-only share: contact the project owner for edit access",
+  "ps.open": "Open",
+  "ps.empty": "No documents in this project yet"
 }

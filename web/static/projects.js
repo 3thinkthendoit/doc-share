@@ -261,3 +261,225 @@ if (memberAddBtn) {
     }
   });
 }
+
+/* ---- 项目分享（属主/管理员）：整组文档对外分享，语义同文档分享 ---- */
+// 与 share_modal.js 同构：开启/关闭、公开或密码访问、有效期、可编辑开关、访问申请审批。
+// 差异：接口走 /console/api/projects/:id/share*，分享链接为 /ps/:token；密码记忆用独立前缀。
+(function () {
+  var modal = document.getElementById('projectShareModal');
+  if (!modal || !window.UI) return;
+  UI.bindModal(modal);
+
+  var curId = 0, curName = '', curURL = '';
+  function el(id) { return document.getElementById(id); }
+  function t(s) { return UI.t(s); }
+
+  function genPassword() {
+    var chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    var out = '', buf = new Uint32Array(4);
+    (window.crypto || window.msCrypto).getRandomValues(buf);
+    for (var i = 0; i < 4; i++) out += chars[buf[i] % chars.length];
+    return out;
+  }
+  function pwdKey(url) {
+    var m = String(url || '').match(/\/ps\/([A-Za-z0-9]+)/);
+    return m ? 'ds_pshare_pwd_' + m[1] : '';
+  }
+  function storedPwd(url) {
+    try { return localStorage.getItem(pwdKey(url)) || ''; } catch (e) { return ''; }
+  }
+
+  function refreshType() {
+    var isPwd = el('psTypePwd').checked;
+    el('psPwdWrap').style.display = isPwd ? 'block' : 'none';
+    // 访问申请仅对密码分享有意义：公开分享时隐藏
+    el('psAccessReqBox').hidden = !(el('psEnabled').checked && isPwd);
+  }
+  function refreshLink() {
+    var enabled = el('psEnabled').checked;
+    el('psConfig').style.display = enabled ? 'block' : 'none';
+    var box = el('psLinkBox');
+    if (enabled && curURL) { el('psURL').textContent = curURL; box.style.display = 'flex'; }
+    else { box.style.display = 'none'; }
+    refreshType();
+    if (enabled) loadAccessRequests();
+  }
+
+  function copyLink() {
+    var url = el('psURL').textContent;
+    var pwd = storedPwd(url);
+    var lines = [];
+    if (curName) lines.push(t('标题：') + curName);
+    lines.push(t('链接：') + url);
+    lines.push(t('访问密码：') + (pwd || t('无')));
+    var text = lines.join('\n');
+    var ok = function () { UI.toast(t('复制成功'), 'success'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(ok, function () { fallbackCopy(text); ok(); });
+    } else { fallbackCopy(text); ok(); }
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch (e) { }
+    ta.remove();
+  }
+
+  function save() {
+    if (!curId) return;
+    var enabled = el('psEnabled').checked;
+    var isPwd = el('psTypePwd').checked;
+    var payload = {
+      enabled: enabled,
+      can_edit: el('psCanEdit').checked,
+      password: isPwd ? el('psPassword').value : '',
+      remove_password: !isPwd, // 公开分享：清除已设密码
+      expire_days: parseInt(el('psExpire').value, 10) || 0
+    };
+    var btn = el('psSaveBtn');
+    btn.disabled = true;
+    fetch('/console/api/projects/' + curId + '/share', {
+      method: enabled ? 'POST' : 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      body: JSON.stringify(payload)
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (d) {
+        if (!res.ok) throw new Error((d && d.error) || t('操作失败'));
+        return d;
+      });
+    }).then(function (d) {
+      if (enabled && isPwd && payload.password.trim() && d.url) {
+        try { localStorage.setItem(pwdKey(d.url), payload.password.trim()); } catch (e) { }
+      }
+      if (enabled && !isPwd && d.url) {
+        try { localStorage.removeItem(pwdKey(d.url)); } catch (e) { }
+      }
+      if (d.url) curURL = d.url;
+      if (enabled && typeof d.hasPassword === 'boolean') {
+        el('psPassword').placeholder = d.hasPassword ? t('已设置密码') : '';
+      }
+      UI.toast(t(enabled ? '分享设置已更新' : '已关闭分享'), 'success');
+      refreshLink();
+    }).catch(function (err) {
+      UI.toast(err.message || t('common.netErr'), 'error');
+    }).finally(function () { btn.disabled = false; });
+  }
+
+  /* ---- 访问申请审批列表（有密码分享） ---- */
+  var statusMap = null;
+  function loadAccessRequests() {
+    var list = el('psAccessReqList');
+    if (!curId || !el('psEnabled').checked || !el('psTypePwd').checked) return;
+    list.innerHTML = '<div class="muted">' + t('加载中…') + '</div>';
+    fetch('/console/api/projects/' + curId + '/access-requests', {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (d) { return { ok: res.ok, d: d }; });
+    }).then(function (out) {
+      if (!out.ok) { list.innerHTML = '<div class="muted">' + t((out.d && out.d.error) || '加载失败') + '</div>'; return; }
+      var items = (out.d && out.d.data) || [];
+      if (!items.length) { list.innerHTML = '<div class="muted">' + t('share.applyListEmpty') + '</div>'; return; }
+      statusMap = statusMap || {
+        0: t('share.applyStatusPending'), 1: t('share.applyStatusApproved'), 2: t('share.applyStatusRejected')
+      };
+      var table = document.createElement('table');
+      table.className = 'table';
+      table.innerHTML =
+        '<thead><tr>' +
+        '<th>' + t('dash.pendingName') + '</th>' +
+        '<th>' + t('dash.pendingTime') + '</th>' +
+        '<th>' + t('common.status') + '</th>' +
+        '<th class="col-actions">' + t('common.actions') + '</th>' +
+        '</tr></thead>';
+      var tbody = document.createElement('tbody');
+      items.forEach(function (r) { tbody.appendChild(applyRow(r)); });
+      table.appendChild(tbody);
+      list.innerHTML = '';
+      list.appendChild(table);
+    }).catch(function () {
+      list.innerHTML = '<div class="muted">' + t('加载失败') + '</div>';
+    });
+  }
+
+  function applyRow(r) {
+    var tr = document.createElement('tr');
+    var tdName = document.createElement('td'); tdName.textContent = r.name || '—'; tr.appendChild(tdName);
+    var tdTime = document.createElement('td'); tdTime.className = 'cell-muted'; tdTime.textContent = r.created_at || '—'; tr.appendChild(tdTime);
+    var tdStatus = document.createElement('td');
+    var tag = document.createElement('span');
+    tag.className = 'tag' + (r.status === 1 ? ' tag-green' : '');
+    tag.textContent = statusMap[r.status] || String(r.status);
+    tdStatus.appendChild(tag); tr.appendChild(tdStatus);
+    var tdActs = document.createElement('td'); tdActs.className = 'col-actions';
+    if (r.status === 0) {
+      var okB = document.createElement('button');
+      okB.type = 'button'; okB.className = 'btn btn-sm btn-primary'; okB.textContent = t('share.applyApprove');
+      okB.addEventListener('click', function () { review(r.id, 'approve', tdActs); });
+      var noB = document.createElement('button');
+      noB.type = 'button'; noB.className = 'btn btn-sm'; noB.textContent = t('share.applyReject');
+      noB.addEventListener('click', function () { review(r.id, 'reject', tdActs); });
+      tdActs.appendChild(okB); tdActs.appendChild(noB);
+    } else { tdActs.textContent = '—'; }
+    tr.appendChild(tdActs);
+    return tr;
+  }
+
+  function review(rid, action, acts) {
+    if (acts) acts.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+    fetch('/console/api/projects/' + curId + '/access-requests/' + rid, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      body: JSON.stringify({ action: action })
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (d) { return { ok: res.ok, d: d }; });
+    }).then(function (out) {
+      if (!out.ok) {
+        UI.toast(t((out.d && out.d.error) || '操作失败'), 'error');
+        if (acts) acts.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+        return;
+      }
+      UI.toast(t('已保存'), 'success');
+      loadAccessRequests();
+    }).catch(function () {
+      UI.toast(t('common.netErr'), 'error');
+      if (acts) acts.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+    });
+  }
+
+  function populate(cfg) {
+    var enabled = !!cfg.enabled;
+    el('psEnabled').checked = enabled;
+    el('psCanEdit').checked = !!cfg.can_edit;
+    el('psPassword').value = '';
+    el('psPassword').placeholder = cfg.has_password ? t('已设置密码') : '';
+    el('psGenPwd').textContent = t(cfg.has_password ? 'share.resetPwd' : 'share.genPwd');
+    el('psExpire').value = '0';
+    el('psTypePwd').checked = !!cfg.has_password; // 有密码 → 密码访问；无密码 → 公开访问
+    el('psTypePublic').checked = !cfg.has_password;
+    curURL = cfg.url || '';
+    refreshLink();
+  }
+
+  // onclick 属性调用，需挂在全局
+  window.openProjectShare = function (btn) {
+    curId = btn.dataset.id;
+    curName = btn.dataset.name || '';
+    el('psProjName').textContent = curName ? ' · ' + curName : '';
+    el('psConfig').style.display = 'none';
+    UI.openModal(modal);
+    // 分享配置按需拉取：列表页不预载每行分享状态
+    fetch('/console/api/projects/' + curId + '/share', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (r) { return r.json(); })
+      .then(function (resp) { populate((resp && resp.data) || { enabled: false }); })
+      .catch(function () { populate({ enabled: false }); });
+  };
+
+  el('psGenPwd').addEventListener('click', function () { el('psPassword').value = genPassword(); });
+  el('psCopyBtn').addEventListener('click', copyLink);
+  el('psEnabled').addEventListener('change', refreshLink);
+  el('psTypePublic').addEventListener('change', refreshType);
+  el('psTypePwd').addEventListener('change', refreshType);
+  el('psSaveBtn').addEventListener('click', save);
+  el('psRefreshReq').addEventListener('click', loadAccessRequests);
+})();

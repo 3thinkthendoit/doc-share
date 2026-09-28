@@ -941,5 +941,16 @@
   "ep.tplUpdate": "修改模板（仅属主 / 管理员）；未传字段不修改，project_id / category_id 传 0 表示解除绑定",
   "ep.tTplUpdate": "模板更新",
   "ep.tplDelete": "删除模板，不影响已创建的文档",
-  "ep.tTplDelete": "模板删除"
+  "ep.tTplDelete": "模板删除",
+  "proj.share": "分享",
+  "ps.modalTitle": "项目分享设置",
+  "ps.enable": "开启项目分享",
+  "ps.canEditDoc": "允许登录用户编辑项目内文档",
+  "ps.docCount": "共 {0} 篇文档",
+  "ps.canEdit": "可编辑",
+  "ps.readOnly": "只读",
+  "ps.editHint": "已开启编辑权限：登录用户可直接在文档页编辑并保存内容",
+  "ps.viewOnlyHint": "只读分享：如需编辑权限，请联系项目所有者",
+  "ps.open": "打开",
+  "ps.empty": "该项目下暂无文档"
 }

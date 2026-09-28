@@ -153,8 +153,8 @@ html[data-theme="light"] .l-btn.l-theme .i-moon { display: none; }
 
 html[data-theme-anim] .l-nav { transition: background-color .25s, color .25s, border-color .25s, box-shadow .25s; }
 
-/* 阅读 / 密码门：为 fixed 顶栏留出空间 */
-.reader-body, .auth-body.has-site-nav { padding-top: 66px; box-sizing: border-box; }
+/* 阅读 / 密码门 / 项目分享列表：为 fixed 顶栏留出空间 */
+.reader-body, body.has-site-nav { padding-top: 66px; box-sizing: border-box; }
 
 @media (max-width: 980px) {
   .l-nav.has-landing-links .l-nav-links { display: none; }

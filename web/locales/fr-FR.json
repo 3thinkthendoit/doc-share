@@ -941,5 +941,16 @@
   "ep.tplUpdate": "Modifier un modèle (propriétaire / admin uniquement) ; les champs omis restent inchangés, project_id / category_id à 0 délie la liaison",
   "ep.tTplUpdate": "Mettre à jour le modèle",
   "ep.tplDelete": "Supprimer un modèle ; les documents existants ne sont pas affectés",
-  "ep.tTplDelete": "Supprimer le modèle"
+  "ep.tTplDelete": "Supprimer le modèle",
+  "proj.share": "Partager",
+  "ps.modalTitle": "Paramètres de partage du projet",
+  "ps.enable": "Activer le partage du projet",
+  "ps.canEditDoc": "Autoriser les utilisateurs connectés à modifier les documents du projet",
+  "ps.docCount": "{0} documents",
+  "ps.canEdit": "Modifiable",
+  "ps.readOnly": "Lecture seule",
+  "ps.editHint": "Modification activée : les utilisateurs connectés peuvent modifier et enregistrer le contenu directement sur la page du document",
+  "ps.viewOnlyHint": "Partage en lecture seule : contactez le propriétaire du projet pour obtenir l'accès en modification",
+  "ps.open": "Ouvrir",
+  "ps.empty": "Aucun document dans ce projet pour le moment"
 }

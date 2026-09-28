@@ -113,6 +113,8 @@ func (a *App) renderSharePassword(c *gin.Context, doc *model.Document, share *mo
 		// 密码门只展示脱敏昵称，真实标题与完整昵称在验证通过前不可见
 		"owner":       util.MaskName(doc.Owner.DisplayName()),
 		"token":       token,
+		"formAction":  "/s/" + token,
+		"applyAction": "/s/" + token + "/access-request",
 		"error":       errMsg,
 		"applyStatus": applyStatus, // "" | pending | rejected
 		"allowApply":  a.Settings().AllowShareApply,
@@ -388,7 +390,9 @@ func (a *App) ListPendingAccessRequests(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": errParam})
 		return
 	}
-	q := a.DB.Model(&model.ShareAccessRequest{}).Where("status = ?", model.AccessPending)
+	// 仪表盘待审列表是「文档级」入口（链接 /console/docs/:id、审批 /console/api/docs/:id/...）。
+	// 项目级申请（document_id=0, project_id>0）在项目分享弹窗内审批，此处排除，避免管理员看到无法操作的坏链。
+	q := a.DB.Model(&model.ShareAccessRequest{}).Where("status = ? AND document_id > 0", model.AccessPending)
 	if !user.IsAdmin() {
 		q = q.Where("document_id IN (SELECT id FROM documents WHERE owner_id = ?)", user.ID)
 	}

@@ -941,5 +941,16 @@
   "ep.tplUpdate": "修改範本（僅屬主 / 管理員）；未傳欄位不修改，project_id / category_id 傳 0 表示解除綁定",
   "ep.tTplUpdate": "範本更新",
   "ep.tplDelete": "刪除範本，不影響已建立的文件",
-  "ep.tTplDelete": "範本刪除"
+  "ep.tTplDelete": "範本刪除",
+  "proj.share": "分享",
+  "ps.modalTitle": "專案分享設定",
+  "ps.enable": "開啟專案分享",
+  "ps.canEditDoc": "允許登入使用者編輯專案內文件",
+  "ps.docCount": "共 {0} 篇文件",
+  "ps.canEdit": "可編輯",
+  "ps.readOnly": "唯讀",
+  "ps.editHint": "已開啟編輯權限：登入使用者可直接在文件頁編輯並儲存內容",
+  "ps.viewOnlyHint": "唯讀分享：如需編輯權限，請聯絡專案擁有者",
+  "ps.open": "開啟",
+  "ps.empty": "此專案下沒有文件"
 }

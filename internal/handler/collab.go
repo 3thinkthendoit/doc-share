@@ -499,13 +499,21 @@ func (a *App) ShareSaveContent(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "该分享未开启编辑权限"})
 		return
 	}
+	// 带密码的分享须已解锁（属主/管理员、密码凭证或已批准的申请查看），防止绕过密码直接改内容
+	if !a.shareUnlocked(c, token, doc, share) {
+		return
+	}
+	a.saveShareContentBody(c, doc, user)
+}
+
+// saveShareContentBody 分享页编辑保存的公共实现（文档分享与项目分享共用）：
+// markdown / 画布类（mindmap/board/drawio）均可保存；乐观锁：base_version 与服务端不一致
+// 返回 409（并发编辑防覆盖），带 force=true 可强制覆盖；HTML 整站除外。
+// 调用前须已完成登录身份与编辑权限校验。
+func (a *App) saveShareContentBody(c *gin.Context, doc *model.Document, user *model.User) {
 	// HTML 整站文档不支持在线编辑（整站替换走后台接口）
 	if doc.Type != model.DocTypeMarkdown && !model.IsCanvasType(doc.Type) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "该文档类型不支持在线编辑"})
-		return
-	}
-	// 带密码的分享须已解锁（属主/管理员、密码凭证或已批准的申请查看），防止绕过密码直接改内容
-	if !a.shareUnlocked(c, token, doc, share) {
 		return
 	}
 	var req struct {

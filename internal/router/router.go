@@ -76,6 +76,13 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.DELETE("/api/projects/:id/members/me", app.LeaveProject)
 		admin.DELETE("/api/projects/:id/members/:mid", app.RemoveProjectMember)
 
+		// 项目分享（属主/管理员）：整组文档对外分享，语义同文档分享
+		admin.GET("/api/projects/:id/share", app.GetProjectShare)
+		admin.POST("/api/projects/:id/share", app.UpsertProjectShare)
+		admin.DELETE("/api/projects/:id/share", app.DeleteProjectShare)
+		admin.GET("/api/projects/:id/access-requests", app.ListProjectAccessRequests)
+		admin.POST("/api/projects/:id/access-requests/:rid", app.ReviewProjectAccessRequest)
+
 		// 成员选择器（任意登录用户，仅暴露 id/用户名/昵称）
 		admin.GET("/api/users/options", app.UserOptions)
 
@@ -218,6 +225,17 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 	r.GET("/s/:token/raw/*path", app.ShareRaw)
 	// HTML 整站文件（管理预览侧）：/console/raw/:id/<sig>/<path>，同为签名鉴权故不挂 RequireAuth
 	r.GET("/console/raw/:id/*path", app.AdminRaw)
+
+	// 项目分享：整组文档对外分享。/ps/:token 列表页，/ps/:token/d/:docId 查看/编辑
+	r.GET("/ps/:token", app.ProjectShareView)
+	r.POST("/ps/:token", app.ProjectShareSubmit)
+	r.POST("/ps/:token/access-request", app.ProjectShareAccessApply)
+	r.GET("/ps/:token/d/:docId", app.ProjectShareDocView)
+	r.GET("/ps/:token/d/:docId/comments", app.ProjectShareListComments)
+	r.POST("/ps/:token/d/:docId/comments", app.ProjectShareAddComment)
+	r.PUT("/ps/:token/d/:docId/content", app.ProjectShareSaveContent)
+	// HTML 整站文件（项目分享侧）：凭路径内短时签名，理由同 /s/:token/raw
+	r.GET("/ps/:token/d/:docId/raw/*path", app.ProjectShareRaw)
 
 	// 官网首页（公开）；可选认证注入登录态，供首页按用户状态切换 CTA
 	r.GET("/", middleware.OptionalAuth(app.DB, app.Signer), app.Home)

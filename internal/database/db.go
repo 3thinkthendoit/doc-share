@@ -39,7 +39,7 @@ func Init(cfg *config.Config) (*gorm.DB, error) {
 	sqlDB.SetMaxOpenConns(cfg.Database.MaxOpenConn)
 	sqlDB.SetMaxIdleConns(cfg.Database.MaxIdleConn)
 
-	if err := db.AutoMigrate(&model.User{}, &model.Project{}, &model.Category{}, &model.ApiKey{}, &model.Document{}, &model.Share{}, &model.ShareAccessRequest{}, &model.SystemSetting{},
+	if err := db.AutoMigrate(&model.User{}, &model.Project{}, &model.Category{}, &model.ApiKey{}, &model.Document{}, &model.Share{}, &model.ProjectShare{}, &model.ShareAccessRequest{}, &model.SystemSetting{},
 		&model.DocumentRevision{}, &model.Comment{}, &model.DocumentVisitor{}, &model.ProjectMember{}, &model.Message{}, &model.DocTemplate{}); err != nil {
 		return nil, fmt.Errorf("auto migrate: %w", err)
 	}
