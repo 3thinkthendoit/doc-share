@@ -1,0 +1,74 @@
+{{define "templates.html"}}
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>{{template "head" .}}</head>
+<body>
+{{template "nav" .}}
+<main class="container">
+  <div class="page-head">
+    <h1>{{$.T "tpl.title"}}</h1>
+    <button class="btn btn-primary" id="btnNewTemplate">{{$.T "tpl.new"}}</button>
+  </div>
+
+  <div class="doc-callout">{{$.T "tpl.hint"}}</div>
+
+  <form method="get" action="/console/templates" class="search-bar filter-bar">
+    <input type="hidden" name="size" value="{{.size}}">
+    <input type="text" name="q" placeholder="{{$.T "tpl.filterName"}}" value="{{.q}}">
+    <button type="submit" class="btn">{{$.T "docs.query"}}</button>
+    <a href="/console/templates?size={{.size}}" class="btn">{{$.T "docs.reset"}}</a>
+  </form>
+
+  <div class="panel">
+    <table class="table" id="templateTable">
+      <thead>
+        <tr><th>{{$.T "common.name"}}</th><th>{{$.T "tpl.colType"}}</th><th>{{$.T "edit.project"}}</th><th>{{$.T "edit.category"}}</th>{{if and .user .user.IsAdmin}}<th>{{$.T "common.owner"}}</th>{{end}}<th>{{$.T "common.updatedAt"}}</th><th>{{$.T "common.actions"}}</th></tr>
+      </thead>
+      <tbody>
+        {{range .templates}}
+        <tr>
+          <td>{{.Name}}</td>
+          <td><span class="tag">{{if eq .Type "mindmap"}}{{$.T "docs.tagMindmap"}}{{else if eq .Type "board"}}{{$.T "docs.tagBoard"}}{{else if eq .Type "drawio"}}{{$.T "docs.tagDrawio"}}{{else if eq .Type "html"}}{{$.T "docs.typeHTML"}}{{else}}Markdown{{end}}</span></td>
+          <td>{{if .Project}}{{.Project.Name}}{{else}}—{{end}}</td>
+          <td>{{if .Category}}{{.Category.Name}}{{else}}—{{end}}</td>
+          {{if and $.user $.user.IsAdmin}}<td>{{if .Owner.ID}}{{.Owner.DisplayName}}{{else}}—{{end}}</td>{{end}}
+          <td>{{.UpdatedAt.Format "2006-01-02 15:04"}}</td>
+          <td class="col-actions">
+            <a class="btn btn-sm btn-primary" href="/console/docs/new?template={{.ID}}">{{$.T "tpl.use"}}</a>
+            {{if $.user}}{{if or ($.user.IsAdmin) (eq .OwnerID $.user.ID)}}
+            <a class="btn btn-sm" href="/console/templates/{{.ID}}/edit">{{$.T "common.edit"}}</a>
+            <button class="btn btn-sm btn-danger" data-id="{{.ID}}" data-name="{{.Name}}" onclick="delTemplate(this)">{{$.T "docs.del"}}</button>
+            {{end}}{{end}}
+          </td>
+        </tr>
+        {{else}}
+        <tr class="empty-row"><td colspan="{{if and $.user $.user.IsAdmin}}7{{else}}6{{end}}">{{$.T "tpl.empty"}}</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+
+  {{template "pager" .}}
+</main>
+
+<!-- 新建模板：选择类型（与新建文档同构，进入对应编辑器；HTML 整站不支持模板） -->
+<div class="modal-overlay" id="tplTypeModal" hidden>
+  <div class="modal modal-sm" role="dialog" aria-modal="true" aria-label="{{$.T "tpl.pickType"}}">
+    <div class="modal-head">
+      <h2>{{$.T "tpl.pickType"}}</h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "common.close"}}">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="tplTypeGrid" class="doc-type-grid"><!-- 卡片由脚本按 TPL_TYPES 渲染 --></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  window.TPL_DRAWIO = {{if .DrawioURL}}true{{else}}false{{end}};
+</script>
+<script src="/static/templates.js"></script>
+{{template "adminfoot" .}}
+</body>
+</html>
+{{end}}

@@ -164,6 +164,24 @@ type Document struct {
 	Share *Share `gorm:"foreignKey:DocumentID" json:"share,omitempty"`
 }
 
+// DocTemplate 文档模板：用户维护的文档初始内容（不支持 html 整站类型）。
+// ProjectID=0 表示个人私有（仅自己可用）；绑定项目后该项目内所有成员可见可用；
+// CategoryID 绑定后创建文档时作为默认分类带入（仅当使用者拥有该分类时生效）
+type DocTemplate struct {
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	Name       string    `gorm:"size:100;not null" json:"name"`
+	Type       string    `gorm:"size:16;not null;default:markdown" json:"type"` // markdown / mindmap / board / drawio
+	Content    string    `gorm:"type:longtext" json:"content"`
+	OwnerID    uint      `gorm:"index;not null" json:"owner_id"`
+	Owner      User      `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
+	ProjectID  uint      `gorm:"index;not null;default:0" json:"project_id"` // 0=个人私有
+	Project    *Project  `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
+	CategoryID uint      `gorm:"index;not null;default:0" json:"category_id"` // 0=不指定分类
+	Category   *Category `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
 // Share 文档分享配置（与 Document 一对一）
 type Share struct {
 	ID         uint       `gorm:"primaryKey" json:"id"`

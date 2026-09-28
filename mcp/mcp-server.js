@@ -382,6 +382,73 @@ const TOOLS = [
       return apiCall('DELETE', `/openapi/v1/categories/${Number(args.id)}`);
     },
   },
+  {
+    name: 'docshare_list_templates',
+    description: '列出文档模板（分页，不含内容）：自己创建的 + 绑定到所参与项目的（项目成员可共用）',
+    schema: {
+      type: 'object',
+      properties: {
+        page: { type: 'number', description: '页码，从 1 开始，默认 1' },
+        size: { type: 'number', description: '每页条数，1~100，默认 15' },
+      },
+    },
+    async run(args) {
+      return apiCall('GET', '/openapi/v1/templates', args);
+    },
+  },
+  {
+    name: 'docshare_get_template',
+    description: '读取模板完整内容（markdown 正文 / 画布 JSON / drawio mxfile XML），可作为创建文档的初始内容范例',
+    schema: { type: 'object', properties: { id: num }, required: ['id'] },
+    async run(args) {
+      return apiCall('GET', `/openapi/v1/templates/${Number(args.id)}`);
+    },
+  },
+  {
+    name: 'docshare_create_template',
+    description: '创建文档模板：type 支持 markdown / mindmap / board / drawio（html 整站不支持）',
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: '模板名称（必填，≤100 字）' },
+        type: { type: 'string', enum: ['markdown', 'mindmap', 'board', 'drawio'], description: '文档类型，默认 markdown' },
+        content: { type: 'string', description: '模板初始内容：markdown 正文 / 画布 JSON / drawio mxfile XML 字符串' + CANVAS_DOC },
+        project_id: { type: 'number', description: '绑定项目 ID（可选；绑定后项目成员可共用该模板，0=个人私有）' },
+        category_id: { type: 'number', description: '绑定分类 ID（可选；用模板创建文档时默认带入该分类，0=不绑定）' },
+      },
+      required: ['name'],
+    },
+    async run(args) {
+      return apiCall('POST', '/openapi/v1/templates', null, clean(args));
+    },
+  },
+  {
+    name: 'docshare_update_template',
+    description: '更新模板（仅属主可操作；未传字段不修改，project_id / category_id 传 0 表示解除绑定）',
+    schema: {
+      type: 'object',
+      properties: {
+        id: num,
+        name: { type: 'string', description: '模板名称' },
+        type: { type: 'string', enum: ['markdown', 'mindmap', 'board', 'drawio'], description: '文档类型' },
+        content: { type: 'string', description: '模板内容（传值整体覆盖，未传不修改）' },
+        project_id: { type: 'number', description: '绑定项目 ID（0=个人私有）' },
+        category_id: { type: 'number', description: '绑定分类 ID（0=不绑定）' },
+      },
+      required: ['id'],
+    },
+    async run(args) {
+      return apiCall('PUT', `/openapi/v1/templates/${Number(args.id)}`, null, clean(args));
+    },
+  },
+  {
+    name: 'docshare_delete_template',
+    description: '删除模板（仅属主可操作，不影响已创建的文档）',
+    schema: { type: 'object', properties: { id: num }, required: ['id'] },
+    async run(args) {
+      return apiCall('DELETE', `/openapi/v1/templates/${Number(args.id)}`);
+    },
+  },
 ];
 
 /* ---------- MCP stdio（JSON-RPC 2.0，按行分帧） ---------- */
@@ -415,7 +482,7 @@ function handleLine(line) {
     reply(id, {
       protocolVersion: ver,
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: 'docshare-mcp', version: '1.0.0' },
+      serverInfo: { name: 'docshare-mcp', version: '1.1.0' },
     });
     return;
   }

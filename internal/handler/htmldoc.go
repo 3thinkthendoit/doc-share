@@ -362,6 +362,54 @@ func (a *App) putSiteFiles(ctx context.Context, prefix string, files []siteFile)
 	return m, written, nil
 }
 
+// copyHTMLSiteFiles 把整站文件从旧前缀复制到新前缀（复制文档用）；任一失败即返回
+func (a *App) copyHTMLSiteFiles(ctx context.Context, oldPrefix, newPrefix string, names []string) error {
+	backend, err := a.fileStorage()
+	if err != nil {
+		return err
+	}
+	for _, name := range names {
+		rc, size, err := backend.Get(ctx, oldPrefix+name)
+		if err != nil {
+			return fmt.Errorf("读取 %s 失败: %w", name, err)
+		}
+		_, err = backend.Put(ctx, newPrefix+name, rc, size, siteContentType(name))
+		rc.Close()
+		if err != nil {
+			return fmt.Errorf("写入 %s 失败: %w", name, err)
+		}
+	}
+	return nil
+}
+
+// duplicateHTMLSite 为复制的 HTML 整站文档复制站点文件，并把新文档 manifest 指向新前缀。
+// 任一步失败由调用方删除新文档（本函数会尽力清理已复制文件）
+func (a *App) duplicateHTMLSite(c *gin.Context, src *model.Document, newDoc *model.Document) error {
+	m, err := parseHTMLManifest(src.Content)
+	if err != nil {
+		return err
+	}
+	newPrefix := fmt.Sprintf("html/%d/%s/", newDoc.ID, util.RandomSlug(8))
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
+	defer cancel()
+	if err := a.copyHTMLSiteFiles(ctx, m.Prefix, newPrefix, m.Files); err != nil {
+		// 部分文件已写入新前缀：尽力清理，避免残留孤儿站点文件
+		a.deleteSiteFilesAsync(htmlSiteKeys(&HTMLSiteManifest{Prefix: newPrefix, Files: m.Files}))
+		return err
+	}
+	m.Prefix = newPrefix
+	content, err := m.toJSON()
+	if err != nil {
+		a.deleteSiteFilesAsync(htmlSiteKeys(m))
+		return err
+	}
+	if err := a.DB.Model(&model.Document{}).Where("id = ?", newDoc.ID).Update("content", content).Error; err != nil {
+		a.deleteSiteFilesAsync(htmlSiteKeys(m))
+		return err
+	}
+	return nil
+}
+
 // deleteSiteFilesAsync 后台清理整站文件（替换旧版本 / 删除文档）
 func (a *App) deleteSiteFilesAsync(keys []string) {
 	if len(keys) == 0 {

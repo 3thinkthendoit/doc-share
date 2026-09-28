@@ -80,8 +80,13 @@
   function hasSaveableContent() {
     return !!(String(titleEl && titleEl.value || '').trim() || String(contentEl.value || '').trim());
   }
+  // 模板编辑模式：本页复用为「新增/编辑模板」，保存走 /console/api/templates，无分享/历史版本
+  var TPL_MODE = !!window.TPL_MODE;
+  function tplID() { return window.TPL_ID || 0; }
+
   function effectiveTitle() {
     var t = String(titleEl && titleEl.value || '').trim();
+    if (TPL_MODE) return t; // 模板名称留空由服务端校验，避免误填「未命名文档」
     return t || UI.t('edit.untitled');
   }
   var timer = null;
@@ -95,6 +100,48 @@
   var catEl = document.getElementById('docCategory');
   if (projEl) projEl.addEventListener('change', markDirty);
   if (catEl) catEl.addEventListener('change', markDirty);
+
+  // 从模板创建：预填内容与归属（内容非空时先确认再替换，避免误覆盖已输入文字）
+  function applyTemplateData(tpl, force) {
+    if (!tpl) return;
+    if (tpl.content != null && (force || !contentEl.value)) contentEl.value = tpl.content;
+    if (projEl && tpl.project_id) projEl.value = String(tpl.project_id);
+    if (catEl && tpl.category_id) catEl.value = String(tpl.category_id);
+  }
+  (function bindTemplateSelect() {
+    var tplSel = document.getElementById('docTemplate');
+    if (window.DOC_TEMPLATE) {
+      applyTemplateData(window.DOC_TEMPLATE);
+      if (tplSel && window.DOC_TEMPLATE.id) tplSel.value = String(window.DOC_TEMPLATE.id);
+    }
+    if (!tplSel) return;
+    tplSel.addEventListener('change', async function () {
+      var id = tplSel.value;
+      if (!id || id === '0') return;
+      try {
+        var res = await fetch('/console/api/templates/' + id + '/apply', {
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+        var data = await res.json();
+        if (!res.ok) { UI.toast((data && data.error) || UI.t('tpl.loadFail'), 'error'); tplSel.value = '0'; return; }
+        var tpl = data && data.data;
+        if (!tpl) return;
+        // 画布类模板进入对应编辑器（mindmap/board/drawio 是独立编辑页）
+        if (tpl.type && tpl.type !== 'markdown') {
+          location.href = '/console/docs/new?template=' + id;
+          return;
+        }
+        if (tpl.content != null && contentEl.value.trim()) {
+          var ok = await UI.confirm(UI.t('tpl.replaceConfirm'));
+          if (!ok) { tplSel.value = '0'; return; }
+        }
+        applyTemplateData(tpl, true);
+        doPreview();
+      } catch (e) {
+        UI.toast(UI.t('common.netErr'), 'error');
+      }
+    });
+  })();
   doPreview();
 
   // Markdown 工具栏
@@ -756,11 +803,17 @@
   ensureEditingHeartbeat();
 
   function buildSavePayload() {
+    var name = effectiveTitle();
+    var proj = parseInt((projEl && projEl.value) || '0', 10) || 0;
+    var cat = parseInt((catEl && catEl.value) || '0', 10) || 0;
+    if (TPL_MODE) {
+      return { name: name, type: 'markdown', content: contentEl.value, project_id: proj, category_id: cat };
+    }
     return {
-      title: effectiveTitle(),
+      title: name,
       content: contentEl.value,
-      project_id: parseInt((projEl && projEl.value) || '0', 10) || 0,
-      category_id: parseInt((catEl && catEl.value) || '0', 10) || 0
+      project_id: proj,
+      category_id: cat
     };
   }
 
@@ -768,10 +821,14 @@
   var leaveFlushed = false;
   function flushSaveOnLeave() {
     if (leaveFlushed || !saveBtn || !dirty || saving || !hasSaveableContent()) return;
+    // 模板模式：未保存过或名称为空时无需补存（省一次必然 400 的请求）
+    if (TPL_MODE && (!tplID() || !String(titleEl && titleEl.value || '').trim())) return;
     leaveFlushed = true;
-    var id = docID();
+    var id = TPL_MODE ? tplID() : docID();
     var payload = buildSavePayload();
-    var url = id ? '/console/api/docs/' + id : '/console/api/docs';
+    var url = id
+      ? (TPL_MODE ? '/console/api/templates/' + id : '/console/api/docs/' + id)
+      : (TPL_MODE ? '/console/api/templates' : '/console/api/docs');
     var method = id ? 'PUT' : 'POST';
     try {
       fetch(url, {
@@ -799,19 +856,26 @@
     opts = opts || {};
     if (!saveBtn && !opts.auto) return;
     if (opts.auto && !hasSaveableContent()) return;
+    // 模板名称必填：留空直接提示，不发请求（必须在置位 saving 之前，否则状态卡死）
+    if (TPL_MODE && !String(titleEl && titleEl.value || '').trim()) {
+      if (!opts.auto) { UI.toast(UI.t('err.tplNameEmpty'), 'error'); if (titleEl) titleEl.focus(); }
+      return;
+    }
     if (saving) return;
     saving = true;
     setSaveBtn(UI.t('edit.saving'), true);
 
-    var id = docID();
+    var id = TPL_MODE ? tplID() : docID();
     var payload = buildSavePayload();
-    var title = payload.title;
+    var title = TPL_MODE ? payload.name : payload.title;
     // 记下本次提交快照：保存过程中若用户继续改，成功后不能清 dirty
     var snapContent = payload.content;
-    var snapTitle = payload.title;
+    var snapTitle = title;
     var snapProj = payload.project_id;
     var snapCat = payload.category_id;
-    var url = id ? '/console/api/docs/' + id : '/console/api/docs';
+    var url = id
+      ? (TPL_MODE ? '/console/api/templates/' + id : '/console/api/docs/' + id)
+      : (TPL_MODE ? '/console/api/templates' : '/console/api/docs');
     var method = id ? 'PUT' : 'POST';
     var res, data;
     try {
@@ -837,14 +901,21 @@
     }
     autoSaveFails = 0;
     if (!id && data && data.data && data.data.id) {
-      window.DOC_ID = data.data.id;
-      try {
-        history.replaceState(null, '', '/console/docs/' + data.data.id + '/edit');
-      } catch (e) { /* ignore */ }
-      if (titleEl && !String(titleEl.value || '').trim()) {
-        titleEl.value = title;
+      if (TPL_MODE) {
+        window.TPL_ID = data.data.id;
+        try {
+          history.replaceState(null, '', '/console/templates/' + data.data.id + '/edit');
+        } catch (e) { /* ignore */ }
+      } else {
+        window.DOC_ID = data.data.id;
+        try {
+          history.replaceState(null, '', '/console/docs/' + data.data.id + '/edit');
+        } catch (e) { /* ignore */ }
+        if (titleEl && !String(titleEl.value || '').trim()) {
+          titleEl.value = title;
+        }
+        ensureEditingHeartbeat();
       }
-      ensureEditingHeartbeat();
       if (!opts.auto) UI.toast('创建成功', 'success');
     } else if (!opts.auto) {
       UI.toast('保存成功', 'success');

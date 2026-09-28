@@ -85,6 +85,16 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.PUT("/api/categories/:id", app.UpdateCategory)
 		admin.DELETE("/api/categories/:id", app.DeleteCategory)
 
+		// 文档模板（个人归属；绑定项目后项目成员可共用）
+		admin.GET("/templates", app.TemplatesPage)
+		admin.GET("/templates/new", app.TemplateNewPage)
+		admin.GET("/templates/:id/edit", app.TemplateEditPage)
+		admin.GET("/api/templates/options", app.TemplateOptions)
+		admin.GET("/api/templates/:id/apply", app.TemplateApply)
+		admin.POST("/api/templates", app.CreateTemplate)
+		admin.PUT("/api/templates/:id", app.UpdateTemplate)
+		admin.DELETE("/api/templates/:id", app.DeleteTemplate)
+
 		// API 密钥管理（个人归属，viewer 管自己的）
 		admin.GET("/apikeys", app.APIKeysPage)
 		admin.POST("/api/apikeys", app.CreateAPIKey)
@@ -100,6 +110,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.PUT("/api/docs/:id/html", app.ReplaceHTMLDoc)
 		admin.POST("/api/docs/:id/editing", app.MarkEditing)
 		admin.POST("/api/docs/:id/share", app.UpsertShare)
+		admin.POST("/api/docs/:id/duplicate", app.DuplicateDoc)
 		admin.DELETE("/api/docs/:id/share", app.DeleteShare)
 		admin.GET("/api/docs/:id/access-requests", app.ListAccessRequests)
 		admin.POST("/api/docs/:id/access-requests/:rid", app.ReviewAccessRequest)
@@ -185,6 +196,13 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		open.GET("/docs/:id/share", app.OpenGetShare)
 		open.POST("/docs/:id/share", app.UpsertShare)
 		open.DELETE("/docs/:id/share", app.DeleteShare)
+
+		// 文档模板（可见范围与 Web 端一致；写接口直接复用后台 handler）
+		open.GET("/templates", app.OpenListTemplates)
+		open.GET("/templates/:id", app.OpenGetTemplate)
+		open.POST("/templates", app.CreateTemplate)
+		open.PUT("/templates/:id", app.UpdateTemplate)
+		open.DELETE("/templates/:id", app.DeleteTemplate)
 	}
 
 	// 分享

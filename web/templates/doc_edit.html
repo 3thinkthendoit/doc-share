@@ -10,24 +10,32 @@
 <main class="container wide">
   <div class="page-head page-head-edit">
     <div class="head-title">
-      <h1>{{if .doc}}{{$.T "编辑文档"}}{{else}}{{$.T "新建文档"}}{{end}}</h1>
+      <h1>{{if .tplMode}}{{if .tpl}}{{$.T "tpl.editTitle"}}{{else}}{{$.T "tpl.new"}}{{end}}{{else if .doc}}{{$.T "编辑文档"}}{{else}}{{$.T "新建文档"}}{{end}}</h1>
       <div class="head-meta">
         <label class="meta-select">{{$.T "项目"}}
           <select id="docProject">
             <option value="0">{{$.T "未分组"}}</option>
-            {{range .projects}}<option value="{{.ID}}" {{if and $.doc (eq $.doc.ProjectID .ID)}}selected{{end}}>{{.Name}}</option>{{end}}
+            {{range .projects}}<option value="{{.ID}}" {{if or (and $.doc (eq $.doc.ProjectID .ID)) (and $.tpl (eq $.tpl.ProjectID .ID))}}selected{{end}}>{{.Name}}</option>{{end}}
           </select>
         </label>
         <label class="meta-select">{{$.T "分类"}}
           <select id="docCategory">
             <option value="0">{{$.T "未分类"}}</option>
-            {{range .categories}}<option value="{{.ID}}" {{if and $.doc (eq $.doc.CategoryID .ID)}}selected{{end}}>{{.Name}}</option>{{end}}
+            {{range .categories}}<option value="{{.ID}}" {{if or (and $.doc (eq $.doc.CategoryID .ID)) (and $.tpl (eq $.tpl.CategoryID .ID))}}selected{{end}}>{{.Name}}</option>{{end}}
           </select>
         </label>
+        {{if and (not .doc) (not .tplMode)}}
+        <label class="meta-select">{{$.T "tpl.fromTemplate"}}
+          <select id="docTemplate">
+            <option value="0">{{$.T "tpl.none"}}</option>
+            {{range .templates}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+          </select>
+        </label>
+        {{end}}
       </div>
     </div>
     <div class="head-side">
-      <a href="/console/docs" class="btn">{{$.T "返回列表"}}</a>
+      <a href="{{if .tplMode}}/console/templates{{else}}/console/docs{{end}}" class="btn">{{$.T "返回列表"}}</a>
       {{if and .doc .canEditDoc}}<button id="shareBtn" class="btn">{{$.T "分享"}}</button>{{end}}
       {{if .doc}}<button type="button" id="revisionsBtn" class="btn">{{$.T "revisions.title"}}</button>{{end}}
       {{if .canEditDoc}}<button id="saveBtn" class="btn btn-primary" type="button">{{$.T "保存"}}</button>{{end}}
@@ -35,13 +43,14 @@
   </div>
 
   <div id="editingBanner" class="editing-banner" hidden></div>
+  {{if .tplWarn}}<div class="doc-callout">{{$.T "tpl.warnInvalid"}}</div>{{end}}
   <div class="edit-pane-tabs" role="tablist" aria-label="{{$.T "edit.preview"}}">
     <button type="button" class="edit-pane-tab active" role="tab" aria-selected="true" data-edit-pane="write">{{$.T "docs.edit"}}</button>
     <button type="button" class="edit-pane-tab" role="tab" aria-selected="false" data-edit-pane="preview">{{$.T "edit.preview"}}</button>
   </div>
   <div class="edit-grid">
     <div class="edit-left">
-      <input type="text" id="docTitle" class="input-title" placeholder="{{$.T "文档标题"}}" value="{{if .doc}}{{.doc.Title}}{{end}}">
+      <input type="text" id="docTitle" class="input-title" placeholder="{{if .tplMode}}{{$.T "tpl.namePh"}}{{else}}{{$.T "文档标题"}}{{end}}" value="{{if .doc}}{{.doc.Title}}{{else if .tpl}}{{.tpl.Name}}{{end}}">
       <div class="md-toolbar">
         <button type="button" data-md="bold" title="{{$.T "加粗 Ctrl+B"}}"><strong>B</strong></button>
         <button type="button" data-md="italic" title="{{$.T "斜体 Ctrl+I"}}"><em>I</em></button>
@@ -70,7 +79,7 @@
         <input type="file" id="uploadInput" accept=".png,.jpg,.jpeg,.gif,.webp,.bmp" hidden>
         <input type="file" id="importInput" accept=".pdf,.doc,.docx" hidden>
       </div>
-      <textarea id="docContent" class="editor" placeholder="{{$.T "# 在此输入 Markdown..."}}">{{if .doc}}{{.doc.Content}}{{end}}</textarea>
+      <textarea id="docContent" class="editor" placeholder="{{$.T "# 在此输入 Markdown..."}}">{{if .doc}}{{.doc.Content}}{{else if .tpl}}{{.tpl.Content}}{{end}}</textarea>
     </div>
     <div class="edit-right">
       <div class="preview-head">{{$.T "预览"}}</div>
@@ -152,6 +161,10 @@
 <script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/core.min.js"></script>
 <script>
   window.DOC_ID = {{if .doc}}{{.doc.ID}}{{else}}0{{end}};
+  // 模板编辑模式（新增/编辑模板复用本页）：保存走 /console/api/templates，无分享
+  window.TPL_MODE = {{if .tplMode}}true{{else}}false{{end}};
+  window.TPL_ID = {{if and .tplMode .tpl}}{{.tpl.ID}}{{else}}0{{end}};
+  window.DOC_TEMPLATE = {{if and .tpl (not .tplMode)}}{{.tpl}}{{else}}null{{end}};
 </script>
 <script src="/static/mindmap_toolbar.js"></script>
 <script src="/static/drawio_editor.js"></script>

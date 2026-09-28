@@ -57,20 +57,20 @@
           <tbody>
           {{range .docs}}
             <tr>
-              <td>
+              <td class="cell-title">
                 {{/* 点击标题统一进阅读预览页；编辑入口在「操作」菜单 */}}
-                <a href="/console/docs/{{.ID}}/preview" target="_blank">{{.Title}}</a>
+                <a href="/console/docs/{{.ID}}/preview" target="_blank" title="{{.Title}}">{{.Title}}</a>
                 {{if $.embedTags}}{{with index $.embedTags .ID}}
                 <div class="doc-embed-tags">
                   {{range .}}<span class="tag tag-embed">{{$.T .}}</span>{{end}}
                 </div>
                 {{end}}{{end}}
-                <div class="muted mono">{{.Slug}}</div>
+                <div class="muted mono" title="{{.Slug}}">{{.Slug}}</div>
               </td>
               <td>{{if eq .Type "html"}}<span class="tag tag-embed">HTML</span>{{else if eq .Type "mindmap"}}<span class="tag tag-embed">{{$.T "docs.tagMindmap"}}</span>{{else if eq .Type "board"}}<span class="tag tag-embed">{{$.T "docs.tagBoard"}}</span>{{else if eq .Type "drawio"}}<span class="tag tag-embed">{{$.T "docs.tagDrawio"}}</span>{{else}}<span class="muted">Markdown</span>{{end}}</td>
-              <td>{{if .Project}}{{.Project.Name}}{{else}}<span class="muted">—</span>{{end}}</td>
-              <td>{{if .Category}}{{.Category.Name}}{{else}}<span class="muted">—</span>{{end}}</td>
-              <td>{{if .Owner.ID}}<span class="owner-link" data-name="{{.Owner.DisplayName}}" data-username="{{.Owner.Username}}" data-avatar="{{.Owner.Avatar}}" data-email="{{.Owner.MaskedEmail}}" data-phone="{{.Owner.MaskedPhone}}" data-active="{{if .Owner.LastActiveAt}}{{.Owner.LastActiveAt.Format "2006-01-02 15:04"}}{{end}}">{{.Owner.DisplayName}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
+              <td class="cell-clip" {{if .Project}}title="{{.Project.Name}}"{{end}}>{{if .Project}}{{.Project.Name}}{{else}}<span class="muted">—</span>{{end}}</td>
+              <td class="cell-clip" {{if .Category}}title="{{.Category.Name}}"{{end}}>{{if .Category}}{{.Category.Name}}{{else}}<span class="muted">—</span>{{end}}</td>
+              <td class="cell-clip">{{if .Owner.ID}}{{if and $.user (eq .OwnerID $.user.ID)}}<span class="me-badge"><svg class="me-ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg>{{$.T "docs.me"}}</span>{{else}}<span class="owner-link" title="{{.Owner.DisplayName}}" data-name="{{.Owner.DisplayName}}" data-username="{{.Owner.Username}}" data-avatar="{{.Owner.Avatar}}" data-email="{{.Owner.MaskedEmail}}" data-phone="{{.Owner.MaskedPhone}}" data-active="{{if .Owner.LastActiveAt}}{{.Owner.LastActiveAt.Format "2006-01-02 15:04"}}{{end}}">{{.Owner.DisplayName}}</span>{{end}}{{else}}<span class="muted">—</span>{{end}}</td>
               <td>{{.ViewCount}}</td>
               <td>{{if .IsShared}}<span class="tag tag-green">{{$.T "已分享"}}</span>{{else}}<span class="tag">{{$.T "未分享"}}</span>{{end}}</td>
               <td>
@@ -79,9 +79,9 @@
                 {{else}}<span class="tag" style="color:var(--muted)">{{$.T "docs.permPrivate"}}</span>{{end}}
               </td>
               <td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
-              <td>
-                {{if .UpdatedByID}}{{if .UpdatedBy}}<span class="owner-link" data-name="{{.UpdatedBy.DisplayName}}" data-username="{{.UpdatedBy.Username}}" data-avatar="{{.UpdatedBy.Avatar}}" data-email="{{.UpdatedBy.MaskedEmail}}" data-phone="{{.UpdatedBy.MaskedPhone}}" data-active="{{if .UpdatedBy.LastActiveAt}}{{.UpdatedBy.LastActiveAt.Format "2006-01-02 15:04"}}{{end}}">{{if eq .UpdatedVia "api"}}{{$.T "openapi.name"}}{{else}}{{.UpdatedBy.DisplayName}}{{end}}</span>{{else}}<span class="muted">—</span>{{end}}
-                {{else}}<span class="owner-link" data-name="{{.Owner.DisplayName}}" data-username="{{.Owner.Username}}" data-avatar="{{.Owner.Avatar}}" data-email="{{.Owner.MaskedEmail}}" data-phone="{{.Owner.MaskedPhone}}" data-active="{{if .Owner.LastActiveAt}}{{.Owner.LastActiveAt.Format "2006-01-02 15:04"}}{{end}}">{{.Owner.DisplayName}}</span>{{end}}
+              <td class="cell-clip">
+                {{if .UpdatedByID}}{{if .UpdatedBy}}{{if and $.user (eq .UpdatedByID $.user.ID)}}<span class="me-badge"><svg class="me-ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg>{{$.T "docs.me"}}</span>{{else}}<span class="owner-link" title="{{if eq .UpdatedVia "api"}}{{$.T "openapi.name"}}{{else}}{{.UpdatedBy.DisplayName}}{{end}}" data-name="{{.UpdatedBy.DisplayName}}" data-username="{{.UpdatedBy.Username}}" data-avatar="{{.UpdatedBy.Avatar}}" data-email="{{.UpdatedBy.MaskedEmail}}" data-phone="{{.UpdatedBy.MaskedPhone}}" data-active="{{if .UpdatedBy.LastActiveAt}}{{.UpdatedBy.LastActiveAt.Format "2006-01-02 15:04"}}{{end}}">{{if eq .UpdatedVia "api"}}{{$.T "openapi.name"}}{{else}}{{.UpdatedBy.DisplayName}}{{end}}</span>{{end}}{{else}}<span class="muted">—</span>{{end}}
+                {{else}}{{if and $.user (eq .OwnerID $.user.ID)}}<span class="me-badge"><svg class="me-ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg>{{$.T "docs.me"}}</span>{{else}}<span class="owner-link" title="{{.Owner.DisplayName}}" data-name="{{.Owner.DisplayName}}" data-username="{{.Owner.Username}}" data-avatar="{{.Owner.Avatar}}" data-email="{{.Owner.MaskedEmail}}" data-phone="{{.Owner.MaskedPhone}}" data-active="{{if .Owner.LastActiveAt}}{{.Owner.LastActiveAt.Format "2006-01-02 15:04"}}{{end}}">{{.Owner.DisplayName}}</span>{{end}}{{end}}
               </td>
               <td>{{.UpdatedAt.Format "2006-01-02 15:04"}}</td>
               <td class="col-actions">
@@ -89,13 +89,14 @@
                   <button type="button" class="btn btn-sm ops-toggle">{{$.T "操作"}} <span class="chip-caret">▾</span></button>
                   <div class="ops-menu" hidden>
                     {{if and $.user (or $.user.IsAdmin (eq $.user.ID .OwnerID))}}
-                    <button type="button" class="ops-item" data-op="share" data-id="{{.ID}}" data-title="{{.Title}}" data-shared="{{if .IsShared}}1{{else}}0{{end}}" data-canedit="{{if .Share}}{{if .Share.CanEdit}}1{{end}}{{end}}" data-haspwd="{{if .Share}}{{if .Share.HasPassword}}1{{end}}{{end}}" data-token="{{if .Share}}{{.Share.ShareToken}}{{end}}">{{$.T "分享设置"}}</button>
+                    <button type="button" class="ops-item" data-op="share" data-id="{{.ID}}" data-title="{{.Title}}" data-shared="{{if .IsShared}}1{{else}}0{{end}}" data-canedit="{{if .Share}}{{if .Share.CanEdit}}1{{end}}{{end}}" data-haspwd="{{if .Share}}{{if .Share.HasPassword}}1{{end}}{{end}}" data-token="{{if .Share}}{{.Share.ShareToken}}{{end}}">{{$.T "docs.colShare"}}</button>
                     {{end}}
                     {{if .IsShared}}{{if .Share}}
                     <a class="ops-item" href="/s/{{.Share.ShareToken}}" target="_blank" rel="noopener">{{$.T "查看"}}</a>
                     {{end}}{{end}}
                     {{if and $.canEdit (index $.canEdit .ID)}}
                     <a class="ops-item" href="/console/docs/{{.ID}}/edit">{{$.T "编辑"}}</a>
+                    <button type="button" class="ops-item" data-op="dup" data-id="{{.ID}}" data-title="{{.Title}}">{{$.T "common.copy"}}</button>
                     <button type="button" class="ops-item ops-danger" data-op="del" data-id="{{.ID}}">{{$.T "删除"}}</button>
                     {{end}}
                   </div>
@@ -208,6 +209,12 @@
 {{template "shareSettingsModal" .}}
 <style>
 .modal-sm{width:440px}
+/* 标题列允许换行占满剩余宽度，表格可收缩到容器宽度，避免横向滚动 */
+.docs-main .table{min-width:0}
+.docs-main .table th.cell-title,.docs-main .table td.cell-title{white-space:normal}
+.docs-main .table td.cell-title .muted{display:block;overflow:hidden;text-overflow:ellipsis}
+/* 项目/分类/所有者等短列限宽截断兜底，防止长名称再次撑出横向滚动 */
+.docs-main .table td.cell-clip{max-width:160px;overflow:hidden;text-overflow:ellipsis}
 /* overflow:visible：内容较短无需滚动；否则会裁掉 .xsel 自定义下拉的浮层 */
 .import-body{padding:22px;overflow:visible}
 /* 操作下拉按钮组：fixed 定位避免被 .panel 的 overflow 裁剪 */
@@ -222,17 +229,7 @@
 .import-drop:hover,.import-drop.dragover{border-color:var(--primary);background:var(--bg-soft)}
 .import-drop strong{font-size:14px}
 .import-drop .muted{font-size:12.5px}
-/* 新建文档类型选择：每行一项、卡片固定宽度居中，整体间距适中 */
-#docTypeModal .modal-head{padding-bottom:16px}
-#docTypeModal .modal-body{padding:16px 22px 18px}
-.doc-type-grid{display:flex;flex-direction:column;align-items:center;gap:12px}
-.doc-type-card{display:inline-flex;align-items:center;gap:12px;width:340px;max-width:100%;padding:11px 16px 11px 12px;border:1px solid var(--border);border-radius:12px;background:var(--panel);cursor:pointer;text-align:left;font-family:inherit;transition:all .15s}
-.doc-type-card:hover{border-color:var(--primary);background:var(--primary-soft)}
-.doc-type-icon{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:var(--primary-soft);color:var(--primary);flex:none}
-.doc-type-icon svg{width:19px;height:19px}
-.doc-type-card strong{font-size:13.5px;color:var(--text)}
-.doc-type-card .muted{font-size:12px;line-height:1.45;margin-top:1px}
-.doc-type-card .doc-type-text{display:flex;flex-direction:column;min-width:0}
+/* 新建文档类型选择：卡片样式在全局 style.css（templates.html 复用） */
 .import-files{margin-top:10px;font-size:13px;line-height:1.6}
 .import-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
 .import-field{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted)}
@@ -247,6 +244,26 @@ async function delDoc(id, btn){
   const res = await fetch('/console/api/docs/'+id, {method:'DELETE', headers:{'X-Requested-With':'XMLHttpRequest'}});
   if(res.ok){ btn.closest('tr').remove(); UI.toast(UI.t('已删除'), 'success'); }
   else { const d = await res.json().catch(function(){return {};}); UI.alert((d && d.error) || UI.t('删除失败')); }
+}
+
+/* 复制文档：确认后创建内容相同的新文档（标题加「副本」后缀），完成后刷新列表 */
+async function dupDoc(id, title, btn){
+  if(!await UI.confirm(UI.t('docs.dupConfirm'))) return;
+  if(btn) btn.disabled = true;
+  try {
+    const res = await fetch('/console/api/docs/'+id+'/duplicate', {method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'}});
+    const d = await res.json().catch(function(){return {};});
+    if(res.ok){
+      UI.toast(UI.t('docs.dupOk', (d.data&&d.data.title)||title), 'success');
+      setTimeout(function(){ location.reload(); }, 600);
+    } else {
+      if(btn) btn.disabled = false;
+      UI.alert((d&&d.error)||UI.t('docs.dupFail'));
+    }
+  } catch(e) {
+    if(btn) btn.disabled = false;
+    UI.alert(UI.t('common.netErr'));
+  }
 }
 
 /* ---- 操作下拉：点击按钮弹出菜单，点空白处关闭；菜单项 fixed 定位防裁剪 ---- */
@@ -297,6 +314,9 @@ async function delDoc(id, btn){
           token: item.getAttribute('data-token') || '',
           shareURL: (item.getAttribute('data-token') || '') ? location.origin + '/s/' + item.getAttribute('data-token') : ''
         });
+      } else if (op === 'dup') {
+        e.preventDefault();
+        dupDoc(item.getAttribute('data-id'), item.getAttribute('data-title') || '', item);
       }
       /* 无 data-op 的为原生链接（查看/编辑），交给浏览器导航 */
     }

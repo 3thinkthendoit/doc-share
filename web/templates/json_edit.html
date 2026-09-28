@@ -15,8 +15,8 @@
 <main class="container wide">
   <div class="json-edit-head">
     <span class="tag tag-embed">{{if eq .docKind "mindmap"}}{{$.T "docs.tagMindmap"}}{{else if eq .docKind "drawio"}}{{$.T "docs.tagDrawio"}}{{else}}{{$.T "docs.tagBoard"}}{{end}}</span>
-    <input type="text" id="docTitle" class="input-title" style="max-width:480px" placeholder="{{$.T "edit.titlePh"}}" value="{{if .doc}}{{.doc.Title}}{{end}}">
-    <a href="/console/docs" class="btn">{{$.T "返回列表"}}</a>
+    <input type="text" id="docTitle" class="input-title" style="max-width:480px" placeholder="{{if .tplMode}}{{$.T "tpl.namePh"}}{{else}}{{$.T "edit.titlePh"}}{{end}}" value="{{if .doc}}{{.doc.Title}}{{else if .tpl}}{{.tpl.Name}}{{end}}">
+    <a href="{{if .tplMode}}/console/templates{{else}}/console/docs{{end}}" class="btn">{{$.T "返回列表"}}</a>
     {{if .doc}}<a href="/console/docs/{{.doc.ID}}/preview" target="_blank" class="btn">{{$.T "edit.preview"}}</a>{{end}}
     {{if .isOwner}}<button type="button" id="shareBtn" class="btn">{{$.T "分享"}}</button>{{end}}
     {{if .canEditDoc}}<button type="button" id="saveBtn" class="btn btn-primary">{{$.T "保存"}}</button>{{end}}
@@ -34,7 +34,13 @@
       kind: "{{.docKind}}",
       docId: {{if .doc}}{{.doc.ID}}{{else}}0{{end}},
       canEdit: {{if .canEditDoc}}true{{else}}false{{end}},
-      content: {{if .doc}}{{.doc.Content}}{{else}}""{{end}},
+      content: {{if .doc}}{{.doc.Content}}{{else}}{{.tplContent}}{{end}},
+      // 从模板创建（?template=）时可带入的项目/分类归属（按当前用户规则预计算；普通新建为 0）
+      tplProjectId: {{.tplProjectId}},
+      tplCategoryId: {{.tplCategoryId}},
+      // 模板编辑模式：保存走 /console/api/templates，无分享
+      tplMode: {{if .tplMode}}true{{else}}false{{end}},
+      tplId: {{if .tplId}}{{.tplId}}{{else}}0{{end}},
       contentVersion: {{if .doc}}{{.doc.ContentVersion}}{{else}}0{{end}}
     };
     window.DRAWIO_URL = {{.DrawioURL}};
@@ -47,6 +53,9 @@
 (function () {
   var DOC_ID = window.JSON_DOC.docId;
   var KIND = window.JSON_DOC.kind;
+  // 模板编辑模式：保存走 /console/api/templates，无分享/乐观锁
+  var TPL_MODE = !!window.JSON_DOC.tplMode;
+  var TPL_ID = Number(window.JSON_DOC.tplId) || 0;
   var editor = null;
   var mount = document.getElementById('jsonMount');
   if (!window.JsonDoc) return;
@@ -80,12 +89,26 @@
     var title = document.getElementById('docTitle').value;
     var json = currentJSON();
     var url, method, body;
-    if (DOC_ID) {
+    if (TPL_MODE) {
+      // 模板名称必填：留空直接提示，不发请求
+      if (!String(title || '').trim()) {
+        if (!isAuto) { UI.toast(UI.t('err.tplNameEmpty'), 'error'); document.getElementById('docTitle').focus(); }
+        return false;
+      }
+      url = TPL_ID ? '/console/api/templates/' + TPL_ID : '/console/api/templates';
+      method = TPL_ID ? 'PUT' : 'POST';
+      body = { name: title, type: KIND, content: json,
+               project_id: Number(window.JSON_DOC.tplProjectId) || 0,
+               category_id: Number(window.JSON_DOC.tplCategoryId) || 0 };
+    } else if (DOC_ID) {
       url = '/console/api/docs/' + DOC_ID; method = 'PUT';
       body = { title: title, content: json, base_version: lastVersion, force: !!force };
     } else {
       url = '/console/api/docs'; method = 'POST';
-      body = { title: title, type: KIND, content: json };
+      // 从模板创建时带入项目/分类归属（普通新建为 0，即未分组）
+      body = { title: title, type: KIND, content: json,
+               project_id: Number(window.JSON_DOC.tplProjectId) || 0,
+               category_id: Number(window.JSON_DOC.tplCategoryId) || 0 };
     }
     var res = await fetch(url, {
       method: method,
@@ -119,7 +142,13 @@
       if (!isAuto) UI.alert((data && data.error) || UI.t('保存失败'));
       return false;
     }
-    if (!DOC_ID && data.data && data.data.id) {
+    if (TPL_MODE) {
+      if (!TPL_ID && data.data && data.data.id) {
+        TPL_ID = data.data.id;
+        window.JSON_DOC.tplId = TPL_ID;
+        history.replaceState(null, '', '/console/templates/' + TPL_ID + '/edit');
+      }
+    } else if (!DOC_ID && data.data && data.data.id) {
       DOC_ID = data.data.id;
       window.JSON_DOC.docId = DOC_ID;
       shareState.docId = DOC_ID;
@@ -173,8 +202,8 @@
 
   function armAutoSave() {
     if (autoSaveTimerId || !saveBtn) return;
-    autoSaveTimerId = setInterval(async function () {
-      if (!DOC_ID || !window.JSON_DOC.canEdit || !editorReady || saving) return;
+    autoSaveTimerId =     setInterval(async function () {
+      if ((!DOC_ID && !TPL_ID) || !window.JSON_DOC.canEdit || !editorReady || saving) return;
       var title = document.getElementById('docTitle').value;
       var json = currentJSON();
       if (json === lastSavedJSON && title === lastSavedTitle) return;
@@ -212,11 +241,24 @@
 
   /* ---- 离开页面前兜底补存（keepalive） ---- */
   window.addEventListener('pagehide', function () {
-    if (!DOC_ID || !window.JSON_DOC.canEdit) return;
+    if (!window.JSON_DOC.canEdit) return;
     var title = document.getElementById('docTitle').value;
     var json = currentJSON();
     if (json === lastSavedJSON && title === lastSavedTitle) return;
     try {
+      if (TPL_MODE) {
+        if (!TPL_ID) return;
+        fetch('/console/api/templates/' + TPL_ID, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+          body: JSON.stringify({ name: title, type: KIND, content: json,
+                                 project_id: Number(window.JSON_DOC.tplProjectId) || 0,
+                                 category_id: Number(window.JSON_DOC.tplCategoryId) || 0 }),
+          keepalive: true, credentials: 'same-origin'
+        });
+        return;
+      }
+      if (!DOC_ID) return;
       fetch('/console/api/docs/' + DOC_ID, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
@@ -237,7 +279,9 @@
     token: {{if .share}}{{.share.ShareToken}}{{else}}""{{end}},
     shareURL: {{if .shareURL}}{{.shareURL}}{{else}}""{{end}}
   };
-  document.getElementById('shareBtn').addEventListener('click', function () {
+  // 分享按钮仅文档模式渲染（模板模式 isOwner=false 无此按钮）
+  var tplShareBtn = document.getElementById('shareBtn');
+  if (tplShareBtn) tplShareBtn.addEventListener('click', function () {
     shareState.title = document.getElementById('docTitle').value;
     ShareModal.openFor(shareState);
   });

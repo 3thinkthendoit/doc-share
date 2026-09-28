@@ -224,6 +224,33 @@ func (a *App) OpenListProjects(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": items, "total": pg.Total, "page": pg.Page, "size": pg.Size})
 }
 
+// OpenListTemplates 模板列表（密钥属主可见范围：自己创建 + 绑定到参与项目的，分页；不含内容）
+func (a *App) OpenListTemplates(c *gin.Context) {
+	pg := parseOpenPage(c)
+	tx := a.visibleTemplateScope(c)
+	var total int64
+	tx.Count(&total)
+	pg = pg.withTotal(total)
+
+	var items []model.DocTemplate
+	tx.Omit("Content").Preload("Owner").Preload("Project").Preload("Category").
+		Order("updated_at desc").Offset(pg.Offset).Limit(pg.Size).Find(&items)
+	c.JSON(http.StatusOK, gin.H{"data": items, "total": pg.Total, "page": pg.Page, "size": pg.Size})
+}
+
+// OpenGetTemplate 模板详情（含内容）：可见即可读（属主 / 绑定项目的成员 / admin）
+func (a *App) OpenGetTemplate(c *gin.Context) {
+	tpl := a.loadTemplate(c)
+	if tpl == nil {
+		return
+	}
+	if !a.canUseTemplate(c, tpl) {
+		c.JSON(http.StatusForbidden, gin.H{"error": errTplForbidden})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": tpl})
+}
+
 // OpenGetShare 查询文档分享状态（属主/管理员）：GET /openapi/v1/docs/:id/share
 func (a *App) OpenGetShare(c *gin.Context) {
 	doc := a.loadDoc(c)

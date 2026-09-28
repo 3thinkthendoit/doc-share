@@ -38,6 +38,12 @@ A lightweight self-hosted documentation sharing platform built with Go and Gin. 
 - **Members** — invite users with **view** / **edit** roles; members see project docs; can leave; only the owner manages members
 - **Categories** — personal CRUD and sort order; deleting a category leaves documents uncategorized
 
+### Document templates
+
+- **Template management** — `/console/templates` maintains reusable document starters; the same editing experience as documents (Markdown editor / mind map / whiteboard / drawio), without sharing
+- **Bindings** — optionally bind to a project and a category; once bound to a project, all members (view/edit roles) can use the template when creating documents; the bound category is applied by default
+- **Create from template** — pick a template on the new-document page (canvas templates open in their own editor) or one-click "Use" from the template list; HTML site documents don't support templates
+
 ### Accounts & permissions
 
 - **Register / login** — captcha; registration mode is admin-configurable: username / email (SMTP verification code) / phone (format check only)
@@ -55,9 +61,9 @@ A lightweight self-hosted documentation sharing platform built with Go and Gin. 
 ### Integrations
 
 - **API keys** — create personal keys; enable/disable, reset secret (shown once), delete
-- **Open API** — `/openapi/v1` with HMAC auth (AppKey + timestamp + nonce + signature); full CRUD for docs/projects/categories as the key owner
+- **Open API** — `/openapi/v1` with HMAC auth (AppKey + timestamp + nonce + signature); full CRUD for docs/projects/categories/templates as the key owner
 - **In-app API docs** — `/console/apidoc` for signing rules and endpoints
-- **MCP server** — zero-dependency Node stdio server for CodeBuddy / Claude / Cursor and similar clients (documents include mind map / whiteboard / drawio canvases)
+- **MCP server** — zero-dependency Node stdio server for CodeBuddy / Claude / Cursor and similar clients to manage documents (including mind map / whiteboard / drawio canvases), projects, categories and templates
 
 ## Tech Stack
 
@@ -162,11 +168,11 @@ Set `DOC_SHARE_DEV=true` to read templates and static files directly from the `w
 |---|---|
 | Landing | `GET /` |
 | Auth | `GET/POST /login`, `GET/POST /register`, `POST /register/email-code`, `GET /captcha`, `GET/POST /logout` |
-| Admin pages | `/console`, `/console/docs`, `/console/projects`, `/console/categories`, `/console/apikeys`, `/console/apidoc`, `/console/users`, `/console/settings` |
+| Admin pages | `/console`, `/console/docs`, `/console/templates`, `/console/projects`, `/console/categories`, `/console/apikeys`, `/console/apidoc`, `/console/users`, `/console/settings` |
 | Document APIs | `POST/PUT/DELETE /console/api/docs`, share `POST/DELETE /console/api/docs/:id/share` |
 | Access requests | `POST /s/:token/access-request`; list/review `/console/api/access-requests`, `/console/api/docs/:id/access-requests` |
 | Share | `GET/POST /s/:token`; comments `GET/POST /s/:token/comments`; save `PUT /s/:token/content` |
-| Open API | `/openapi/v1/docs`, `/projects`, `/categories` (full CRUD, HMAC) |
+| Open API | `/openapi/v1/docs`, `/projects`, `/categories`, `/templates` (full CRUD, HMAC) |
 | Upload / Convert | `POST /console/api/upload`, `POST /console/api/convert` |
 
 > **Legacy compatibility**: `/admin/*` automatically redirects (307) to `/console/*` with method and query preserved — old bookmarks and external links keep working.
@@ -175,7 +181,7 @@ Full signing rules and error codes: in-app **API docs** at `/console/apidoc`.
 
 ## MCP Server (AI Client Integration)
 
-`mcp/mcp-server.js` is a zero-dependency MCP server (Node >= 18, stdio transport) that wraps the Open API into MCP tools, so AI clients such as CodeBuddy / Claude Desktop / Cursor can manage documents, projects and categories directly.
+`mcp/mcp-server.js` is a zero-dependency MCP server (Node >= 18, stdio transport) that wraps the Open API into 21 MCP tools, so AI clients such as CodeBuddy / Claude Desktop / Cursor can manage documents, projects, categories and templates directly.
 
 ### 1. Create an API Key
 
@@ -222,6 +228,7 @@ Environment variables take precedence over the config file; `DOC_SHARE_BASE_URL`
 | `docshare_create_doc` / `docshare_update_doc` / `docshare_delete_doc` | Document CRUD; `type` accepts `markdown` / `mindmap` / `board` / `drawio` (`content` is fully replaced on update; leave `title` empty to keep it) |
 | `docshare_list_projects` / `docshare_create_project` / `docshare_update_project` / `docshare_delete_project` | Project management (documents become ungrouped after project deletion) |
 | `docshare_list_categories` / `docshare_create_category` / `docshare_update_category` / `docshare_delete_category` | Category management (documents become uncategorized after category deletion) |
+| `docshare_list_templates` / `docshare_get_template` / `docshare_create_template` / `docshare_update_template` / `docshare_delete_template` | Document template management (reusable starters; bind to projects & categories, shared with project members) |
 
 ## License
 

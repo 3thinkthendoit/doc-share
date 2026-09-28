@@ -289,6 +289,75 @@ Content-Type: application/zip
   "ok": true
 }`},
 		}},
+		{GroupKey: "apidoc.gTemplates", Items: []apiEndpoint{
+			{Method: "GET", Path: openAPIBase + "/templates", DescKey: "ep.tplList", LabelKey: "ep.tTplList",
+				RespExample: `{
+  "data": [
+    {
+      "id": 5,
+      "name": "周报模板",
+      "type": "markdown",
+      "owner_id": 2,
+      "project_id": 3,
+      "category_id": 1,
+      "created_at": "2026-09-28T10:00:00+08:00",
+      "updated_at": "2026-09-28T10:00:00+08:00"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "size": 20
+}`},
+			{Method: "GET", Path: openAPIBase + "/templates/:id", DescKey: "ep.tplGet", LabelKey: "ep.tTplGet",
+				RespExample: `{
+  "data": {
+    "id": 5,
+    "name": "周报模板",
+    "type": "markdown",
+    "content": "# 周报\n\n## 本周进展\n…",
+    "owner_id": 2,
+    "project_id": 3,
+    "category_id": 1
+  }
+}`},
+			{Method: "POST", Path: openAPIBase + "/templates", DescKey: "ep.tplCreate", LabelKey: "ep.tTplCreate",
+				ReqExample: `{
+  "name": "周报模板",
+  "type": "markdown",
+  "content": "# 周报\n\n## 本周进展\n…",
+  "project_id": 3,
+  "category_id": 1
+}`,
+				RespExample: `{
+  "data": {
+    "id": 5,
+    "name": "周报模板",
+    "type": "markdown",
+    "owner_id": 2,
+    "project_id": 3,
+    "category_id": 1
+  }
+}`},
+			{Method: "PUT", Path: openAPIBase + "/templates/:id", DescKey: "ep.tplUpdate", LabelKey: "ep.tTplUpdate",
+				ReqExample: `{
+  "name": "周报模板（修订）",
+  "content": "# 周报 v2\n…"
+}`,
+				RespExample: `{
+  "data": {
+    "id": 5,
+    "name": "周报模板（修订）",
+    "type": "markdown",
+    "owner_id": 2,
+    "project_id": 3,
+    "category_id": 1
+  }
+}`},
+			{Method: "DELETE", Path: openAPIBase + "/templates/:id", DescKey: "ep.tplDelete", LabelKey: "ep.tTplDelete",
+				RespExample: `{
+  "ok": true
+}`},
+		}},
 	}
 }
 
@@ -321,6 +390,13 @@ func openAPIErrors() []apiErrorGroup {
 			{404, errCatNotFound},
 			{404, errProjNotFound},
 			{404, errDocNotFound},
+			{400, errTplNameEmpty},
+			{400, errTplNameLong},
+			{400, errTplTypeBad},
+			{400, errTplContentBig},
+			{400, errTplIDBad},
+			{403, errTplForbidden},
+			{404, errTplNotFound},
 			{500, errCreateFail},
 			{500, errUpdateFail},
 			{500, errDeleteFail},

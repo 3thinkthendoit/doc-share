@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -185,21 +186,66 @@ func (a *App) filterOptions(c *gin.Context) ([]model.Project, []model.Category) 
 	return projects, categories
 }
 
-// NewDocPage 新建文档页；?type=mindmap|board|drawio 时进入结构化画布编辑页
+// NewDocPage 新建文档页；?type=mindmap|board|drawio 时进入结构化画布编辑页；
+// ?template=ID 时从模板创建（画布类模板进入对应编辑器并预填内容）
 func (a *App) NewDocPage(c *gin.Context) {
 	docType := c.Query("type")
 	if model.IsCanvasType(docType) {
 		a.render(c, "json_edit.html", gin.H{
-			"title":      "新建文档",
-			"rawTitle":   true,
-			"doc":        nil,
-			"docKind":    docType,
-			"canEditDoc": true,
-			"isOwner":    true,
+			"title":         "新建文档",
+			"rawTitle":      true,
+			"doc":           nil,
+			"docKind":       docType,
+			"canEditDoc":    true,
+			"isOwner":       true,
+			"tplContent":    "",
+			"tplProjectId":  0,
+			"tplCategoryId": 0,
 		})
 		return
 	}
+	// 从模板创建：校验可见性（属主/绑定项目的成员/admin）
+	var tpl *model.DocTemplate
+	tplWarn := false
+	if tid, err := strconv.Atoi(c.Query("template")); err == nil && tid > 0 {
+		var t model.DocTemplate
+		if err := a.DB.First(&t, tid).Error; err == nil && a.canUseTemplate(c, &t) {
+			tpl = &t
+			if model.IsCanvasType(t.Type) {
+				projectID, categoryID := a.tplOwnershipFor(c, &t)
+				a.render(c, "json_edit.html", gin.H{
+					"title":         "新建文档",
+					"rawTitle":      true,
+					"doc":           nil,
+					"docKind":       t.Type,
+					"canEditDoc":    true,
+					"isOwner":       true,
+					"tplContent":    t.Content,
+					"tplProjectId":  projectID,
+					"tplCategoryId": categoryID,
+				})
+				return
+			}
+		} else {
+			tplWarn = true // 模板不存在或无权使用：页面提示，其余按普通新建处理
+		}
+	}
 	projects, categories := a.filterOptions(c)
+	// 模板下拉（新建页用，不含内容）
+	var templates []model.DocTemplate
+	a.visibleTemplateScope(c).Select("id, name, type").Order("updated_at desc").Find(&templates)
+	var tplData gin.H
+	if tpl != nil {
+		projectID, categoryID := a.tplOwnershipFor(c, tpl)
+		tplData = gin.H{
+			"id":          tpl.ID,
+			"name":        tpl.Name,
+			"type":        tpl.Type,
+			"content":     tpl.Content,
+			"project_id":  projectID,
+			"category_id": categoryID,
+		}
+	}
 	a.render(c, "doc_edit.html", gin.H{
 		"title":      "新建文档",
 		"doc":        nil,
@@ -207,6 +253,9 @@ func (a *App) NewDocPage(c *gin.Context) {
 		"canEditDoc": true, // 新建页无权限问题，保存按钮始终可见
 		"projects":   projects,
 		"categories": categories,
+		"templates":  templates,
+		"tpl":        tplData,
+		"tplWarn":    tplWarn,
 	})
 }
 
@@ -270,6 +319,8 @@ func (a *App) EditDocPage(c *gin.Context) {
 			"shareURL":         shareURL(c, &share, hasShare),
 			"canEditDoc":       canEditDoc,
 			"isOwner":          user != nil && (user.IsAdmin() || user.ID == doc.OwnerID),
+			"tplProjectId":     0,
+			"tplCategoryId":    0,
 		})
 		return
 	}
@@ -832,6 +883,79 @@ func (a *App) UpsertShare(c *gin.Context) {
 		"url":         a.siteBaseURL(c) + "/s/" + share.ShareToken,
 		"hasPassword": share.HasPassword(),
 	})
+}
+
+// DuplicateDoc 复制文档（编辑权限）：复制标题（加「副本」后缀）/类型/内容/归属，
+// 不复制分享配置与浏览数据，新文档默认未分享。
+// 归属跟随复制者裁剪：项目仅当复制者拥有或为成员时保留，分类仅当复制者拥有时保留
+// ——与 CreateDoc/UpdateDoc 的 validProjectRef/validCategoryRef 约定一致
+func (a *App) DuplicateDoc(c *gin.Context) {
+	doc := a.loadDoc(c)
+	if doc == nil {
+		return
+	}
+	if !a.requireDocEdit(c, doc) {
+		return
+	}
+	user := middleware.CurrentUser(c)
+	newProjectID := doc.ProjectID
+	if newProjectID != 0 {
+		var proj model.Project
+		if a.DB.First(&proj, newProjectID).Error != nil {
+			newProjectID = 0
+		} else if proj.OwnerID != user.ID {
+			var n int64
+			a.DB.Model(&model.ProjectMember{}).Where("project_id = ? AND user_id = ?", newProjectID, user.ID).Count(&n)
+			if n == 0 {
+				newProjectID = 0
+			}
+		}
+	}
+	newCategoryID := doc.CategoryID
+	if newCategoryID != 0 {
+		var cat model.Category
+		if a.DB.First(&cat, newCategoryID).Error != nil || cat.OwnerID != user.ID {
+			newCategoryID = 0
+		}
+	}
+	r := []rune(doc.Title)
+	if len(r) > 250 {
+		r = r[:250]
+	}
+	newDoc := model.Document{
+		Title:       string(r) + "（副本）",
+		Slug:        util.RandomSlug(8),
+		Type:        doc.Type,
+		Content:     doc.Content,
+		OwnerID:     user.ID,
+		UpdatedByID: user.ID,
+		UpdatedVia:  openapiVia(c),
+		ProjectID:   newProjectID,
+		CategoryID:  newCategoryID,
+	}
+	for {
+		var n int64
+		a.DB.Model(&model.Document{}).Where("slug = ?", newDoc.Slug).Count(&n)
+		if n == 0 {
+			break
+		}
+		newDoc.Slug = util.RandomSlug(8)
+	}
+	if err := a.DB.Create(&newDoc).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "复制失败"})
+		return
+	}
+	// HTML 整站：站点文件按原文档前缀存储，需复制到新前缀并重写 manifest，
+	// 否则删除原文档或整站替换时会连坐副本（站点文件 404）
+	if doc.Type == model.DocTypeHTML {
+		if err := a.duplicateHTMLSite(c, doc, &newDoc); err != nil {
+			a.DB.Delete(&model.Document{}, newDoc.ID)
+			log.Printf("[doc] 复制 HTML 整站失败 doc=%d -> %d: %v", doc.ID, newDoc.ID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "复制站点文件失败"})
+			return
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"id": newDoc.ID, "title": newDoc.Title}})
 }
 
 // DeleteShare 关闭分享（属主级操作）

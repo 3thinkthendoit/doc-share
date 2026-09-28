@@ -57,19 +57,20 @@
       <div class="l-mock-body">
         <div class="l-pane">
           <div class="l-pane-h">EDITOR</div>
-          <div><span class="l-tok-h"># </span>{{$.T "发布说明 v2.4"}}</div>
+          <div><span class="l-tok-h"># </span>{{$.T "发布说明 v2.5"}}</div>
           <div><span class="l-tok-h">## </span>{{$.T "新增"}}</div>
+          <div><span class="l-tok-mut">-</span> {{$.T "文档模板：可复用初始内容，项目内共用"}}</div>
           <div><span class="l-tok-mut">-</span> {{$.T "支持 项目 / 分类 双维度归档"}}</div>
           <div><span class="l-tok-mut">-</span> {{$.T "AI 客户端经 MCP 直接读写"}}</div>
           <div><span class="l-tok-mut">-</span> {{$.T "PDF / Word 一键导入转 Markdown"}}</div>
-          <div><span class="l-tok-mut">-</span> {{$.T "思维导图 / 画板 / drawio 画布"}}</div>
-          <div class="l-caret"><span class="l-tok-mut">-</span> {{$.T "成员协作，按角色查看与编辑"}}</div>
+          <div><span class="l-caret"><span class="l-tok-mut">-</span> {{$.T "思维导图 / 画板 / drawio 画布"}}</div>
         </div>
         <div class="l-pane">
           <div class="l-pane-h">PREVIEW</div>
-          <div class="l-tok-3" style="font-size:17px;font-weight:600;color:var(--l-head)">{{$.T "发布说明 v2.4"}}</div>
+          <div class="l-tok-3" style="font-size:17px;font-weight:600;color:var(--l-head)">{{$.T "发布说明 v2.5"}}</div>
           <div style="margin-top:10px">{{$.T "新增"}}</div>
           <ul style="margin:6px 0 0;padding-left:18px;color:var(--l-muted);font-size:12px">
+            <li>{{$.T "文档模板：可复用初始内容，项目内共用"}}</li>
             <li>{{$.T "支持 项目 / 分类 双维度归档"}}</li>
             <li>{{$.T "AI 客户端经 MCP 直接读写"}}</li>
             <li>{{$.T "PDF / Word 一键导入转 Markdown"}}</li>
@@ -123,14 +124,14 @@
       <div class="l-card" data-reveal>
         <div class="l-card-no">05<span class="l-card-tag">  --openapi</span></div>
         <h3>{{$.T "开放平台 API"}}</h3>
-        <p>{{$.T "用密钥签名以程序方式维护项目、分类与文档，共 13 个接口。"}}</p>
+        <p>{{$.T "用密钥签名以程序方式维护项目、分类、文档与模板，共 22 个接口。"}}</p>
         <ul><li>{{$.T "HMAC-SHA256 + 时间戳 + nonce 防重放"}}</li><li>{{$.T "以密钥属主身份执行，权限天然隔离"}}</li></ul>
       </div>
       <div class="l-card" data-reveal>
         <div class="l-card-no">06<span class="l-card-tag">  --mcp</span></div>
         <h3>{{$.T "AI 客户端一键接入"}}</h3>
-        <p>{{$.T "内置零依赖 MCP 服务器，CodeBuddy、Claude、Cursor 等 AI 客户端直接读写文档、项目与分类。"}}</p>
-        <ul><li>{{$.T "13 个工具覆盖文档 / 项目 / 分类"}}</li><li>{{$.T "stdio 传输，一段 JSON 配置即用"}}</li><li>{{$.T "复用开放平台密钥与权限模型"}}</li></ul>
+        <p>{{$.T "内置零依赖 MCP 服务器，CodeBuddy、Claude、Cursor 等 AI 客户端直接读写文档、项目、分类与模板。"}}</p>
+        <ul><li>{{$.T "21 个工具覆盖文档 / 项目 / 分类 / 模板"}}</li><li>{{$.T "stdio 传输，一段 JSON 配置即用"}}</li><li>{{$.T "复用开放平台密钥与权限模型"}}</li></ul>
       </div>
       <div class="l-card" data-reveal>
         <div class="l-card-no">07<span class="l-card-tag">  --import</span></div>
@@ -166,7 +167,7 @@
         <p>{{$.T "新建文档，选项目与分类，左侧 Markdown 右侧实时预览。"}}</p>
       </div>
       <div class="l-mock l-shot">
-        <div class="l-mock-bar"><i class="l-dot"></i><i class="l-dot"></i><i class="l-dot"></i><span class="l-mock-title">doc-share — {{$.T "发布说明 v2.4"}}</span><span class="l-live"><i></i>LIVE</span></div>
+        <div class="l-mock-bar"><i class="l-dot"></i><i class="l-dot"></i><i class="l-dot"></i><span class="l-mock-title">doc-share — {{$.T "发布说明 v2.5"}}</span><span class="l-live"><i></i>LIVE</span></div>
         <div class="l-mock-body">
           <div class="l-pane">
             <div class="l-pane-h">MARKDOWN</div>
@@ -264,9 +265,9 @@ sign = <span class="l-tok-h">HMAC-SHA256</span>(Secret, base)
 
     <div class="l-stats" style="margin-top:44px">
       <div class="l-stat" data-reveal><b data-count="5">0</b><span>{{$.T "界面语言"}}</span></div>
-      <div class="l-stat" data-reveal><b data-count="13">0</b><span>{{$.T "开放接口"}}</span></div>
+      <div class="l-stat" data-reveal><b data-count="22">0</b><span>{{$.T "开放接口"}}</span></div>
       <div class="l-stat" data-reveal><b data-count="1">0</b><span>{{$.T "单文件二进制"}}</span></div>
-      <div class="l-stat" data-reveal><b data-count="854">0</b><span>{{$.T "条词典文案"}}</span></div>
+      <div class="l-stat" data-reveal><b data-count="942">0</b><span>{{$.T "条词典文案"}}</span></div>
     </div>
   </div>
 </section>

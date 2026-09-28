@@ -38,6 +38,12 @@
 - **项目成员** — 邀请用户，角色 **查看** / **编辑**；成员可见项目内文档；可主动退出；仅属主管理成员
 - **分类** — 个人分类 CRUD、排序；删除后文档变为未分类
 
+### 文档模板
+
+- **模板管理** — `/console/templates` 维护可复用的文档初始内容；与新建文档同构的编辑体验（Markdown 编辑器 / 思维导图 / 画板 / drawio），无分享
+- **绑定归属** — 可选绑定项目与分类；绑定项目后项目内所有成员（查看/编辑角色）创建文档时可共用该模板；绑定分类后从模板创建时默认带入
+- **从模板创建** — 新建文档页选择模板（画布类模板自动进入对应编辑器），或模板列表一键「使用」；HTML 整站文档不支持模板
+
 ### 账户与权限
 
 - **注册 / 登录** — 验证码；注册方式由管理员配置：用户名 / 邮箱（SMTP 验证码）/ 手机号（格式校验）
@@ -55,9 +61,9 @@
 ### 开放能力
 
 - **API 密钥** — 个人创建密钥；启用/停用、重置 Secret（仅显示一次）、删除
-- **开放 API** — `/openapi/v1`，HMAC（AppKey + 时间戳 + nonce + 签名）认证，文档/项目/分类完整 CRUD；权限等同密钥属主
+- **开放 API** — `/openapi/v1`，HMAC（AppKey + 时间戳 + nonce + 签名）认证，文档/项目/分类/模板完整 CRUD；权限等同密钥属主
 - **站内 API 文档** — `/console/apidoc` 说明签名算法与接口
-- **MCP 服务** — 零依赖 Node stdio 服务，供 CodeBuddy / Claude / Cursor 等通过工具管理文档（含思维导图 / 画板 / drawio 画布）
+- **MCP 服务** — 零依赖 Node stdio 服务，供 CodeBuddy / Claude / Cursor 等通过工具管理文档（含思维导图 / 画板 / drawio 画布）与项目、分类、模板
 
 ## 技术栈
 
@@ -166,11 +172,11 @@ mcp/
 |---|---|
 | 落地页 | `GET /` |
 | 认证 | `GET/POST /login`、`GET/POST /register`、`POST /register/email-code`、`GET /captcha`、`GET/POST /logout` |
-| 后台页面 | `/console`、`/console/docs`、`/console/projects`、`/console/categories`、`/console/apikeys`、`/console/apidoc`、`/console/users`、`/console/settings` |
+| 后台页面 | `/console`、`/console/docs`、`/console/templates`、`/console/projects`、`/console/categories`、`/console/apikeys`、`/console/apidoc`、`/console/users`、`/console/settings` |
 | 文档 API | `POST/PUT/DELETE /console/api/docs`、分享 `POST/DELETE /console/api/docs/:id/share` |
 | 访问申请 | `POST /s/:token/access-request`；列表/审批 `/console/api/access-requests`、`/console/api/docs/:id/access-requests` |
 | 分享访问 | `GET/POST /s/:token`；评论 `GET/POST /s/:token/comments`；编辑保存 `PUT /s/:token/content` |
-| 开放 API | `/openapi/v1/docs`、`/projects`、`/categories`（完整增删改查，HMAC） |
+| 开放 API | `/openapi/v1/docs`、`/projects`、`/categories`、`/templates`（完整增删改查，HMAC） |
 | 上传 / 转换 | `POST /console/api/upload`、`POST /console/api/convert` |
 
 > **旧地址兼容**：`/admin/*` 会自动 307 跳转到 `/console/*`（保留请求方法与参数），老书签与外部链接不受影响。
@@ -179,7 +185,7 @@ mcp/
 
 ## MCP 服务（AI 客户端接入）
 
-`mcp/mcp-server.js` 是一个零依赖的 MCP 服务器（Node >= 18，stdio 传输），把开放 API 包装成 MCP 工具，供 CodeBuddy / Claude Desktop / Cursor 等 AI 客户端直接管理文档、项目和分类。
+`mcp/mcp-server.js` 是一个零依赖的 MCP 服务器（Node >= 18，stdio 传输），把开放 API 包装成 21 个 MCP 工具，供 CodeBuddy / Claude Desktop / Cursor 等 AI 客户端直接管理文档、项目、分类和模板。
 
 ### 1. 准备密钥
 
@@ -226,6 +232,7 @@ mcp/
 | `docshare_create_doc` / `docshare_update_doc` / `docshare_delete_doc` | 文档增删改；`type` 支持 `markdown` / `mindmap` / `board` / `drawio`（更新时 `content` 整体覆盖，`title` 留空表示不修改） |
 | `docshare_list_projects` / `docshare_create_project` / `docshare_update_project` / `docshare_delete_project` | 项目管理（删除后其下文档回到未分组） |
 | `docshare_list_categories` / `docshare_create_category` / `docshare_update_category` / `docshare_delete_category` | 分类管理（删除后其下文档变为未分类） |
+| `docshare_list_templates` / `docshare_get_template` / `docshare_create_template` / `docshare_update_template` / `docshare_delete_template` | 文档模板管理（可复用初始内容；可绑定项目与分类，项目成员可共用） |
 
 ## 许可证
 
