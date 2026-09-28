@@ -30,7 +30,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 	}
 
 	// 上传的图片：本地磁盘目录映射到 /uploads。
-	// HTML 整站文件（html/ 前缀）不公开直出：一律经 /s/:token/raw 或 /admin/raw 凭短时签名访问，
+	// HTML 整站文件（html/ 前缀）不公开直出：一律经 /s/:token/raw 或 /console/raw 凭短时签名访问，
 	// 否则 /uploads/html/{docID}/{rand}/... 会成为密码分享与未分享文档的公开旁路。
 	uploadsFS := http.FileServer(http.Dir(app.Cfg.Upload.Dir))
 	r.GET("/uploads/*filepath", func(c *gin.Context) {
@@ -42,7 +42,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		http.StripPrefix("/uploads", uploadsFS).ServeHTTP(c.Writer, c.Request)
 	})
 
-	admin := r.Group("/admin", middleware.RequireAuth(app.DB, app.Signer))
+	admin := r.Group("/console", middleware.RequireAuth(app.DB, app.Signer))
 	{
 		admin.GET("", app.Dashboard)
 		admin.GET("/docs", app.DocsPage)
@@ -87,7 +87,6 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 
 		// API 密钥管理（个人归属，viewer 管自己的）
 		admin.GET("/apikeys", app.APIKeysPage)
-		admin.GET("/apidoc", app.APIDocPage)
 		admin.POST("/api/apikeys", app.CreateAPIKey)
 		admin.PUT("/api/apikeys/:id/reset", app.ResetAPIKeySecret)
 		admin.PUT("/api/apikeys/:id/status", app.UpdateAPIKeyStatus)
@@ -132,6 +131,27 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.PUT("/api/password", app.ChangePassword)
 		admin.PUT("/api/profile", app.UpdateProfile)
 	}
+
+	// 旧地址兼容：/admin 前缀已全量迁移至 /console。307 临时跳转保留原方法与请求体，
+	// 老书签与浏览器缓存的旧前端 JS（POST /admin/api/...）均不破坏
+	r.Any("/admin", func(c *gin.Context) {
+		target := "/console"
+		if c.Request.URL.RawQuery != "" {
+			target += "?" + c.Request.URL.RawQuery
+		}
+		c.Redirect(http.StatusTemporaryRedirect, target)
+	})
+	r.Any("/admin/*path", func(c *gin.Context) {
+		target := "/console" + c.Param("path")
+		if c.Request.URL.RawQuery != "" {
+			target += "?" + c.Request.URL.RawQuery
+		}
+		c.Redirect(http.StatusTemporaryRedirect, target)
+	})
+
+	// 对接文档（公开）：潜在用户未登录也可查看 API / MCP 接入方式
+	r.GET("/console/apidoc", app.APIDocPage)
+	r.GET("/console/mcpdoc", app.MCPDocPage)
 
 	// 认证
 	r.GET("/captcha", app.Captcha)
@@ -178,8 +198,8 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 	// HTML 整站文件（分享侧）：/s/:token/raw/<sig>/<path>。
 	// 不走 cookie 鉴权——sandbox iframe 子资源是跨站请求带不上 cookie，凭路径内短时签名。
 	r.GET("/s/:token/raw/*path", app.ShareRaw)
-	// HTML 整站文件（管理预览侧）：/admin/raw/:id/<sig>/<path>，同为签名鉴权故不挂 RequireAuth
-	r.GET("/admin/raw/:id/*path", app.AdminRaw)
+	// HTML 整站文件（管理预览侧）：/console/raw/:id/<sig>/<path>，同为签名鉴权故不挂 RequireAuth
+	r.GET("/console/raw/:id/*path", app.AdminRaw)
 
 	// 官网首页（公开）；可选认证注入登录态，供首页按用户状态切换 CTA
 	r.GET("/", middleware.OptionalAuth(app.DB, app.Signer), app.Home)

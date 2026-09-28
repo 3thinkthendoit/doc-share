@@ -132,7 +132,7 @@ func (a *App) ProjectsPage(c *gin.Context) {
 		"owner":    owner,
 		"scope":    scope,
 	}
-	for k, v := range pagerFields(pg, "/admin/projects", extra) {
+	for k, v := range pagerFields(pg, "/console/projects", extra) {
 		data[k] = v
 	}
 	a.render(c, "projects.html", data)
@@ -178,7 +178,7 @@ func checkProjectReq(req *projectReq) (string, string, string) {
 	return name, desc, ""
 }
 
-// ListProjectDocs 项目内文档列表（属主/管理员/项目成员）：GET /admin/api/projects/:id/docs
+// ListProjectDocs 项目内文档列表（属主/管理员/项目成员）：GET /console/api/projects/:id/docs
 func (a *App) ListProjectDocs(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var project model.Project
@@ -285,7 +285,7 @@ func (a *App) DeleteProject(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-// LeaveProject 成员退出项目：DELETE /admin/api/projects/:id/members/me
+// LeaveProject 成员退出项目：DELETE /console/api/projects/:id/members/me
 // 仅项目成员本人可退出；创建者不能退出（拥有该项目，需走删除）
 func (a *App) LeaveProject(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))

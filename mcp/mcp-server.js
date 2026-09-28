@@ -21,7 +21,7 @@
  *     }
  *   }
  *
- * 密钥在 DocShare 后台 /admin/apikeys 创建（Secret 仅创建时显示一次）。
+ * 密钥在 DocShare 后台 /console/apikeys 创建（Secret 仅创建时显示一次）。
  * 密钥属主即文档所有者：viewer 的密钥只能操作自己的资源，与后台权限一致。
  */
 'use strict';

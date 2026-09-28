@@ -30,7 +30,7 @@ projectForm.addEventListener('submit', async function (e) {
     description: pf().description.value.trim()
   };
   try {
-    var res = await fetch(id ? '/admin/api/projects/' + id : '/admin/api/projects', {
+    var res = await fetch(id ? '/console/api/projects/' + id : '/console/api/projects', {
       method: id ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
       body: JSON.stringify(payload)
@@ -48,7 +48,7 @@ async function delProject(btn) {
   var ok = await UI.confirm(UI.t('确定删除项目「{0}」？其下文档将回到未分组。', btn.dataset.name), { danger: true });
   if (!ok) return;
   try {
-    var res = await fetch('/admin/api/projects/' + btn.dataset.id, {
+    var res = await fetch('/console/api/projects/' + btn.dataset.id, {
       method: 'DELETE',
       headers: { 'X-Requested-With': 'XMLHttpRequest' }
     });
@@ -97,7 +97,7 @@ window.leaveProject = function (btn) {
     if (!ok) return;
     btn.disabled = true;
     try {
-      var res = await fetch('/admin/api/projects/' + id + '/members/me', {
+      var res = await fetch('/console/api/projects/' + id + '/members/me', {
         method: 'DELETE', headers: { 'X-Requested-With': 'XMLHttpRequest' }
       });
       var d = await res.json().catch(function () { return {}; });
@@ -123,7 +123,7 @@ memberUserInput.addEventListener('input', function () {
 memberUserInput.addEventListener('blur', function () { memberUserList.hidden = true; });
 
 function searchMemberUsers(q) {
-  fetch('/admin/api/users/options?q=' + encodeURIComponent(q), {
+  fetch('/console/api/users/options?q=' + encodeURIComponent(q), {
     headers: { 'X-Requested-With': 'XMLHttpRequest' }
   })
     .then(function (r) { return r.json(); })
@@ -149,7 +149,7 @@ function searchMemberUsers(q) {
 async function loadMembers() {
   memberList.innerHTML = '<div class="muted">' + UI.t('加载中…') + '</div>';
   try {
-    var res = await fetch('/admin/api/projects/' + memberProjectId + '/members?page=' + membersPage + '&size=' + membersSize, {
+    var res = await fetch('/console/api/projects/' + memberProjectId + '/members?page=' + membersPage + '&size=' + membersSize, {
       headers: { 'X-Requested-With': 'XMLHttpRequest' }
     });
     var data = await res.json();
@@ -214,7 +214,7 @@ function memberRow(m) {
   });
   sel.value = m.role;
   sel.addEventListener('change', async function () {
-    var res = await fetch('/admin/api/projects/' + memberProjectId + '/members/' + m.id, {
+    var res = await fetch('/console/api/projects/' + memberProjectId + '/members/' + m.id, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
       body: JSON.stringify({ role: sel.value })
@@ -229,7 +229,7 @@ function memberRow(m) {
   del.type = 'button';
   del.addEventListener('click', async function () {
     if (!await UI.confirm(UI.t('移除成员「{0}」？其将无法再访问项目内文档。', m.nickname + ' (' + m.username + ')'), { danger: true })) return;
-    var res = await fetch('/admin/api/projects/' + memberProjectId + '/members/' + m.id, {
+    var res = await fetch('/console/api/projects/' + memberProjectId + '/members/' + m.id, {
       method: 'DELETE', headers: { 'X-Requested-With': 'XMLHttpRequest' }
     });
     if (res.ok) { loadMembers(); } else { UI.toast(UI.t('删除失败'), 'error'); }
@@ -244,7 +244,7 @@ if (memberAddBtn) {
     if (!uid) { memberUserInput.focus(); return; }
     memberAddBtn.disabled = true;
     try {
-      var res = await fetch('/admin/api/projects/' + memberProjectId + '/members', {
+      var res = await fetch('/console/api/projects/' + memberProjectId + '/members', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({ user_id: parseInt(uid, 10), role: memberRole.value })

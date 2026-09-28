@@ -26,7 +26,7 @@
         avatar: fd.get('avatar'),
       };
       try {
-        var res = await fetch('/admin/api/users', {
+        var res = await fetch('/console/api/users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
           body: JSON.stringify(payload),
@@ -80,7 +80,7 @@
         phone: (fd.get('phone') || '').trim(),
       };
       try {
-        var res = await fetch('/admin/api/users/' + editID, {
+        var res = await fetch('/console/api/users/' + editID, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
           body: JSON.stringify(payload),
@@ -105,7 +105,7 @@ function rowEl(id) { return document.querySelector('tr[data-id="' + id + '"]'); 
 async function resetPwd(id) {
   var pwd = await UI.prompt('输入新密码（至少 6 位）', 'password', '新密码');
   if (!pwd) return;
-  var res = await fetch('/admin/api/users/' + id, {
+  var res = await fetch('/console/api/users/' + id, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
     body: JSON.stringify({ password: pwd }),
@@ -117,7 +117,7 @@ async function resetPwd(id) {
 
 async function delUser(id) {
   if (!await UI.confirm('确认删除该用户？', { danger: true })) return;
-  var res = await fetch('/admin/api/users/' + id, {
+  var res = await fetch('/console/api/users/' + id, {
     method: 'DELETE',
     headers: { 'X-Requested-With': 'XMLHttpRequest' },
   });

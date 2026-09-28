@@ -264,7 +264,7 @@ type Message struct {
 	Kind      string     `gorm:"size:32;index;not null" json:"kind"`
 	Title     string     `gorm:"size:200;not null" json:"title"`
 	Body      string     `gorm:"size:1000" json:"body"`
-	Link      string     `gorm:"size:500" json:"link"` // 站内相对路径，如 /admin/docs/1/edit
+	Link      string     `gorm:"size:500" json:"link"` // 站内相对路径，如 /console/docs/1/edit
 	RefType   string     `gorm:"size:32" json:"ref_type"`
 	RefID     uint       `gorm:"index;not null;default:0" json:"ref_id"`
 	ReadAt    *time.Time `json:"read_at"`

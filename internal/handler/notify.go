@@ -48,7 +48,7 @@ func (a *App) docNotifyLink(doc *model.Document) string {
 	if a.DB.Select("share_token").Where("document_id = ?", doc.ID).First(&share).Error == nil && share.ShareToken != "" {
 		return "/s/" + share.ShareToken
 	}
-	return fmt.Sprintf("/admin/docs/%d/preview", doc.ID)
+	return fmt.Sprintf("/console/docs/%d/preview", doc.ID)
 }
 
 func looksLikeEmail(s string) bool {
@@ -184,7 +184,7 @@ func (a *App) notifyAccessApply(doc *model.Document, applicantName string) {
 		Kind:    model.MsgAccessApply,
 		Title:   "收到文档查看申请",
 		Body:    fmt.Sprintf("%s 申请查看「%s」", name, clipRunes(doc.Title, 80)),
-		Link:    fmt.Sprintf("/admin/docs/%d/edit", doc.ID),
+		Link:    fmt.Sprintf("/console/docs/%d/edit", doc.ID),
 		RefType: "document",
 		RefID:   doc.ID,
 	})
@@ -272,7 +272,7 @@ func (a *App) notifyProjectMemberAdded(project *model.Project, userID uint, role
 		Kind:    model.MsgProjectAdded,
 		Title:   "你被加入项目",
 		Body:    fmt.Sprintf("你已被加入项目「%s」，角色：%s", clipRunes(project.Name, 80), roleLabel(role)),
-		Link:    "/admin/projects",
+		Link:    "/console/projects",
 		RefType: "project",
 		RefID:   project.ID,
 	})
@@ -287,7 +287,7 @@ func (a *App) notifyProjectMemberRole(project *model.Project, userID uint, role 
 		Kind:    model.MsgProjectRole,
 		Title:   "项目角色已更新",
 		Body:    fmt.Sprintf("你在项目「%s」的角色已变更为：%s", clipRunes(project.Name, 80), roleLabel(role)),
-		Link:    "/admin/projects",
+		Link:    "/console/projects",
 		RefType: "project",
 		RefID:   project.ID,
 	})
@@ -302,7 +302,7 @@ func (a *App) notifyProjectMemberRemoved(project *model.Project, userID uint) {
 		Kind:    model.MsgProjectRemoved,
 		Title:   "你已离开项目",
 		Body:    fmt.Sprintf("你已从项目「%s」中被移除", clipRunes(project.Name, 80)),
-		Link:    "/admin/projects",
+		Link:    "/console/projects",
 		RefType: "project",
 		RefID:   project.ID,
 	})
@@ -321,7 +321,7 @@ func (a *App) notifyShareEdited(doc *model.Document, editorName string, editorID
 		Kind:    model.MsgShareEdited,
 		Title:   "分享文档被编辑",
 		Body:    fmt.Sprintf("%s 通过分享链接更新了「%s」", name, clipRunes(doc.Title, 80)),
-		Link:    fmt.Sprintf("/admin/docs/%d/edit", doc.ID),
+		Link:    fmt.Sprintf("/console/docs/%d/edit", doc.ID),
 		RefType: "document",
 		RefID:   doc.ID,
 	})
@@ -340,7 +340,7 @@ func (a *App) notifyDocUpdated(doc *model.Document, editorName string, editorID 
 		Kind:    model.MsgDocUpdated,
 		Title:   "你的文档被更新",
 		Body:    fmt.Sprintf("%s 更新了文档「%s」", name, clipRunes(doc.Title, 80)),
-		Link:    fmt.Sprintf("/admin/docs/%d/edit", doc.ID),
+		Link:    fmt.Sprintf("/console/docs/%d/edit", doc.ID),
 		RefType: "document",
 		RefID:   doc.ID,
 	})

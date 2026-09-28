@@ -2,9 +2,9 @@
 (function () {
   var R = window.READER || {};
   if (!R.docId) return;
-  // 评论/编辑接口前缀：分享页走 /s/:token（公开），预览页走 /admin/api/docs/:id（登录态）
+  // 评论/编辑接口前缀：分享页走 /s/:token（公开），预览页走 /console/api/docs/:id（登录态）
   function api(path) {
-    return R.token ? ('/s/' + R.token + path) : ('/admin/api/docs/' + R.docId + path);
+    return R.token ? ('/s/' + R.token + path) : ('/console/api/docs/' + R.docId + path);
   }
   function t(s) { return window.UI ? UI.t(s) : s; }
 
@@ -181,7 +181,7 @@
     try {
       var fd = new FormData();
       fd.append('file', file, file.name || 'paste.png');
-      var res = await fetch('/admin/api/upload', {
+      var res = await fetch('/console/api/upload', {
         method: 'POST',
         headers: { 'X-Requested-With': 'XMLHttpRequest' },
         body: fd,
@@ -300,7 +300,7 @@
       delBtn.type = 'button';
       delBtn.addEventListener('click', async function () {
         if (!window.UI || !await UI.confirm(t('确认删除该评论？'), { danger: true })) return;
-        var res = await fetch('/admin/api/docs/' + R.docId + '/comments/' + c.id, {
+        var res = await fetch('/console/api/docs/' + R.docId + '/comments/' + c.id, {
           method: 'DELETE', headers: { 'X-Requested-With': 'XMLHttpRequest' }
         });
         if (res.ok) load(); else UI.toast('删除失败', 'error');

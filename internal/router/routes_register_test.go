@@ -1,10 +1,12 @@
 package router
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"doc-share/internal/config"
@@ -76,5 +78,47 @@ func TestUploadsBlocksHTMLSite(t *testing.T) {
 	}
 	if w := get("/uploads/202601/a.png"); w.Code != http.StatusOK {
 		t.Fatalf("normal upload must stay 200, got %d", w.Code)
+	}
+}
+
+// TestAdminLegacyRedirect 旧地址兼容护栏：/admin/* 307 跳转到 /console/*，
+// 必须保留原方法（POST 不降级为 GET）与 query——防止将来被改成 301/302，
+// 破坏浏览器缓存的旧前端 JS 发出的保存请求
+func TestAdminLegacyRedirect(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	defer gin.SetMode(gin.TestMode)
+
+	app := handler.NewApp(&config.Config{}, nil, session.NewSigner("0123456789abcdef0123456789abcdef"), nil, nil)
+	r := New(app, os.DirFS("../web/static"))
+
+	do := func(method, url string, body io.Reader) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(method, url, body))
+		return w
+	}
+
+	// GET /admin → /console
+	if w := do(http.MethodGet, "/admin", nil); w.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("GET /admin must be 307, got %d", w.Code)
+	} else if loc := w.Header().Get("Location"); loc != "/console" {
+		t.Fatalf("GET /admin Location = %q, want /console", loc)
+	}
+
+	// POST /admin/api/docs?x=1 → 307 保留方法、body 与 query
+	w := do(http.MethodPost, "/admin/api/docs?x=1", strings.NewReader(`{"title":"x"}`))
+	if w.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("POST /admin/api/docs must be 307, got %d", w.Code)
+	}
+	if loc := w.Header().Get("Location"); loc != "/console/api/docs?x=1" {
+		t.Fatalf("POST /admin/api/docs Location = %q, want /console/api/docs?x=1", loc)
+	}
+
+	// 深层路径 /admin/docs/5/edit → /console/docs/5/edit
+	w = do(http.MethodGet, "/admin/docs/5/edit", nil)
+	if w.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("GET /admin/docs/5/edit must be 307, got %d", w.Code)
+	}
+	if loc := w.Header().Get("Location"); loc != "/console/docs/5/edit" {
+		t.Fatalf("GET /admin/docs/5/edit Location = %q, want /console/docs/5/edit", loc)
 	}
 }

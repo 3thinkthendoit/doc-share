@@ -264,7 +264,7 @@ window.UI = (function () {
     }
   }, true);
 
-  // 头像选择器：上传到 /admin/api/upload 后回填隐藏域 + 预览；返回 set/get 句柄
+  // 头像选择器：上传到 /console/api/upload 后回填隐藏域 + 预览；返回 set/get 句柄
   function avatarPicker(root, fallbackText) {
     if (!root) return null;
     var input = root.querySelector('[data-avatar-input]');
@@ -295,7 +295,7 @@ window.UI = (function () {
       file.value = '';
       UI.toast('头像上传中…', 'info');
       try {
-        var res = await fetch('/admin/api/upload', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
+        var res = await fetch('/console/api/upload', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
         var data = await res.json().catch(function () { return {}; });
         if (res.ok && data.url) {
           input.value = data.url;
@@ -597,7 +597,7 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!UI.validateForm(profileForm)) return;
       var fd = new FormData(profileForm);
       try {
-        var res = await fetch('/admin/api/profile', {
+        var res = await fetch('/console/api/profile', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
           body: JSON.stringify({
@@ -642,7 +642,7 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
       try {
-        var res = await fetch('/admin/api/password', {
+        var res = await fetch('/console/api/password', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
           body: JSON.stringify({ old_password: oldPwd, new_password: newPwd }),
@@ -673,7 +673,7 @@ document.addEventListener('DOMContentLoaded', function () {
       root.querySelectorAll('a').forEach(function (a) {
         var href = a.getAttribute('href') || '';
         var on = href === path;
-        if (!on && href !== '/' && href !== '/admin') {
+        if (!on && href !== '/' && href !== '/console') {
           on = path === href || path.indexOf(href + '/') === 0;
         }
         a.classList.toggle('active', on);
@@ -729,7 +729,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     async function refreshCount() {
       try {
-        var res = await fetch('/admin/api/messages/unread-count', {
+        var res = await fetch('/console/api/messages/unread-count', {
           headers: { 'X-Requested-With': 'XMLHttpRequest' }
         });
         var data = await res.json();
@@ -739,7 +739,7 @@ document.addEventListener('DOMContentLoaded', function () {
     async function loadList() {
       list.innerHTML = '<div class="muted msg-empty">' + UI.t('msg.loading') + '</div>';
       try {
-        var res = await fetch('/admin/api/messages?limit=30', {
+        var res = await fetch('/console/api/messages?limit=30', {
           headers: { 'X-Requested-With': 'XMLHttpRequest' }
         });
         var data = await res.json().catch(function () { return {}; });
@@ -774,7 +774,7 @@ document.addEventListener('DOMContentLoaded', function () {
           btn.addEventListener('click', async function () {
             if (!m.read_at) {
               try {
-                await fetch('/admin/api/messages/' + m.id + '/read', {
+                await fetch('/console/api/messages/' + m.id + '/read', {
                   method: 'POST',
                   headers: { 'X-Requested-With': 'XMLHttpRequest' }
                 });
@@ -815,7 +815,7 @@ document.addEventListener('DOMContentLoaded', function () {
       readAll.addEventListener('click', async function (e) {
         e.stopPropagation();
         try {
-          var res = await fetch('/admin/api/messages/read-all', {
+          var res = await fetch('/console/api/messages/read-all', {
             method: 'POST',
             headers: { 'X-Requested-With': 'XMLHttpRequest' }
           });

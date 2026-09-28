@@ -181,7 +181,7 @@
     var fd = new FormData();
     fd.append('file', logoFile.files[0]);
     try {
-      var res = await fetch('/admin/api/upload', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
+      var res = await fetch('/console/api/upload', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
       var data = await res.json();
       if (!res.ok) { UI.alert((data && data.error) || UI.t('上传失败')); return; }
       setLogo(data.url);
@@ -215,7 +215,7 @@
     var btn = this;
     btn.disabled = true;
     try {
-      var res = await fetch('/admin/api/settings/test-mail', {
+      var res = await fetch('/console/api/settings/test-mail', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({ to: to })
@@ -258,7 +258,7 @@
     var btn = this;
     btn.disabled = true;
     try {
-      var res = await fetch('/admin/api/settings/test-rustfs', {
+      var res = await fetch('/console/api/settings/test-rustfs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({
@@ -305,7 +305,7 @@
       allow_share_apply: form.allow_share_apply.checked
     };
     try {
-      var res = await fetch('/admin/api/settings', {
+      var res = await fetch('/console/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify(payload)

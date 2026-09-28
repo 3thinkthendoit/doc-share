@@ -680,7 +680,7 @@
     fd.append('file', file);
     UI.toast('文档转换中，请稍候…', 'info');
     try {
-      var res = await fetch('/admin/api/convert', {
+      var res = await fetch('/console/api/convert', {
         method: 'POST',
         headers: { 'X-Requested-With': 'XMLHttpRequest' },
         body: fd,
@@ -703,7 +703,7 @@
     fd.append('file', file);
     UI.toast('图片上传中…', 'info');
     try {
-      var res = await fetch('/admin/api/upload', {
+      var res = await fetch('/console/api/upload', {
         method: 'POST',
         headers: { 'X-Requested-With': 'XMLHttpRequest' },
         body: fd,
@@ -736,7 +736,7 @@
     async function pollEditing() {
       if (!docID()) return;
       try {
-        var res = await fetch('/admin/api/docs/' + docID() + '/editing', {
+        var res = await fetch('/console/api/docs/' + docID() + '/editing', {
           method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }
         });
         if (!res.ok) { banner.hidden = true; return; }
@@ -771,7 +771,7 @@
     leaveFlushed = true;
     var id = docID();
     var payload = buildSavePayload();
-    var url = id ? '/admin/api/docs/' + id : '/admin/api/docs';
+    var url = id ? '/console/api/docs/' + id : '/console/api/docs';
     var method = id ? 'PUT' : 'POST';
     try {
       fetch(url, {
@@ -811,7 +811,7 @@
     var snapTitle = payload.title;
     var snapProj = payload.project_id;
     var snapCat = payload.category_id;
-    var url = id ? '/admin/api/docs/' + id : '/admin/api/docs';
+    var url = id ? '/console/api/docs/' + id : '/console/api/docs';
     var method = id ? 'PUT' : 'POST';
     var res, data;
     try {
@@ -839,7 +839,7 @@
     if (!id && data && data.data && data.data.id) {
       window.DOC_ID = data.data.id;
       try {
-        history.replaceState(null, '', '/admin/docs/' + data.data.id + '/edit');
+        history.replaceState(null, '', '/console/docs/' + data.data.id + '/edit');
       } catch (e) { /* ignore */ }
       if (titleEl && !String(titleEl.value || '').trim()) {
         titleEl.value = title;
@@ -921,24 +921,41 @@
   var configEl = document.getElementById('shareConfig');
   var accessReqBox = document.getElementById('accessReqBox');
   var saveShareBtn = document.getElementById('saveShareBtn');
+  // 分享类型：密码访问（默认按历史密码状态）/ 公开访问（保存时清除已设密码）
+  function isSharePwdType() {
+    var r = document.getElementById('shareTypePwd');
+    return !r || r.checked; // 无类型选择器（旧缓存 HTML）时按密码语义，行为不变
+  }
+  function refreshShareType() {
+    var isPwd = isSharePwdType();
+    var wrap = document.getElementById('pwdWrap');
+    if (wrap) wrap.style.display = isPwd ? 'block' : 'none';
+    if (accessReqBox) accessReqBox.hidden = !(enabledEl.checked && isPwd);
+  }
+  [document.getElementById('shareTypePublic'), document.getElementById('shareTypePwd')].forEach(function (r) {
+    if (r) r.addEventListener('change', refreshShareType);
+  });
+  refreshShareType();
   if (enabledEl) {
     enabledEl.addEventListener('change', function () {
       configEl.style.display = enabledEl.checked ? 'block' : 'none';
-      if (accessReqBox) accessReqBox.hidden = !enabledEl.checked;
       if (enabledEl.checked) loadAccessRequests();
+      refreshShareType();
     });
   }
   if (saveShareBtn) {
     saveShareBtn.addEventListener('click', async function () {
+      var isPwd = isSharePwdType();
       var payload = {
         enabled: enabledEl.checked,
         can_edit: document.getElementById('shareCanEdit').checked,
-        password: document.getElementById('sharePassword').value,
+        password: isPwd ? document.getElementById('sharePassword').value : '',
+        remove_password: !isPwd,
         expire_days: parseInt(document.getElementById('shareExpire').value, 10) || 0,
       };
       var res, data;
       try {
-        res = await fetch('/admin/api/docs/' + docID() + '/share', {
+        res = await fetch('/console/api/docs/' + docID() + '/share', {
           method: enabledEl.checked ? 'POST' : 'DELETE',
           headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
           body: JSON.stringify(payload),
@@ -952,17 +969,27 @@
       if (data.url) {
         document.getElementById('shareURL').textContent = data.url;
         document.getElementById('shareLink').style.display = 'flex';
-        if (accessReqBox) accessReqBox.hidden = false;
-        loadAccessRequests();
+        if (accessReqBox) accessReqBox.hidden = !isPwd;
+        if (isPwd) loadAccessRequests();
       } else if (!enabledEl.checked) {
         document.getElementById('shareLink').style.display = 'none';
         if (accessReqBox) accessReqBox.hidden = true;
       }
-      // 密码明文本机记忆（供复制用），关闭分享时清除
+      // 同步密码状态标记（生成按钮文案/占位符跟随）
+      var pwdInput2 = document.getElementById('sharePassword');
+      if (data.url && typeof data.hasPassword === 'boolean') {
+        pwdInput2.dataset.hasPwd = data.hasPassword ? '1' : '';
+        if (data.hasPassword) pwdInput2.placeholder = UI.t('已设置密码');
+        var genBtn2 = document.getElementById('genPwdBtn');
+        if (genBtn2) genBtn2.textContent = UI.t(data.hasPassword ? 'share.resetPwd' : 'share.genPwd');
+      }
+      // 密码明文本机记忆（供复制用）；公开分享/关闭分享时清除
       var pwdKey = sharePwdKey(data.url || (document.getElementById('shareURL') || {}).textContent);
       try {
-        if (enabledEl.checked && payload.password.trim()) {
+        if (enabledEl.checked && isPwd && payload.password.trim()) {
           localStorage.setItem(pwdKey, payload.password.trim());
+        } else if (enabledEl.checked && !isPwd && pwdKey) {
+          localStorage.removeItem(pwdKey);
         } else if (!enabledEl.checked && pwdKey) {
           localStorage.removeItem(pwdKey);
         }
@@ -976,7 +1003,7 @@
     if (!list || !docID()) return;
     list.innerHTML = '<div class="muted">' + UI.t('加载中…') + '</div>';
     try {
-      var res = await fetch('/admin/api/docs/' + docID() + '/access-requests', {
+      var res = await fetch('/console/api/docs/' + docID() + '/access-requests', {
         headers: { 'X-Requested-With': 'XMLHttpRequest' }
       });
       var data = await res.json();
@@ -1059,7 +1086,7 @@
       acts.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
     }
     try {
-      var res = await fetch('/admin/api/docs/' + docID() + '/access-requests/' + rid, {
+      var res = await fetch('/console/api/docs/' + docID() + '/access-requests/' + rid, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({ action: action })
@@ -1086,12 +1113,12 @@
 
   /* ---- 分享密码：生成 / 重置 / 勾选开启时自动填充 ---- */
   function genPassword() {
-    // 去掉易混淆字符（0/o、1/l/I），6 位数字+字母
+    // 去掉易混淆字符（0/o、1/l/I），4 位数字+字母
     var chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     var out = '';
-    var buf = new Uint32Array(6);
+    var buf = new Uint32Array(4);
     (window.crypto || window.msCrypto).getRandomValues(buf);
-    for (var i = 0; i < 6; i++) out += chars[buf[i] % chars.length];
+    for (var i = 0; i < 4; i++) out += chars[buf[i] % chars.length];
     return out;
   }
   var pwdInput = document.getElementById('sharePassword');
@@ -1104,8 +1131,8 @@
   }
   if (enabledEl && pwdInput) {
     enabledEl.addEventListener('change', function () {
-      // 首次开启且没有历史密码时自动生成，省得手动想
-      if (enabledEl.checked && !pwdInput.value.trim() && !pwdInput.dataset.hasPwd) {
+      // 首次开启且没有历史密码时自动生成，省得手动想（仅密码访问类型）
+      if (enabledEl.checked && isSharePwdType() && !pwdInput.value.trim() && !pwdInput.dataset.hasPwd) {
         pwdInput.value = genPassword();
       }
     });
@@ -1128,7 +1155,7 @@
       UI.openModal(revisionsModal);
       revList.innerHTML = '<div class="muted">加载中…</div>';
       try {
-        var res = await fetch('/admin/api/docs/' + docID() + '/revisions', {
+        var res = await fetch('/console/api/docs/' + docID() + '/revisions', {
           headers: { 'X-Requested-With': 'XMLHttpRequest' }
         });
         var data = await res.json();
@@ -1155,7 +1182,7 @@
           btn.addEventListener('click', async function () {
             if (!await UI.confirm('回滚到此版本？当前内容会先存为新版本。')) return;
             btn.disabled = true;
-            var res2 = await fetch('/admin/api/docs/' + docID() + '/revisions/' + r.id + '/rollback', {
+            var res2 = await fetch('/console/api/docs/' + docID() + '/revisions/' + r.id + '/rollback', {
               method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
             if (res2.ok) { location.reload(); return; }

@@ -1,0 +1,172 @@
+{{define "mcpdoc.html"}}
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>{{template "head" .}}
+<style>
+/* 代码块：全局 .api-code（style.css）已定义暗底与圆角，这里只补语法高亮色与边框 */
+.api-code{border:1px solid #2c2c40;font-size:12.5px;line-height:1.8}
+.api-code .c{color:#5c6370;font-style:italic}
+.api-code .k{color:#c678dd}
+.api-code .s{color:#98c379}
+/* 提示语对话气泡：浅色内衬、自然语言软换行，区别于暗底代码块 */
+.prompt-bubble{margin-top:12px;border:1px solid var(--border);border-radius:12px;background:var(--bg-soft);overflow:hidden}
+.pb-head{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--panel)}
+.pb-avatar{font-size:16px;line-height:1}
+.pb-title{font-size:13px;font-weight:600;flex:1}
+.pb-head .btn{flex:none}
+.pb-body{margin:0;padding:14px 16px;font-size:12.5px;line-height:1.9;color:#abb2bf;background:#1e1e2e;font-family:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
+.mcp-table{width:100%;border-collapse:collapse;font-size:13px}
+.mcp-table th,.mcp-table td{border:1px solid var(--border);padding:9px 12px;text-align:left;vertical-align:top}
+.mcp-table th{background:var(--bg-soft);white-space:nowrap}
+.mcp-table code{font-family:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;font-size:12px;color:var(--primary)}
+.doc-callout{border:1px solid var(--border);border-left:3px solid var(--primary);background:var(--bg-soft);border-radius:6px;padding:10px 14px;font-size:13px;margin-top:12px}
+</style>
+</head>
+<body>
+{{template "nav" .}}
+<main class="container doc-wrap">
+  <div class="page-head">
+    <h1>{{$.T "mcpdoc.title"}}</h1>
+    <a class="btn" href="/console/apikeys">{{$.T "key.manage"}}</a>
+  </div>
+
+  <div class="doc-layout">
+    <aside class="doc-side">
+      <a href="#sec-intro" class="active">{{$.T "mcpdoc.introTitle"}}</a>
+      <a href="#sec-quickstart">{{$.T "mcpdoc.qsTitle"}}</a>
+      <a href="#sec-auto">{{$.T "mcpdoc.autoTitle"}}</a>
+      <a href="#sec-tools">{{$.T "mcpdoc.toolsTitle"}}</a>
+      <a href="#sec-canvas">{{$.T "mcpdoc.canvasTitle"}}</a>
+    </aside>
+
+    <div class="doc-main">
+      <section class="panel doc-sec" id="sec-intro">
+        <h2>{{$.T "mcpdoc.introTitle"}}</h2>
+        <p>{{$.T "mcpdoc.intro"}}</p>
+        <div class="doc-callout">{{$.T "mcpdoc.callout"}}</div>
+      </section>
+
+      <section class="panel doc-sec" id="sec-quickstart">
+        <h2>{{$.T "mcpdoc.qsTitle"}}</h2>
+        <p>{{$.T "mcpdoc.qsScript"}} <a href="https://github.com/3thinkthendoit/doc-share/tree/main/mcp" target="_blank" rel="noopener">GitHub · mcp/</a></p>
+        <p>{{$.T "mcpdoc.qsLead"}}</p>
+        <ol class="doc-steps">
+          <li>{{$.T "mcpdoc.qs1"}}</li>
+          <li>{{$.T "mcpdoc.qs2"}}</li>
+        </ol>
+        <pre class="api-code">{
+  <span class="k">"mcpServers"</span>: {
+    <span class="k">"docshare"</span>: {
+      <span class="k">"command"</span>: <span class="s">"node"</span>,
+      <span class="k">"args"</span>: [<span class="s">"/path/to/doc-share/mcp/mcp-server.js"</span>],
+      <span class="k">"env"</span>: {
+        <span class="k">"DOC_SHARE_BASE_URL"</span>: <span class="s">"{{.BaseURL}}"</span>,
+        <span class="k">"DOC_SHARE_APP_KEY"</span>: <span class="s">"ak_xxx"</span>,
+        <span class="k">"DOC_SHARE_SECRET"</span>: <span class="s">"sk_xxx"</span>
+      }
+    }
+  }
+}</pre>
+        <ol class="doc-steps" start="3">
+          <li>{{$.T "mcpdoc.qs3"}}</li>
+          <li>{{$.T "mcpdoc.qs4"}}</li>
+        </ol>
+      </section>
+
+      <section class="panel doc-sec" id="sec-auto">
+        <h2>{{$.T "mcpdoc.autoTitle"}}</h2>
+        <p>{{$.T "mcpdoc.autoLead"}}</p>
+        <div class="prompt-bubble">
+          <div class="pb-head">
+            <span class="pb-avatar">🤖</span>
+            <span class="pb-title">{{$.T "mcpdoc.autoTitle"}} · Prompt</span>
+            <button type="button" class="btn btn-sm" id="promptCopy">{{$.T "mcpdoc.autoCopy"}}</button>
+          </div>
+          <pre class="pb-body" id="autoPrompt">{{$.T "mcpdoc.autoPrompt" .BaseURL}}</pre>
+        </div>
+      </section>
+
+      <section class="panel doc-sec" id="sec-tools">
+        <h2>{{$.T "mcpdoc.toolsTitle"}}</h2>
+        <p>{{$.T "mcpdoc.toolsLead"}}</p>
+        <table class="mcp-table">
+          <tr><th>{{$.T "common.tool"}}</th><th>{{$.T "common.desc"}}</th></tr>
+          <tr><td><code>docshare_list_docs</code></td><td>{{$.T "mcpdoc.tList"}}</td></tr>
+          <tr><td><code>docshare_get_doc</code></td><td>{{$.T "mcpdoc.tGet"}}</td></tr>
+          <tr><td><code>docshare_create_doc</code><br><code>docshare_update_doc</code><br><code>docshare_delete_doc</code></td><td>{{$.T "mcpdoc.tDocs"}}</td></tr>
+          <tr><td><code>docshare_list_projects</code><br><code>docshare_create_project</code> 等 4 个</td><td>{{$.T "mcpdoc.tProjects"}}</td></tr>
+          <tr><td><code>docshare_list_categories</code><br><code>docshare_create_category</code> 等 4 个</td><td>{{$.T "mcpdoc.tCats"}}</td></tr>
+        </table>
+      </section>
+
+      <section class="panel doc-sec" id="sec-canvas">
+        <h2>{{$.T "mcpdoc.canvasTitle"}}</h2>
+        <p>{{$.T "mcpdoc.canvasLead"}}</p>
+
+        <h3>{{$.T "mcpdoc.cMind"}}</h3>
+        <pre class="api-code">{
+  <span class="k">"data"</span>: { <span class="k">"text"</span>: <span class="s">"中心主题"</span> },
+  <span class="k">"children"</span>: [
+    { <span class="k">"data"</span>: { <span class="k">"text"</span>: <span class="s">"分支"</span> }, <span class="k">"children"</span>: [] }
+  ]
+}</pre>
+
+        <h3>{{$.T "mcpdoc.cBoard"}}</h3>
+        <pre class="api-code">{
+  <span class="k">"type"</span>: <span class="s">"excalidraw"</span>, <span class="k">"version"</span>: 2, <span class="k">"source"</span>: <span class="s">"doc-share"</span>,
+  <span class="k">"elements"</span>: [
+    { <span class="k">"type"</span>: <span class="s">"rectangle"</span>, <span class="k">"id"</span>: <span class="s">"r1"</span>, <span class="k">"x"</span>: 100, <span class="k">"y"</span>: 80,
+      <span class="k">"width"</span>: 180, <span class="k">"height"</span>: 70, <span class="k">"backgroundColor"</span>: <span class="s">"#a5d8ff"</span> }
+  ],
+  <span class="k">"appState"</span>: { <span class="k">"viewBackgroundColor"</span>: <span class="s">"#ffffff"</span> }, <span class="k">"files"</span>: {}
+}</pre>
+
+        <h3>{{$.T "mcpdoc.cDrawio"}}</h3>
+        <pre class="api-code">&lt;mxfile host=<span class="s">"doc-share"</span>&gt;
+  &lt;diagram id=<span class="s">"page-1"</span> name=<span class="s">"Page-1"</span>&gt;
+    &lt;mxGraphModel&gt;
+      &lt;root&gt;
+        &lt;mxCell id=<span class="s">"0"</span>/&gt;&lt;mxCell id=<span class="s">"1"</span> parent=<span class="s">"0"</span>/&gt;
+        &lt;mxCell id=<span class="s">"2"</span> value=<span class="s">"开始"</span> style=<span class="s">"rounded=1;"</span> vertex=<span class="s">"1"</span> parent=<span class="s">"1"</span>&gt;
+          &lt;mxGeometry x=<span class="s">"80"</span> y=<span class="s">"60"</span> width=<span class="s">"120"</span> height=<span class="s">"48"</span> as=<span class="s">"geometry"</span>/&gt;
+        &lt;/mxCell&gt;
+      &lt;/root&gt;
+    &lt;/mxGraphModel&gt;
+  &lt;/diagram&gt;
+&lt;/mxfile&gt;</pre>
+
+        <div class="doc-callout">{{$.T "mcpdoc.cTip"}}</div>
+      </section>
+    </div>
+  </div>
+</main>
+<script>
+(function () {
+  var btn = document.getElementById('promptCopy');
+  var pre = document.getElementById('autoPrompt');
+  if (!btn || !pre) return;
+  var done = false;
+  btn.addEventListener('click', function () {
+    var text = pre.textContent;
+    var ok = function () {
+      if (done) return;
+      done = true;
+      var old = btn.textContent;
+      btn.textContent = '✓';
+      setTimeout(function () { btn.textContent = old; done = false; }, 1600);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(ok, function () { fallback(); });
+    } else { fallback(); }
+    function fallback() {
+      var sel = window.getSelection(), range = document.createRange();
+      range.selectNodeContents(pre); sel.removeAllRanges(); sel.addRange(range);
+      try { document.execCommand('copy'); ok(); } catch (e) {}
+      sel.removeAllRanges();
+    }
+  });
+})();
+</script>
+</body>
+</html>
+{{end}}

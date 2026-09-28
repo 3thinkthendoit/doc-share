@@ -11,7 +11,7 @@ html,body{height:100%;margin:0}
 </head>
 <body>
   {{/*
-    sandbox 不含 allow-same-origin：整站脚本运行在隔离源，无法读写本站 cookie / 调用 /admin API。
+    sandbox 不含 allow-same-origin：整站脚本运行在隔离源，无法读写本站 cookie / 调用 /console API。
     允许 scripts/forms/popups/downloads 以兼容常见打包产物（vite/webpack dist 等）。
   */}}
   <iframe class="htmlview-frame" src="{{.entryURL}}"

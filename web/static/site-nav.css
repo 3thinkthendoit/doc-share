@@ -137,6 +137,14 @@ a.l-btn-primary, a.l-btn-primary:hover { color: #fff; }
   font-size: 15px; cursor: pointer;
 }
 .l-btn.l-theme:hover { color: var(--l-head); border-color: var(--l-accent); transform: none; }
+/* GitHub 图标按钮：与主题切换按钮同尺寸同框 */
+.l-btn.l-gh {
+  display: inline-grid; place-items: center; width: var(--ctl-h, 38px); padding: 0;
+  background: var(--l-panel); color: var(--l-muted);
+  border: 1px solid var(--l-border-2); border-radius: 6px;
+  cursor: pointer;
+}
+.l-btn.l-gh:hover { color: var(--l-head); border-color: var(--l-accent); transform: none; }
 .l-btn.l-theme .i-sun { display: none; }
 .l-btn.l-theme .i-moon { display: block; }
 html[data-theme="light"] .l-btn.l-theme .i-sun { display: block; }

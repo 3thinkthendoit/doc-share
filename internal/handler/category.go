@@ -66,7 +66,7 @@ func (a *App) CategoriesPage(c *gin.Context) {
 		"categories": categories,
 		"q":          q,
 	}
-	for k, v := range pagerFields(pg, "/admin/categories", extra) {
+	for k, v := range pagerFields(pg, "/console/categories", extra) {
 		data[k] = v
 	}
 	a.render(c, "categories.html", data)

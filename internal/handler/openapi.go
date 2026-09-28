@@ -223,7 +223,7 @@ func (a *App) OpenListProjects(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": items, "total": pg.Total, "page": pg.Page, "size": pg.Size})
 }
 
-// OpenGetShare 查询文档分享状态（属主/admin）：GET /openapi/v1/docs/:id/share
+// OpenGetShare 查询文档分享状态（属主/管理员）：GET /openapi/v1/docs/:id/share
 func (a *App) OpenGetShare(c *gin.Context) {
 	doc := a.loadDoc(c)
 	if doc == nil {

@@ -27,7 +27,7 @@
       </div>
     </div>
     <div class="head-side">
-      <a href="/admin/docs" class="btn">{{$.T "返回列表"}}</a>
+      <a href="/console/docs" class="btn">{{$.T "返回列表"}}</a>
       {{if and .doc .canEditDoc}}<button id="shareBtn" class="btn">{{$.T "分享"}}</button>{{end}}
       {{if .doc}}<button type="button" id="revisionsBtn" class="btn">{{$.T "revisions.title"}}</button>{{end}}
       {{if .canEditDoc}}<button id="saveBtn" class="btn btn-primary" type="button">{{$.T "保存"}}</button>{{end}}
@@ -89,12 +89,19 @@
         <label class="check"><input type="checkbox" id="shareEnabled" {{if .share}}checked{{end}}> {{$.T "开启分享链接"}}</label>
         <div id="shareConfig" class="share-config" {{if not .share}}style="display:none"{{end}}>
           <label class="check"><input type="checkbox" id="shareCanEdit" {{if .share}}{{if .share.CanEdit}}checked{{end}}{{end}}> {{$.T "share.canEdit"}}</label>
+          <label>{{$.T "share.type"}}</label>
+          <div class="share-type-row">
+            <label class="check"><input type="radio" name="shareType" value="public" id="shareTypePublic" {{if not .share}}checked{{end}}> {{$.T "share.typePublic"}}</label>
+            <label class="check"><input type="radio" name="shareType" value="pwd" id="shareTypePwd" {{if .share}}{{if .share.HasPassword}}checked{{end}}{{end}}> {{$.T "share.typePwd"}}</label>
+          </div>
+          <div id="pwdWrap">
           <label>{{$.T "访问密码（留空则不修改 / 无密码）"}}
             <div class="pwd-row">
               <input type="text" id="sharePassword" autocomplete="off" data-has-pwd="{{if .share}}{{if .share.HasPassword}}1{{end}}{{end}}" placeholder="{{if .share}}{{if .share.HasPassword}}{{$.T "已设置密码"}}{{end}}{{end}}">
               <button type="button" class="btn btn-sm" id="genPwdBtn">{{if .share}}{{if .share.HasPassword}}{{$.T "share.resetPwd"}}{{else}}{{$.T "share.genPwd"}}{{end}}{{else}}{{$.T "share.genPwd"}}{{end}}</button>
             </div>
           </label>
+          </div>
           <label>{{$.T "有效期"}}
             <select id="shareExpire">
               <option value="0">{{$.T "永久有效"}}</option>

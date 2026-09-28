@@ -18,7 +18,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// newAuthApp 搭建授权矩阵测试环境：内存 sqlite + 种子数据（属主/查看成员/编辑成员/admin）
+// newAuthApp 搭建授权矩阵测试环境：内存 sqlite + 种子数据（属主/查看成员/编辑成员/管理员）
 func newAuthApp(t *testing.T) (*App, *model.Document) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -81,7 +81,7 @@ func TestProjectMemberAuthMatrix(t *testing.T) {
 	t.Run("view_member_cannot_update", func(t *testing.T) {
 		w, c := newCtx()
 		c.Params = gin.Params{{Key: "id", Value: docID}}
-		asUser(c, users["viewm"], http.MethodPut, "/admin/api/docs/"+docID, `{"title":"x"}`)
+		asUser(c, users["viewm"], http.MethodPut, "/console/api/docs/"+docID, `{"title":"x"}`)
 		a.UpdateDoc(c)
 		assertCode(t, w, http.StatusForbidden)
 	})
@@ -89,7 +89,7 @@ func TestProjectMemberAuthMatrix(t *testing.T) {
 	t.Run("edit_member_can_update", func(t *testing.T) {
 		w, c := newCtx()
 		c.Params = gin.Params{{Key: "id", Value: docID}}
-		asUser(c, users["editm"], http.MethodPut, "/admin/api/docs/"+docID, `{"title":"新标题"}`)
+		asUser(c, users["editm"], http.MethodPut, "/console/api/docs/"+docID, `{"title":"新标题"}`)
 		a.UpdateDoc(c)
 		assertCode(t, w, http.StatusOK)
 	})
@@ -97,7 +97,7 @@ func TestProjectMemberAuthMatrix(t *testing.T) {
 	t.Run("edit_member_cannot_upsert_share", func(t *testing.T) {
 		w, c := newCtx()
 		c.Params = gin.Params{{Key: "id", Value: docID}}
-		asUser(c, users["editm"], http.MethodPost, "/admin/api/docs/"+docID+"/share", `{"enabled":true}`)
+		asUser(c, users["editm"], http.MethodPost, "/console/api/docs/"+docID+"/share", `{"enabled":true}`)
 		a.UpsertShare(c)
 		assertCode(t, w, http.StatusForbidden)
 	})
@@ -105,7 +105,7 @@ func TestProjectMemberAuthMatrix(t *testing.T) {
 	t.Run("view_member_can_list_revisions", func(t *testing.T) {
 		w, c := newCtx()
 		c.Params = gin.Params{{Key: "id", Value: docID}}
-		asUser(c, users["viewm"], http.MethodGet, "/admin/api/docs/"+docID+"/revisions", "")
+		asUser(c, users["viewm"], http.MethodGet, "/console/api/docs/"+docID+"/revisions", "")
 		a.ListRevisions(c)
 		assertCode(t, w, http.StatusOK)
 	})
@@ -113,7 +113,7 @@ func TestProjectMemberAuthMatrix(t *testing.T) {
 	t.Run("outsider_cannot_even_read", func(t *testing.T) {
 		w, c := newCtx()
 		c.Params = gin.Params{{Key: "id", Value: docID}}
-		asUser(c, users["outsider"], http.MethodGet, "/admin/api/docs/"+docID+"/revisions", "")
+		asUser(c, users["outsider"], http.MethodGet, "/console/api/docs/"+docID+"/revisions", "")
 		a.ListRevisions(c)
 		assertCode(t, w, http.StatusForbidden)
 	})
@@ -121,7 +121,7 @@ func TestProjectMemberAuthMatrix(t *testing.T) {
 	t.Run("owner_can_upsert_share", func(t *testing.T) {
 		w, c := newCtx()
 		c.Params = gin.Params{{Key: "id", Value: docID}}
-		asUser(c, users["owner"], http.MethodPost, "/admin/api/docs/"+docID+"/share", `{"enabled":true}`)
+		asUser(c, users["owner"], http.MethodPost, "/console/api/docs/"+docID+"/share", `{"enabled":true}`)
 		a.UpsertShare(c)
 		assertCode(t, w, http.StatusOK)
 	})
@@ -129,7 +129,7 @@ func TestProjectMemberAuthMatrix(t *testing.T) {
 	t.Run("admin_bypasses_everything", func(t *testing.T) {
 		w, c := newCtx()
 		c.Params = gin.Params{{Key: "id", Value: docID}}
-		asUser(c, users["boss"], http.MethodPost, "/admin/api/docs/"+docID+"/share", `{"enabled":true}`)
+		asUser(c, users["boss"], http.MethodPost, "/console/api/docs/"+docID+"/share", `{"enabled":true}`)
 		a.UpsertShare(c)
 		assertCode(t, w, http.StatusOK)
 	})
@@ -137,7 +137,7 @@ func TestProjectMemberAuthMatrix(t *testing.T) {
 	t.Run("add_duplicate_member_reports_conflict", func(t *testing.T) {
 		w, c := newCtx()
 		c.Params = gin.Params{{Key: "id", Value: itoa(int(projectIDFromDoc(t, a, doc)))}}
-		asUser(c, users["owner"], http.MethodPost, "/admin/api/projects/1/members", `{"user_id":2,"role":"view"}`)
+		asUser(c, users["owner"], http.MethodPost, "/console/api/projects/1/members", `{"user_id":2,"role":"view"}`)
 		a.AddProjectMember(c)
 		assertCode(t, w, http.StatusBadRequest)
 	})
@@ -160,7 +160,7 @@ func TestProjectDocsVisibility(t *testing.T) {
 
 	t.Run("view_member_shared_filter_sees_project_docs", func(t *testing.T) {
 		w, c := newCtx()
-		asUser(c, users["viewm"], http.MethodGet, "/admin/docs?origin=shared", "")
+		asUser(c, users["viewm"], http.MethodGet, "/console/docs?origin=shared", "")
 		render.DocsPage(c)
 		assertCode(t, w, http.StatusOK)
 		body := w.Body.String()
@@ -171,7 +171,7 @@ func TestProjectDocsVisibility(t *testing.T) {
 
 	t.Run("view_member_cannot_see_private_docs_of_others", func(t *testing.T) {
 		w, c := newCtx()
-		asUser(c, users["viewm"], http.MethodGet, "/admin/docs", "")
+		asUser(c, users["viewm"], http.MethodGet, "/console/docs", "")
 		render.DocsPage(c)
 		assertCode(t, w, http.StatusOK)
 		if strings.Contains(w.Body.String(), "局外人私有的文档") {
@@ -193,7 +193,7 @@ func TestProjectMemberCRUD(t *testing.T) {
 	t.Run("add_member", func(t *testing.T) {
 		w, c := newCtx()
 		c.Params = gin.Params{{Key: "id", Value: pseg}}
-		asUser(c, users["owner"], http.MethodPost, "/admin/api/projects/"+pseg+"/members",
+		asUser(c, users["owner"], http.MethodPost, "/console/api/projects/"+pseg+"/members",
 			`{"user_id":`+itoa(int(users["outsider"].ID))+`,"role":"edit"}`)
 		a.AddProjectMember(c)
 		assertCode(t, w, http.StatusOK)
@@ -203,7 +203,7 @@ func TestProjectMemberCRUD(t *testing.T) {
 	t.Run("list_members", func(t *testing.T) {
 		w, c := newCtx()
 		c.Params = gin.Params{{Key: "id", Value: pseg}}
-		asUser(c, users["owner"], http.MethodGet, "/admin/api/projects/"+pseg+"/members", "")
+		asUser(c, users["owner"], http.MethodGet, "/console/api/projects/"+pseg+"/members", "")
 		a.ListProjectMembers(c)
 		assertCode(t, w, http.StatusOK)
 		var res struct {
@@ -234,7 +234,7 @@ func TestProjectMemberCRUD(t *testing.T) {
 	t.Run("non_owner_cannot_manage", func(t *testing.T) {
 		w, c := newCtx()
 		c.Params = gin.Params{{Key: "id", Value: pseg}, {Key: "mid", Value: mid}}
-		asUser(c, users["editm"], http.MethodDelete, "/admin/api/projects/"+pseg+"/members/"+mid, "")
+		asUser(c, users["editm"], http.MethodDelete, "/console/api/projects/"+pseg+"/members/"+mid, "")
 		a.RemoveProjectMember(c)
 		assertCode(t, w, http.StatusForbidden)
 	})
@@ -242,7 +242,7 @@ func TestProjectMemberCRUD(t *testing.T) {
 	t.Run("update_role", func(t *testing.T) {
 		w, c := newCtx()
 		c.Params = gin.Params{{Key: "id", Value: pseg}, {Key: "mid", Value: mid}}
-		asUser(c, users["owner"], http.MethodPut, "/admin/api/projects/"+pseg+"/members/"+mid, `{"role":"view"}`)
+		asUser(c, users["owner"], http.MethodPut, "/console/api/projects/"+pseg+"/members/"+mid, `{"role":"view"}`)
 		a.UpdateProjectMember(c)
 		assertCode(t, w, http.StatusOK)
 	})
@@ -250,7 +250,7 @@ func TestProjectMemberCRUD(t *testing.T) {
 	t.Run("remove_member", func(t *testing.T) {
 		w, c := newCtx()
 		c.Params = gin.Params{{Key: "id", Value: pseg}, {Key: "mid", Value: mid}}
-		asUser(c, users["owner"], http.MethodDelete, "/admin/api/projects/"+pseg+"/members/"+mid, "")
+		asUser(c, users["owner"], http.MethodDelete, "/console/api/projects/"+pseg+"/members/"+mid, "")
 		a.RemoveProjectMember(c)
 		assertCode(t, w, http.StatusOK)
 	})
@@ -258,7 +258,7 @@ func TestProjectMemberCRUD(t *testing.T) {
 	t.Run("removed_member_cannot_read_docs", func(t *testing.T) {
 		w, c := newCtx()
 		c.Params = gin.Params{{Key: "id", Value: strconv.Itoa(int(doc.ID))}}
-		asUser(c, users["outsider"], http.MethodGet, "/admin/api/docs/"+itoa(int(doc.ID))+"/revisions", "")
+		asUser(c, users["outsider"], http.MethodGet, "/console/api/docs/"+itoa(int(doc.ID))+"/revisions", "")
 		a.ListRevisions(c)
 		assertCode(t, w, http.StatusForbidden)
 	})

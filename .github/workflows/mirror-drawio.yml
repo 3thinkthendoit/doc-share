@@ -4,15 +4,16 @@ name: mirror-drawio
 # 供国内服务器/CI 快速拉取（独立部署 drawio 编辑器，DocShare 后台填其地址）。
 #
 # 前置（GitHub 仓库 Settings → Secrets and variables → Actions 配置）：
-#   ACR_REGISTRY  —— ACR 域名，如 registry.cn-beijing.aliyuncs.com
-#   ACR_NAMESPACE —— ACR 命名空间
+#   ACR_REGISTRY  —— ACR 域名，如 registry.cn-beijing.aliyuncs.com（无 https:// 前缀）
+#   ACR_NAMESPACE —— ACR 命名空间（小写字母/数字/中划线，不要带域名或斜杠）
 #   ACR_USERNAME  —— ACR 用户名
 #   ACR_PASSWORD  —— ACR 密码（固定密码或临时 Token）
-# 注意：ACR 个人版不会在 push 时自动建仓，请先在控制台创建名为 drawio 的仓库。
+# 注意：ACR 个人版不会在 push 时自动建仓，请先在控制台创建名为 drawio 的仓库，
+#       且地域/命名空间与上述 Secret 完全一致。
 #
-# 版本输入自动兼容 "24.7.5" 与 "v24.7.5" 两种 tag 格式（Docker Hub 与 GitHub
-# release tag 的前缀习惯不同，探测到哪个存在就拉哪个），转存到 ACR 时统一
-# 使用去掉 v 前缀的版本号。
+# 双通道输出（ACR 推送失败不影响镜像获取）：
+#   1) push 到 ACR；2) 同时上传镜像 tar.gz 为 Artifact——服务器上
+#      gh run download 后 docker load 即可，完全不依赖 Registry 权限。
 
 on:
   workflow_dispatch:
@@ -24,34 +25,19 @@ on:
   schedule:
     - cron: '0 3 * * 1' # 每周一 03:00 UTC
 
-jobs:
-  mirror:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Validate secrets
-        env:
-          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
-          ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
-          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
-          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
-        run: |
-          set -e
-          missing=0
-          for var in ACR_REGISTRY ACR_NAMESPACE ACR_USERNAME ACR_PASSWORD; do
-            if [ -z "${!var}" ]; then
-              echo "::error::Secret ${var} 未配置：GitHub 仓库 → Settings → Secrets and variables → Actions → New repository secret"
-              missing=1
-            fi
-          done
-          if [ "${missing}" = "1" ]; then exit 1; fi
-          # ACR 命名空间只允许小写字母/数字/中划线；顺手挡掉误填完整 registry 或带斜杠的情况
-          case "${ACR_NAMESPACE}" in
-            *[!a-z0-9-]*)
-              echo "::error::ACR_NAMESPACE 格式非法（只允许小写字母/数字/中划线，如 my-ns；不要填 registry 域名或带斜杠）"
-              exit 1
-              ;;
-          esac
+# 与 docker-publish.yml（doc-share 推送）保持一致：命名空间写死，不走 Secret，
+# 避免因 Secret 值与 ACR 控制台实际命名空间不一致导致 push denied
+env:
+  ACR_NAMESPACE: 3thinkthendoit
+  DRAWIO_REPO: drawio
 
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      source: ${{ steps.resolve.outputs.source }}
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
       - name: Resolve source tag
         id: resolve
         env:
@@ -74,19 +60,57 @@ jobs:
           echo "source=${SOURCE}" >> "$GITHUB_OUTPUT"
           echo "version=${VER}" >> "$GITHUB_OUTPUT"
 
-      - name: Pull & push to Aliyun ACR
-        env:
-          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
-          ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
-          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
-          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+  push-acr:
+    needs: resolve
+    runs-on: ubuntu-latest
+    env:
+      ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+      ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+      ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+    steps:
+      - name: Validate secrets
         run: |
           set -e
-          SOURCE="${{ steps.resolve.outputs.source }}"
-          TARGET="${ACR_REGISTRY}/${ACR_NAMESPACE}/drawio:${{ steps.resolve.outputs.version }}"
+          missing=0
+          for var in ACR_REGISTRY ACR_USERNAME ACR_PASSWORD; do
+            if [ -z "${!var}" ]; then
+              echo "::error::Secret ${var} 未配置：GitHub 仓库 → Settings → Secrets and variables → Actions → New repository secret"
+              missing=1
+            fi
+          done
+          if [ "${missing}" = "1" ]; then exit 1; fi
+
+      - name: Pull & push to Aliyun ACR
+        run: |
+          set -e
+          SOURCE="${{ needs.resolve.outputs.source }}"
+          TARGET="${ACR_REGISTRY}/${ACR_NAMESPACE}/${DRAWIO_REPO}:${{ needs.resolve.outputs.version }}"
           echo "同步 ${SOURCE} -> ${TARGET}"
           docker pull "${SOURCE}"
           echo "${ACR_PASSWORD}" | docker login "${ACR_REGISTRY}" -u "${ACR_USERNAME}" --password-stdin
           docker tag "${SOURCE}" "${TARGET}"
           docker push "${TARGET}"
           echo "完成：${TARGET}"
+
+  save-artifact:
+    needs: resolve
+    # ACR 推送失败也照常产出镜像包，保证服务器始终有路可取
+    if: always() && needs.resolve.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull & save image
+        run: |
+          set -e
+          SOURCE="${{ needs.resolve.outputs.source }}"
+          VERSION="${{ needs.resolve.outputs.version }}"
+          docker pull "${SOURCE}"
+          docker save "${SOURCE}" | gzip > "drawio-${VERSION}.tar.gz"
+          ls -lh "drawio-${VERSION}.tar.gz"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: drawio-image
+          path: drawio-*.tar.gz
+          retention-days: 7
+          compression-level: 0

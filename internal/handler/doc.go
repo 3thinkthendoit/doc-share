@@ -162,7 +162,7 @@ func (a *App) DocsPage(c *gin.Context) {
 		"embedTags":  embedTags,
 		"sideQS":     sideQS,
 	}
-	for k, v := range pagerFields(pg, "/admin/docs", extra) {
+	for k, v := range pagerFields(pg, "/console/docs", extra) {
 		data[k] = v
 	}
 	a.render(c, "docs.html", data)
@@ -654,7 +654,7 @@ var editPresence = struct {
 	m map[uint]map[uint]editEntry // docID -> userID -> 心跳
 }{m: map[uint]map[uint]editEntry{}}
 
-// MarkEditing 编辑页心跳：POST /admin/api/docs/:id/editing
+// MarkEditing 编辑页心跳：POST /console/api/docs/:id/editing
 // 登记本人心跳并返回其他正在编辑者的名字（30 秒内心跳有效）
 func (a *App) MarkEditing(c *gin.Context) {
 	doc := a.loadDoc(c)

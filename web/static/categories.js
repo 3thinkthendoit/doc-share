@@ -31,7 +31,7 @@ categoryForm.addEventListener('submit', async function (e) {
     sort: parseInt(cf().sort.value, 10) || 0
   };
   try {
-    var res = await fetch(id ? '/admin/api/categories/' + id : '/admin/api/categories', {
+    var res = await fetch(id ? '/console/api/categories/' + id : '/console/api/categories', {
       method: id ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
       body: JSON.stringify(payload)
@@ -49,7 +49,7 @@ async function delCategory(btn) {
   var ok = await UI.confirm(UI.t('确定删除分类「{0}」？其下文档将变为未分类。', btn.dataset.name), { danger: true });
   if (!ok) return;
   try {
-    var res = await fetch('/admin/api/categories/' + btn.dataset.id, {
+    var res = await fetch('/console/api/categories/' + btn.dataset.id, {
       method: 'DELETE',
       headers: { 'X-Requested-With': 'XMLHttpRequest' }
     });

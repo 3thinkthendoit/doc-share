@@ -27,7 +27,7 @@ func (a *App) UsersPage(c *gin.Context) {
 		"title": "用户管理",
 		"users": users,
 	}
-	for k, v := range pagerFields(pg, "/admin/users", "") {
+	for k, v := range pagerFields(pg, "/console/users", "") {
 		data[k] = v
 	}
 	a.render(c, "users.html", data)

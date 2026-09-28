@@ -250,6 +250,22 @@ html[data-theme-anim] .l-mock { transition: background-color .25s, color .25s, b
 .l-code .l-tok-2, .l-term .l-tok-2 { color: var(--l-code-2); }
 .l-code .l-tok-3, .l-term .l-tok-3 { color: var(--l-code-3); }
 
+/* ---------- workflow shots：三步流程的视觉化卡片 ---------- */
+.l-shot .l-pane { min-height: 0; padding: 14px 16px; }
+.l-shot .l-term { border-top: 1px solid var(--l-border); }
+.l-set-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; font-size: 12.5px; }
+.l-set-row + .l-set-row { border-top: 1px dashed var(--l-border); }
+.l-toggle { width: 26px; height: 15px; border-radius: 999px; background: var(--l-accent); position: relative; flex: none; }
+.l-toggle::after { content: ""; position: absolute; top: 2px; right: 2px; width: 11px; height: 11px; border-radius: 50%; background: #fff; }
+.l-badge { margin-left: auto; font-size: 10.5px; font-family: var(--l-mono); letter-spacing: .5px; border: 1px solid var(--l-border-2); border-radius: 4px; padding: 2px 7px; color: var(--l-muted); flex: none; }
+.l-keyval { font-family: var(--l-mono); font-size: 11.5px; color: var(--l-code-fg); background: var(--l-code-bg); border: 1px solid var(--l-border); border-radius: 5px; padding: 3px 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.l-flow { display: flex; align-items: stretch; margin: 2px 0 12px; }
+.l-node { flex: 1; min-width: 0; border: 1px solid var(--l-border-2); border-radius: 8px; background: var(--l-pane-bg); padding: 10px 12px; }
+.l-node b { display: block; font-size: 12px; margin-bottom: 4px; letter-spacing: -.2px; }
+.l-node span { display: block; color: var(--l-muted); font-size: 10.5px; font-family: var(--l-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.l-node-hot { border-color: var(--l-accent-line); background: var(--l-accent-soft); }
+.l-arrow { align-self: center; padding: 0 7px; color: var(--l-accent); font-size: 15px; flex: none; }
+
 /* ---------- stats ---------- */
 .l-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
 .l-stat { background: var(--l-panel); border: 1px solid var(--l-border); border-radius: 8px; padding: 24px; text-align: center; }
@@ -292,6 +308,8 @@ html[data-theme-anim] .l-mock { transition: background-color .25s, color .25s, b
   .l-grid-sign { grid-template-columns: 1fr; }
   .l-pane + .l-pane { border-left: 0; border-top: 1px solid var(--l-border); }
   .l-grid-3, .l-stats { grid-template-columns: repeat(2, 1fr); }
+  .l-flow { flex-direction: column; }
+  .l-arrow { transform: rotate(90deg); padding: 6px 0; align-self: flex-start; margin-left: 20px; }
   .l-step { grid-template-columns: 1fr; gap: 14px; }
   .l-foot-grid { grid-template-columns: 1fr 1fr; }
   .l-h1 { font-size: 42px; letter-spacing: -1.6px; }

@@ -208,7 +208,7 @@ func (a *App) SettingsPage(c *gin.Context) {
 	})
 }
 
-// UpdateSettings 保存站点设置（仅 admin）；logo 走 /admin/api/upload 得到 URL 后填入
+// UpdateSettings 保存站点设置（仅 admin）；logo 走 /console/api/upload 得到 URL 后填入
 func (a *App) UpdateSettings(c *gin.Context) {
 	var req struct {
 		SiteName   string `json:"site_name"`

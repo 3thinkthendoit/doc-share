@@ -1,7 +1,7 @@
 // 分享设置弹窗（公共）：配合模板片段 shareSettingsModal 使用。
 // ShareModal.bind({ lockCanEdit, onChanged }) 初始化；
 // ShareModal.openFor({ docId, title, shared, canEdit, hasPwd, token, shareURL }) 打开并填充状态。
-// 保存走统一接口 POST/DELETE /admin/api/docs/:id/share；带密码分享的密码会记忆到 localStorage 便于复制。
+// 保存走统一接口 POST/DELETE /console/api/docs/:id/share；带密码分享的密码会记忆到 localStorage 便于复制。
 // 有密码分享时展示「申请查看」审批列表（与旧列表页实现同接口）。
 window.ShareModal = (function () {
   'use strict';
@@ -22,17 +22,24 @@ window.ShareModal = (function () {
 
   function genPassword() {
     var chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    var out = '', buf = new Uint32Array(6);
+    var out = '', buf = new Uint32Array(4);
     (window.crypto || window.msCrypto).getRandomValues(buf);
-    for (var i = 0; i < 6; i++) out += chars[buf[i] % chars.length];
+    for (var i = 0; i < 4; i++) out += chars[buf[i] % chars.length];
     return out;
+  }
+
+  function refreshType() {
+    var isPwd = el('shareTypePwd') && el('shareTypePwd').checked;
+    var wrap = el('pwdWrap');
+    if (wrap) wrap.style.display = isPwd ? 'block' : 'none';
+    // 访问申请仅对密码分享有意义：公开分享时隐藏
+    var reqBox = el('accessReqBox');
+    if (reqBox && opened) reqBox.hidden = !(el('shareEnabled').checked && isPwd);
   }
 
   function refreshLink() {
     var enabled = el('shareEnabled').checked;
     el('shareConfig').style.display = enabled ? 'block' : 'none';
-    var reqBox = el('accessReqBox');
-    if (reqBox) reqBox.hidden = !enabled;
     var linkEl = el('shareLink');
     if (enabled && opened && opened.shareURL) {
       el('shareURL').textContent = opened.shareURL;
@@ -40,33 +47,52 @@ window.ShareModal = (function () {
     } else {
       linkEl.style.display = 'none';
     }
+    refreshType();
     if (enabled && opened && opened.docId) loadAccessRequests(opened.docId);
   }
 
   function copyShare() {
     var url = el('shareURL').textContent;
-    var text = url;
     var pwd = storedSharePwd(url);
-    if (pwd) text += '\n' + t('访问密码') + ': ' + pwd;
-    navigator.clipboard.writeText(text).then(function () {
-      if (window.UI) UI.toast(t('已复制'), 'success');
-    }).catch(function () {
-      if (window.UI) UI.toast(t('复制失败'), 'error');
-    });
+    // 组合复制：标题 + 链接 + 访问密码（与 editor.js 的 copyShare 格式一致）
+    var lines = [];
+    if (opened && opened.title) lines.push(t('标题：') + opened.title);
+    lines.push(t('链接：') + url);
+    lines.push(t('访问密码：') + (pwd || t('无')));
+    var text = lines.join('\n');
+    var okToast = function () { if (window.UI) UI.toast(t('已复制'), 'success'); };
+    var failToast = function () { if (window.UI) UI.toast(t('复制失败'), 'error'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(okToast, function () { fallbackCopy(text); failToast(); });
+    } else {
+      fallbackCopy(text); okToast();
+    }
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    ta.remove();
   }
 
   function save() {
     if (!opened || !opened.docId) return;
     var enabledEl = el('shareEnabled');
+    var isPwd = el('shareTypePwd') && el('shareTypePwd').checked;
     var payload = {
       enabled: enabledEl.checked,
       can_edit: el('shareCanEdit') ? el('shareCanEdit').checked : false,
-      password: el('sharePassword').value,
+      password: isPwd ? el('sharePassword').value : '',
+      remove_password: !isPwd, // 公开分享：清除已设密码
       expire_days: parseInt(el('shareExpire').value, 10) || 0
     };
     var saveBtn = el('saveShareBtn');
     saveBtn.disabled = true;
-    fetch('/admin/api/docs/' + opened.docId + '/share', {
+    fetch('/console/api/docs/' + opened.docId + '/share', {
       method: enabledEl.checked ? 'POST' : 'DELETE',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
       body: JSON.stringify(payload)
@@ -76,12 +102,15 @@ window.ShareModal = (function () {
         return data;
       });
     }).then(function (data) {
-      if (enabledEl.checked && payload.password.trim() && data.url) {
+      if (enabledEl.checked && isPwd && payload.password.trim() && data.url) {
         try { localStorage.setItem(sharePwdKey(data.url), payload.password.trim()); } catch (e) {}
+      }
+      if (enabledEl.checked && !isPwd && data.url) {
+        try { localStorage.removeItem(sharePwdKey(data.url)); } catch (e) {}
       }
       if (data.url) opened.shareURL = data.url;
       opened.shared = enabledEl.checked;
-      opened.hasPwd = !!(payload.password.trim() || opened.hasPwd);
+      if (enabledEl.checked && typeof data.hasPassword === 'boolean') opened.hasPwd = data.hasPassword;
       if (window.UI) UI.toast(t(enabledEl.checked ? '分享设置已更新' : '已关闭分享'), 'success');
       if (typeof opts.onChanged === 'function') opts.onChanged(enabledEl.checked, opened);
     }).catch(function (err) {
@@ -97,7 +126,7 @@ window.ShareModal = (function () {
     var list = el('accessReqList');
     if (!list || !docId) return;
     list.innerHTML = '<div class="muted">' + t('加载中…') + '</div>';
-    fetch('/admin/api/docs/' + docId + '/access-requests', {
+    fetch('/console/api/docs/' + docId + '/access-requests', {
       headers: { 'X-Requested-With': 'XMLHttpRequest' }
     }).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (data) {
@@ -176,7 +205,7 @@ window.ShareModal = (function () {
 
   function reviewAccess(docId, rid, action, acts) {
     if (acts) acts.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
-    fetch('/admin/api/docs/' + docId + '/access-requests/' + rid, {
+    fetch('/console/api/docs/' + docId + '/access-requests/' + rid, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
       body: JSON.stringify({ action: action })
@@ -206,6 +235,9 @@ window.ShareModal = (function () {
     el('genPwdBtn').addEventListener('click', function () { el('sharePassword').value = genPassword(); });
     el('copyShareBtn').addEventListener('click', copyShare);
     el('shareEnabled').addEventListener('change', refreshLink);
+    [el('shareTypePublic'), el('shareTypePwd')].forEach(function (r) {
+      if (r) r.addEventListener('change', refreshType);
+    });
     el('saveShareBtn').addEventListener('click', save);
     var refresh = el('refreshAccessReq');
     if (refresh) refresh.addEventListener('click', function () {
@@ -231,6 +263,11 @@ window.ShareModal = (function () {
     pwdEl.placeholder = state.hasPwd ? t('已设置密码') : '';
     el('genPwdBtn').textContent = t(state.hasPwd ? 'share.resetPwd' : 'share.genPwd');
     el('shareExpire').value = '0';
+    var pub = el('shareTypePublic'), pwd = el('shareTypePwd');
+    if (pub && pwd) {
+      pwd.checked = !!state.hasPwd; // 有密码 → 密码访问；无密码 → 公开访问
+      pub.checked = !state.hasPwd;
+    }
     refreshLink();
     UI.openModal(modal);
   }

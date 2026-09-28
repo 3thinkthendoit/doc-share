@@ -44,7 +44,7 @@ func (a *App) APIKeysPage(c *gin.Context) {
 		"keys":  keys,
 		"owner": owner,
 	}
-	for k, v := range pagerFields(pg, "/admin/apikeys", extra) {
+	for k, v := range pagerFields(pg, "/console/apikeys", extra) {
 		data[k] = v
 	}
 	a.render(c, "apikeys.html", data)

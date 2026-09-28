@@ -58,7 +58,7 @@
       if (!UI.validateForm(keyForm)) return;
       var name = new FormData(keyForm).get('name');
       try {
-        var res = await fetch('/admin/api/apikeys', {
+        var res = await fetch('/console/api/apikeys', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
           body: JSON.stringify({ name: name }),
@@ -96,7 +96,7 @@
     var id = btn.dataset.id;
     if (!await UI.confirm(UI.t('重置后旧 Secret 立即失效，确认重置「{0}」？', btn.dataset.name), { danger: true })) return;
     try {
-      var res = await fetch('/admin/api/apikeys/' + id + '/reset', {
+      var res = await fetch('/console/api/apikeys/' + id + '/reset', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
       });
@@ -119,7 +119,7 @@
       if (!await UI.confirm(UI.t('禁用后该密钥立即失效，其开放平台调用将被拒绝，确认禁用「{0}」？', btn.dataset.name), { danger: true })) return;
     }
     try {
-      var res = await fetch('/admin/api/apikeys/' + id + '/status', {
+      var res = await fetch('/console/api/apikeys/' + id + '/status', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({ status: status }),
@@ -139,7 +139,7 @@
     var id = btn.dataset.id;
     if (!await UI.confirm(UI.t('删除后该密钥立即失效且不可恢复，确认删除「{0}」？', btn.dataset.name), { danger: true })) return;
     try {
-      var res = await fetch('/admin/api/apikeys/' + id, {
+      var res = await fetch('/console/api/apikeys/' + id, {
         method: 'DELETE',
         headers: { 'X-Requested-With': 'XMLHttpRequest' },
       });

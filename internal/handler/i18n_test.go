@@ -63,7 +63,7 @@ func TestPagesRender(t *testing.T) {
 	key := model.ApiKey{ID: 1, Name: "sync", AppKey: "ak_1", Owner: owner, Status: 1, CreatedAt: now}
 
 	base := func() View {
-		return View{"user": user, "Lang": "en-US", "Langs": i18n.Supported, "Path": "/admin", "Dict": "", viewBundleKey: bundle}
+		return View{"user": user, "Lang": "en-US", "Langs": i18n.Supported, "Path": "/console", "Dict": "", viewBundleKey: bundle}
 	}
 	withPager := func(v View, path string) View {
 		v["page"], v["size"], v["total"], v["totalPages"] = 1, 15, int64(1), 1
@@ -83,7 +83,7 @@ func TestPagesRender(t *testing.T) {
 			return v
 		}},
 		{"docs.html", func() View {
-			v := withPager(base(), "/admin/docs")
+			v := withPager(base(), "/console/docs")
 			v["docs"], v["q"] = []model.Document{doc}, ""
 			v["project"], v["category"], v["projects"], v["categories"] = "", "", []model.Project{pj}, []model.Category{ct}
 			return v
@@ -94,22 +94,22 @@ func TestPagesRender(t *testing.T) {
 			return v
 		}},
 		{"projects.html", func() View {
-			v := withPager(base(), "/admin/projects")
+			v := withPager(base(), "/console/projects")
 			v["projects"], v["q"], v["owner"], v["scope"] = []model.Project{pj}, "", "", ""
 			return v
 		}},
 		{"categories.html", func() View {
-			v := withPager(base(), "/admin/categories")
+			v := withPager(base(), "/console/categories")
 			v["categories"] = []model.Category{ct}
 			return v
 		}},
 		{"apikeys.html", func() View {
-			v := withPager(base(), "/admin/apikeys")
+			v := withPager(base(), "/console/apikeys")
 			v["keys"], v["owner"] = []model.ApiKey{key}, ""
 			return v
 		}},
 		{"users.html", func() View {
-			v := withPager(base(), "/admin/users")
+			v := withPager(base(), "/console/users")
 			v["users"] = []model.User{*user}
 			return v
 		}},

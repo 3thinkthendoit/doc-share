@@ -11,7 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ListMessages 当前用户消息列表：GET /admin/api/messages?unread=1&limit=30
+// ListMessages 当前用户消息列表：GET /console/api/messages?unread=1&limit=30
 func (a *App) ListMessages(c *gin.Context) {
 	user := middleware.CurrentUser(c)
 	if user == nil {
@@ -34,7 +34,7 @@ func (a *App) ListMessages(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": items})
 }
 
-// UnreadMessageCount 未读数：GET /admin/api/messages/unread-count
+// UnreadMessageCount 未读数：GET /console/api/messages/unread-count
 func (a *App) UnreadMessageCount(c *gin.Context) {
 	user := middleware.CurrentUser(c)
 	if user == nil {
@@ -46,7 +46,7 @@ func (a *App) UnreadMessageCount(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"count": n})
 }
 
-// MarkMessageRead 标记单条已读：POST /admin/api/messages/:id/read
+// MarkMessageRead 标记单条已读：POST /console/api/messages/:id/read
 func (a *App) MarkMessageRead(c *gin.Context) {
 	user := middleware.CurrentUser(c)
 	if user == nil {
@@ -69,7 +69,7 @@ func (a *App) MarkMessageRead(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-// MarkAllMessagesRead 全部已读：POST /admin/api/messages/read-all
+// MarkAllMessagesRead 全部已读：POST /console/api/messages/read-all
 func (a *App) MarkAllMessagesRead(c *gin.Context) {
 	user := middleware.CurrentUser(c)
 	if user == nil {

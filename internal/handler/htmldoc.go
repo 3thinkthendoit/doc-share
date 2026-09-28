@@ -493,7 +493,7 @@ func (a *App) OpenCreateHTMLDoc(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": doc})
 }
 
-// CreateHTMLDoc 创建 HTML 整站文档：POST /admin/api/docs/html（multipart）
+// CreateHTMLDoc 创建 HTML 整站文档：POST /console/api/docs/html（multipart）
 func (a *App) CreateHTMLDoc(c *gin.Context) {
 	user := middleware.CurrentUser(c)
 	if user == nil {
@@ -538,7 +538,7 @@ func (a *App) CreateHTMLDoc(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": doc})
 }
 
-// ReplaceHTMLDoc 整站替换：PUT /admin/api/docs/:id/html（属主 / admin）
+// ReplaceHTMLDoc 整站替换：PUT /console/api/docs/:id/html（属主 / admin）
 func (a *App) ReplaceHTMLDoc(c *gin.Context) {
 	doc := a.loadDoc(c)
 	if doc == nil {
@@ -679,7 +679,7 @@ func (a *App) ShareRaw(c *gin.Context) {
 	a.serveHTMLSiteFile(c, doc, sitePath)
 }
 
-// AdminRaw 管理预览整站文件：GET /admin/raw/:id/<sig>/<sitepath>。
+// AdminRaw 管理预览整站文件：GET /console/raw/:id/<sig>/<sitepath>。
 // 不挂 RequireAuth（子资源请求不带会话 cookie），凭短时签名鉴权：
 // 签名只由 PreviewDoc（已通过会话与文档权限校验）签发。
 func (a *App) AdminRaw(c *gin.Context) {
@@ -711,8 +711,8 @@ func (a *App) htmlEntryURL(token string) string {
 	return "/s/" + token + "/raw/" + sig + "/" + htmlEntryName
 }
 
-// adminEntryURL 管理预览入口：/admin/raw/:id/<sig>/index.html
+// adminEntryURL 管理预览入口：/console/raw/:id/<sig>/index.html
 func (a *App) adminEntryURL(docID uint) string {
 	sig := a.Signer.MakeShareToken(adminRawPayload(docID), htmlSigTTL)
-	return "/admin/raw/" + strconv.FormatUint(uint64(docID), 10) + "/" + sig + "/" + htmlEntryName
+	return "/console/raw/" + strconv.FormatUint(uint64(docID), 10) + "/" + sig + "/" + htmlEntryName
 }

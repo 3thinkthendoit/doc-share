@@ -14,6 +14,7 @@ A lightweight self-hosted documentation sharing platform built with Go and Gin. 
 - **List & filters** — search by title; filter by project, category, share status, ownership (mine / project-shared); pagination
 - **Preview** — admin reader preview without incrementing view counts
 - **Edit presence** — heartbeat warns when someone else is editing the same document
+- **Visual canvas documents** — mind maps (simple-mind-map) / whiteboards (Excalidraw) / drawio diagrams as dedicated structured document types with live editor pages; the drawio editor is deployed standalone and connected via a single admin setting
 
 ### Sharing & access
 
@@ -21,13 +22,14 @@ A lightweight self-hosted documentation sharing platform built with Go and Gin. 
 - **Password** — optional; generate / reset; copy title + link + password together
 - **Expiry** — permanent / 1 / 7 / 30 days
 - **Request access** — on password-protected shares, guests or signed-in users can apply with a display name; owners approve from share settings or the dashboard; approved viewers skip the password (site-wide toggle in admin settings)
-- **Allow edit** — optionally let signed-in users edit the document on the share page
+- **Allow edit** — optionally let signed-in users edit the document on the share page; canvas documents (mind map / whiteboard / drawio) are supported too
 - **View counts** — tracked on the reader page
 
 ### Collaboration
 
-- **Comments** — on share pages for signed-in users and guests (rate-limited); owners/admins can delete
+- **Comments** — on share pages for signed-in users and guests (rate-limited); owners/consoles can delete
 - **Revisions** — automatic snapshots before share-page overwrites; list and roll back from the editor
+- **Concurrency protection (optimistic locking)** — every content write carries a version; on conflict users are explicitly asked to overwrite or reload — silent overwrites are impossible
 - **Approved request = unlocked** — same as entering the correct password: read and comment; save content if “allow edit” is on
 
 ### Projects & categories
@@ -47,15 +49,15 @@ A lightweight self-hosted documentation sharing platform built with Go and Gin. 
 
 - **Dashboard** — counts for documents, shares, users (admin), linked projects; recent documents
 - **Pending access requests** — badge + modal list to approve/reject
-- **System settings** (admin) — site name, logo, public domain; allow access requests; registration method; SMTP (with test mail); storage local / RustFS (with connectivity test)
+- **System settings** (admin) — site name, logo, public domain, drawio editor URL; allow access requests; registration method; SMTP (with test mail); storage local / RustFS (with connectivity test)
 - **i18n** — English, 简体中文, 繁體中文, 日本語, Français
 
 ### Integrations
 
 - **API keys** — create personal keys; enable/disable, reset secret (shown once), delete
 - **Open API** — `/openapi/v1` with HMAC auth (AppKey + timestamp + nonce + signature); full CRUD for docs/projects/categories as the key owner
-- **In-app API docs** — `/admin/apidoc` for signing rules and endpoints
-- **MCP server** — zero-dependency Node stdio server for CodeBuddy / Claude / Cursor and similar clients
+- **In-app API docs** — `/console/apidoc` for signing rules and endpoints
+- **MCP server** — zero-dependency Node stdio server for CodeBuddy / Claude / Cursor and similar clients (documents include mind map / whiteboard / drawio canvases)
 
 ## Tech Stack
 
@@ -91,10 +93,11 @@ All settings live in `config.yaml` and can be overridden via environment variabl
 | `DOC_SHARE_UPLOAD_MAX_MB` | No | Max image size in MB (default `10`) |
 | `DOC_SHARE_DEV` | No | `true` = serve templates/statics from disk for hot reload |
 | `DOC_SHARE_DB_LOG` | No | `true` = enable GORM SQL logging |
+| `DOC_SHARE_DRAWIO_URL` | No | Fallback drawio editor URL (recommended: configure it in admin **System Settings**, effective immediately) |
 
 > For local debugging only, `DOC_SHARE_ALLOW_INSECURE_DEFAULTS=true` temporarily bypasses the mandatory session secret.
 
-Site name, logo, registration mode, SMTP, RustFS, and similar options are managed in **System Settings** (`/admin/settings`) after login — no config file edits required.
+Site name, logo, registration mode, SMTP, RustFS, and similar options are managed in **System Settings** (`/console/settings`) after login — no config file edits required.
 
 ### 3. Run
 
@@ -107,6 +110,20 @@ go build -o doc-share .
 ```
 
 Visit `http://localhost:8080` and log in with the default admin account (change the password immediately).
+
+## drawio Editor (optional, standalone)
+
+drawio diagram documents require a standalone drawio editor ([jgraph/drawio](https://github.com/jgraph/drawio), Apache 2.0):
+
+```bash
+docker run -d --name drawio -p 8181:8080 --restart unless-stopped jgraph/drawio:24.7.5
+```
+
+Then fill **System Settings → drawio editor URL** with `http://<host>:8181` — effective immediately, no restart. Without it only drawio documents are unavailable; mind maps and whiteboards are unaffected.
+
+- The URL must be reachable from **visitors' browsers** (the editor is loaded via iframe; for intranet deployments, use the intranet address)
+- Priority: admin System Settings > `drawio.editor_url` in `config.yaml`
+- In China, use `.github/workflows/mirror-drawio.yml` to sync the official image to Alibaba Cloud ACR first (manual trigger with version input, or weekly auto-sync with 4 secrets configured)
 
 ## Project Layout
 
@@ -131,6 +148,8 @@ web/
   locales/              en-US, zh-CN, zh-TW, ja-JP, fr-FR
 mcp/
   mcp-server.js         zero-dependency MCP server (Node, stdio) wrapping the Open API
+.github/
+  workflows/            GitHub Actions (doc-share publish / drawio image mirror to Alibaba Cloud ACR)
 ```
 
 ## Development Mode
@@ -143,14 +162,16 @@ Set `DOC_SHARE_DEV=true` to read templates and static files directly from the `w
 |---|---|
 | Landing | `GET /` |
 | Auth | `GET/POST /login`, `GET/POST /register`, `POST /register/email-code`, `GET /captcha`, `GET/POST /logout` |
-| Admin pages | `/admin`, `/admin/docs`, `/admin/projects`, `/admin/categories`, `/admin/apikeys`, `/admin/apidoc`, `/admin/users`, `/admin/settings` |
-| Document APIs | `POST/PUT/DELETE /admin/api/docs`, share `POST/DELETE /admin/api/docs/:id/share` |
-| Access requests | `POST /s/:token/access-request`; list/review `/admin/api/access-requests`, `/admin/api/docs/:id/access-requests` |
+| Admin pages | `/console`, `/console/docs`, `/console/projects`, `/console/categories`, `/console/apikeys`, `/console/apidoc`, `/console/users`, `/console/settings` |
+| Document APIs | `POST/PUT/DELETE /console/api/docs`, share `POST/DELETE /console/api/docs/:id/share` |
+| Access requests | `POST /s/:token/access-request`; list/review `/console/api/access-requests`, `/console/api/docs/:id/access-requests` |
 | Share | `GET/POST /s/:token`; comments `GET/POST /s/:token/comments`; save `PUT /s/:token/content` |
 | Open API | `/openapi/v1/docs`, `/projects`, `/categories` (full CRUD, HMAC) |
-| Upload / Convert | `POST /admin/api/upload`, `POST /admin/api/convert` |
+| Upload / Convert | `POST /console/api/upload`, `POST /console/api/convert` |
 
-Full signing rules and error codes: in-app **API docs** at `/admin/apidoc`.
+> **Legacy compatibility**: `/admin/*` automatically redirects (307) to `/console/*` with method and query preserved — old bookmarks and external links keep working.
+
+Full signing rules and error codes: in-app **API docs** at `/console/apidoc`.
 
 ## MCP Server (AI Client Integration)
 
@@ -158,7 +179,7 @@ Full signing rules and error codes: in-app **API docs** at `/admin/apidoc`.
 
 ### 1. Create an API Key
 
-Create a key at `/admin/apikeys` in the DocShare admin panel. You'll get an `AppKey` (prefix `ak_`) and a `Secret` (prefix `sk_`, shown only once). The key owner owns the resulting documents; permissions match the web UI.
+Create a key at `/console/apikeys` in the DocShare admin panel. You'll get an `AppKey` (prefix `ak_`) and a `Secret` (prefix `sk_`, shown only once). The key owner owns the resulting documents; permissions match the web UI.
 
 ### 2. Client Configuration
 
@@ -197,8 +218,8 @@ Environment variables take precedence over the config file; `DOC_SHARE_BASE_URL`
 | Tool | Description |
 |---|---|
 | `docshare_list_docs` | Paged document list (without content), filterable by `project_id` / `category_id` |
-| `docshare_get_doc` | Read a single document with full Markdown content |
-| `docshare_create_doc` / `docshare_update_doc` / `docshare_delete_doc` | Document CRUD (`content` is fully replaced on update; leave `title` empty to keep it) |
+| `docshare_get_doc` | Read a single document with full content (Markdown body / canvas JSON / drawio mxfile XML) |
+| `docshare_create_doc` / `docshare_update_doc` / `docshare_delete_doc` | Document CRUD; `type` accepts `markdown` / `mindmap` / `board` / `drawio` (`content` is fully replaced on update; leave `title` empty to keep it) |
 | `docshare_list_projects` / `docshare_create_project` / `docshare_update_project` / `docshare_delete_project` | Project management (documents become ungrouped after project deletion) |
 | `docshare_list_categories` / `docshare_create_category` / `docshare_update_category` / `docshare_delete_category` | Category management (documents become uncategorized after category deletion) |
 

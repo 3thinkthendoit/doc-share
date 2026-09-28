@@ -11,11 +11,11 @@
   </div>
 
   {{if and .user .user.IsAdmin}}
-  <form method="get" action="/admin/apikeys" class="search-bar filter-bar">
+  <form method="get" action="/console/apikeys" class="search-bar filter-bar">
     <input type="hidden" name="size" value="{{.size}}">
     <input type="text" name="owner" placeholder="{{$.T "key.filterOwner"}}" value="{{.owner}}">
     <button type="submit" class="btn">{{$.T "docs.query"}}</button>
-    <a href="/admin/apikeys?size={{.size}}" class="btn">{{$.T "重置"}}</a>
+    <a href="/console/apikeys?size={{.size}}" class="btn">{{$.T "重置"}}</a>
   </form>
   {{end}}
 

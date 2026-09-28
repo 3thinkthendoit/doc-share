@@ -41,8 +41,8 @@
       </div>
     </div>
     <div class="head-side">
-      <a href="/admin/docs" class="btn">{{$.T "返回列表"}}</a>
-      <a href="/admin/docs/{{.doc.ID}}/preview" target="_blank" class="btn">{{$.T "edit.preview"}}</a>
+      <a href="/console/docs" class="btn">{{$.T "返回列表"}}</a>
+      <a href="/console/docs/{{.doc.ID}}/preview" target="_blank" class="btn">{{$.T "edit.preview"}}</a>
       {{if .isOwner}}<button id="shareBtn" class="btn" type="button">{{$.T "分享"}}</button>{{end}}
       {{if .canEditDoc}}<button id="saveBtn" class="btn btn-primary" type="button">{{$.T "保存"}}</button>{{end}}
     </div>
@@ -112,7 +112,7 @@
   if (saveBtn) saveBtn.addEventListener('click', async function () {
     saveBtn.disabled = true;
     try {
-      var res = await fetch('/admin/api/docs/' + DOC_ID, {
+      var res = await fetch('/console/api/docs/' + DOC_ID, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({
@@ -247,7 +247,7 @@
       } else {
         pending.files.forEach(function (x) { fd.append('file', x.file); fd.append('path', x.path); });
       }
-      var res = await fetch('/admin/api/docs/' + DOC_ID + '/html', {
+      var res = await fetch('/console/api/docs/' + DOC_ID + '/html', {
         method: 'PUT',
         headers: { 'X-Requested-With': 'XMLHttpRequest' },
         body: fd

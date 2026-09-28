@@ -13,12 +13,19 @@
         {{if not .ShareLockCanEdit}}
         <label class="check"><input type="checkbox" id="shareCanEdit"> {{$.T "share.canEdit"}}</label>
         {{end}}
+        <label>{{$.T "share.type"}}</label>
+        <div class="share-type-row">
+          <label class="check"><input type="radio" name="shareType" value="public" id="shareTypePublic"> {{$.T "share.typePublic"}}</label>
+          <label class="check"><input type="radio" name="shareType" value="pwd" id="shareTypePwd"> {{$.T "share.typePwd"}}</label>
+        </div>
+        <div id="pwdWrap">
         <label>{{$.T "访问密码（留空则不修改 / 无密码）"}}
           <div class="pwd-row">
             <input type="text" id="sharePassword" autocomplete="off">
             <button type="button" class="btn btn-sm" id="genPwdBtn">{{$.T "share.genPwd"}}</button>
           </div>
         </label>
+        </div>
         <label>{{$.T "有效期"}}
           <select id="shareExpire">
             <option value="0">{{$.T "永久有效"}}</option>

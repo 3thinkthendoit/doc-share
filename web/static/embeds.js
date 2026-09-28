@@ -170,7 +170,7 @@
     var old = sanitizePreviewUrl(replaceUrl);
     // 仅请求清理 embed/ 前缀旧图；普通插图 URL 服务端会拒绝删除
     if (old) fd.append('replace_url', old);
-    var upload = fetch('/admin/api/upload', {
+    var upload = fetch('/console/api/upload', {
       method: 'POST',
       headers: { 'X-Requested-With': 'XMLHttpRequest' },
       body: fd
@@ -467,7 +467,7 @@
   function deletePreviewUrlAsync(url) {
     var u = sanitizePreviewUrl(url);
     if (!u) return;
-    fetch('/admin/api/upload', {
+    fetch('/console/api/upload', {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',

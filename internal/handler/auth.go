@@ -57,7 +57,7 @@ func (a *App) Login(c *gin.Context) {
 
 	token := a.Signer.MakeUserToken(user.ID, sessionTTL)
 	setCookie(c, middleware.CookieSession, token, int(sessionTTL.Seconds()))
-	c.Redirect(http.StatusFound, "/admin")
+	c.Redirect(http.StatusFound, "/console")
 }
 
 // Logout 登出
@@ -205,5 +205,5 @@ func (a *App) Register(c *gin.Context) {
 
 	token := a.Signer.MakeUserToken(user.ID, sessionTTL)
 	setCookie(c, middleware.CookieSession, token, int(sessionTTL.Seconds()))
-	c.Redirect(http.StatusFound, "/admin")
+	c.Redirect(http.StatusFound, "/console")
 }

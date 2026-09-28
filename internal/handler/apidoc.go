@@ -355,3 +355,11 @@ func (a *App) APIDocPage(c *gin.Context) {
 		"BaseURL":   a.siteBaseURL(c), // 系统设置的系统域名，留空取当前访问域名
 	})
 }
+
+// MCPDocPage MCP 使用文档页（AI 客户端接入指引）
+func (a *App) MCPDocPage(c *gin.Context) {
+	a.render(c, "mcpdoc.html", gin.H{
+		"title":   "MCP 使用文档",
+		"BaseURL": a.siteBaseURL(c), // 配置示例里的站点地址，留空取当前访问域名
+	})
+}

@@ -16,15 +16,15 @@
   <div class="docs-layout">
     <aside class="doc-side docs-side" aria-label="{{$.T "docs.sideProjects"}}">
       <div class="docs-side-label">{{$.T "docs.sideProjects"}}</div>
-      <a href="/admin/docs?{{.sideQS}}" class="{{if eq .project ""}}active{{end}}">{{$.T "docs.sideAll"}}</a>
-      <a href="/admin/docs?project=0&amp;{{.sideQS}}" class="{{if eq .project "0"}}active{{end}}">{{$.T "未分组"}}</a>
+      <a href="/console/docs?{{.sideQS}}" class="{{if eq .project ""}}active{{end}}">{{$.T "docs.sideAll"}}</a>
+      <a href="/console/docs?project=0&amp;{{.sideQS}}" class="{{if eq .project "0"}}active{{end}}">{{$.T "未分组"}}</a>
       {{range .projects}}
-      <a href="/admin/docs?project={{.ID}}&amp;{{$.sideQS}}" class="{{if eq $.project (print .ID)}}active{{end}}" title="{{.Name}}">{{.Name}}</a>
+      <a href="/console/docs?project={{.ID}}&amp;{{$.sideQS}}" class="{{if eq $.project (print .ID)}}active{{end}}" title="{{.Name}}">{{.Name}}</a>
       {{end}}
     </aside>
 
     <div class="docs-main">
-      <form method="get" action="/admin/docs" class="search-bar filter-bar">
+      <form method="get" action="/console/docs" class="search-bar filter-bar">
         <input type="hidden" name="size" value="{{.size}}">
         <select name="project" class="docs-project-mobile">
           <option value="">{{$.T "全部项目"}}</option>
@@ -48,18 +48,18 @@
           {{if and $.user (not $.user.IsAdmin)}}<option value="shared" {{if eq .origin "shared"}}selected{{end}}>{{$.T "docs.originShared"}}</option>{{end}}
         </select>
         <button type="submit" class="btn">{{$.T "docs.query"}}</button>
-        <a href="/admin/docs?size={{.size}}" class="btn">{{$.T "重置"}}</a>
+        <a href="/console/docs?size={{.size}}" class="btn">{{$.T "重置"}}</a>
       </form>
 
       <div class="panel">
         <table class="table">
-          <thead><tr><th>{{$.T "标题"}}</th><th>{{$.T "docs.typeCol"}}</th><th>{{$.T "项目"}}</th><th>{{$.T "分类"}}</th><th>{{$.T "所有者"}}</th><th>{{$.T "浏览"}}</th><th>{{$.T "分享"}}</th><th>{{$.T "docs.permHeader"}}</th><th>{{$.T "更新时间"}}</th><th class="col-actions">{{$.T "操作"}}</th></tr></thead>
+          <thead><tr><th>{{$.T "标题"}}</th><th>{{$.T "docs.typeCol"}}</th><th>{{$.T "项目"}}</th><th>{{$.T "分类"}}</th><th>{{$.T "所有者"}}</th><th>{{$.T "浏览"}}</th><th>{{$.T "分享"}}</th><th>{{$.T "docs.permHeader"}}</th><th>{{$.T "common.createdAt"}}</th><th>{{$.T "更新时间"}}</th><th class="col-actions">{{$.T "操作"}}</th></tr></thead>
           <tbody>
           {{range .docs}}
             <tr>
               <td>
                 {{/* 点击标题统一进阅读预览页；编辑入口在「操作」菜单 */}}
-                <a href="/admin/docs/{{.ID}}/preview" target="_blank">{{.Title}}</a>
+                <a href="/console/docs/{{.ID}}/preview" target="_blank">{{.Title}}</a>
                 {{if $.embedTags}}{{with index $.embedTags .ID}}
                 <div class="doc-embed-tags">
                   {{range .}}<span class="tag tag-embed">{{$.T .}}</span>{{end}}
@@ -78,6 +78,7 @@
                 {{else if .ProjectID}}<span class="tag">{{$.T "docs.permProject"}}</span>
                 {{else}}<span class="tag" style="color:var(--muted)">{{$.T "docs.permPrivate"}}</span>{{end}}
               </td>
+              <td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
               <td>{{.UpdatedAt.Format "2006-01-02 15:04"}}</td>
               <td class="col-actions">
                 <div class="ops-wrap">
@@ -90,7 +91,7 @@
                     <a class="ops-item" href="/s/{{.Share.ShareToken}}" target="_blank" rel="noopener">{{$.T "查看"}}</a>
                     {{end}}{{end}}
                     {{if and $.canEdit (index $.canEdit .ID)}}
-                    <a class="ops-item" href="/admin/docs/{{.ID}}/edit">{{$.T "编辑"}}</a>
+                    <a class="ops-item" href="/console/docs/{{.ID}}/edit">{{$.T "编辑"}}</a>
                     <button type="button" class="ops-item ops-danger" data-op="del" data-id="{{.ID}}">{{$.T "删除"}}</button>
                     {{end}}
                   </div>
@@ -239,7 +240,7 @@
 <script>
 async function delDoc(id, btn){
   if(!await UI.confirm(UI.t('确认删除该文档？删除后不可恢复。'), { danger: true })) return;
-  const res = await fetch('/admin/api/docs/'+id, {method:'DELETE', headers:{'X-Requested-With':'XMLHttpRequest'}});
+  const res = await fetch('/console/api/docs/'+id, {method:'DELETE', headers:{'X-Requested-With':'XMLHttpRequest'}});
   if(res.ok){ btn.closest('tr').remove(); UI.toast(UI.t('已删除'), 'success'); }
   else { const d = await res.json().catch(function(){return {};}); UI.alert((d && d.error) || UI.t('删除失败')); }
 }
@@ -347,10 +348,10 @@ ShareModal.bind({
       try {
         var fd = new FormData();
         fd.append('file', files[i]);
-        var res = await fetch('/admin/api/convert', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
+        var res = await fetch('/console/api/convert', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
         var data = await res.json().catch(function () { return {}; });
         if (!res.ok || !data.markdown) throw new Error((data && data.error) || '转换失败');
-        var createRes = await fetch('/admin/api/docs', {
+        var createRes = await fetch('/console/api/docs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
           body: JSON.stringify({
@@ -419,7 +420,7 @@ ShareModal.bind({
         title: 'Markdown',
         desc: UI.t('docs.typeMarkdownDesc'),
         icon: icon('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6"/><path d="M9 17h4"/>'),
-        action: function () { location.href = '/admin/docs/new'; }
+        action: function () { location.href = '/console/docs/new'; }
       },
       {
         title: 'HTML',
@@ -431,19 +432,19 @@ ShareModal.bind({
         title: UI.t('docs.tagMindmap'),
         desc: UI.t('docs.typeMindmapDesc'),
         icon: icon('<circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="19" r="2.2"/><circle cx="19" cy="19" r="2.2"/><path d="M12 7.2v4.3M12 11.5 6.2 17.2M12 11.5l5.8 5.7"/>'),
-        action: function () { location.href = '/admin/docs/new?type=mindmap'; }
+        action: function () { location.href = '/console/docs/new?type=mindmap'; }
       },
       {
         title: UI.t('docs.tagBoard'),
         desc: UI.t('docs.typeBoardDesc'),
         icon: icon('<path d="M4 20l4.5-1.2L20 7.3a2 2 0 0 0 0-2.8l-.5-.5a2 2 0 0 0-2.8 0L5.2 15.5 4 20z"/><path d="M13.5 6.5l4 4"/>'),
-        action: function () { location.href = '/admin/docs/new?type=board'; }
+        action: function () { location.href = '/console/docs/new?type=board'; }
       }{{if .DrawioURL}},
       {
         title: UI.t('docs.tagDrawio'),
         desc: UI.t('docs.typeDrawioDesc'),
         icon: icon('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><path d="M10 6.5h4M6.5 10v4M14 17.5h-4"/>'),
-        action: function () { location.href = '/admin/docs/new?type=drawio'; }
+        action: function () { location.href = '/console/docs/new?type=drawio'; }
       }{{end}}
       /* 后续扩展示例：
       { title: 'Word 文档', desc: UI.t('...'), icon: icon('...'), action: ... } */
@@ -555,7 +556,7 @@ ShareModal.bind({
       } else {
         pending.files.forEach(function (x) { fd.append('file', x.file); fd.append('path', x.path); });
       }
-      var res = await fetch('/admin/api/docs/html', {
+      var res = await fetch('/console/api/docs/html', {
         method: 'POST',
         headers: { 'X-Requested-With': 'XMLHttpRequest' },
         body: fd

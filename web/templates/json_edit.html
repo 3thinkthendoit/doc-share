@@ -16,8 +16,8 @@
   <div class="json-edit-head">
     <span class="tag tag-embed">{{if eq .docKind "mindmap"}}{{$.T "docs.tagMindmap"}}{{else if eq .docKind "drawio"}}{{$.T "docs.tagDrawio"}}{{else}}{{$.T "docs.tagBoard"}}{{end}}</span>
     <input type="text" id="docTitle" class="input-title" style="max-width:480px" placeholder="{{$.T "edit.titlePh"}}" value="{{if .doc}}{{.doc.Title}}{{end}}">
-    <a href="/admin/docs" class="btn">{{$.T "返回列表"}}</a>
-    {{if .doc}}<a href="/admin/docs/{{.doc.ID}}/preview" target="_blank" class="btn">{{$.T "edit.preview"}}</a>{{end}}
+    <a href="/console/docs" class="btn">{{$.T "返回列表"}}</a>
+    {{if .doc}}<a href="/console/docs/{{.doc.ID}}/preview" target="_blank" class="btn">{{$.T "edit.preview"}}</a>{{end}}
     {{if .isOwner}}<button type="button" id="shareBtn" class="btn">{{$.T "分享"}}</button>{{end}}
     {{if .canEditDoc}}<button type="button" id="saveBtn" class="btn btn-primary">{{$.T "保存"}}</button>{{end}}
   </div>
@@ -81,10 +81,10 @@
     var json = currentJSON();
     var url, method, body;
     if (DOC_ID) {
-      url = '/admin/api/docs/' + DOC_ID; method = 'PUT';
+      url = '/console/api/docs/' + DOC_ID; method = 'PUT';
       body = { title: title, content: json, base_version: lastVersion, force: !!force };
     } else {
-      url = '/admin/api/docs'; method = 'POST';
+      url = '/console/api/docs'; method = 'POST';
       body = { title: title, type: KIND, content: json };
     }
     var res = await fetch(url, {
@@ -123,12 +123,12 @@
       DOC_ID = data.data.id;
       window.JSON_DOC.docId = DOC_ID;
       shareState.docId = DOC_ID;
-      history.replaceState(null, '', '/admin/docs/' + DOC_ID + '/edit');
+      history.replaceState(null, '', '/console/docs/' + DOC_ID + '/edit');
       // 出现文档后补出预览/分享入口
       if (!document.getElementById('previewLink')) {
         var a = document.createElement('a');
         a.id = 'previewLink';
-        a.href = '/admin/docs/' + DOC_ID + '/preview';
+        a.href = '/console/docs/' + DOC_ID + '/preview';
         a.target = '_blank';
         a.className = 'btn';
         a.textContent = UI.t('edit.preview');
@@ -217,7 +217,7 @@
     var json = currentJSON();
     if (json === lastSavedJSON && title === lastSavedTitle) return;
     try {
-      fetch('/admin/api/docs/' + DOC_ID, {
+      fetch('/console/api/docs/' + DOC_ID, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({ title: title, content: json }),

@@ -26,7 +26,7 @@ func Lang(c *gin.Context) string {
 
 // capturePrefixes 只缓冲这些前缀的响应（浏览器侧 JSON 接口），
 // /openapi 是对外契约、/static 与 /uploads 是文件流，都不参与翻译
-var capturePrefixes = []string{"/admin", "/login", "/register", "/s/"}
+var capturePrefixes = []string{"/console", "/login", "/register", "/s/"}
 
 func shouldCapture(path string) bool {
 	for _, p := range capturePrefixes {

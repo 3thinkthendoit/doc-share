@@ -375,7 +375,7 @@ func (a *App) serveDoc(c *gin.Context, doc *model.Document, share *model.Share, 
 	})
 }
 
-// ListPendingAccessRequests 仪表盘待审访问申请汇总：GET /admin/api/access-requests?status=pending
+// ListPendingAccessRequests 仪表盘待审访问申请汇总：GET /console/api/access-requests?status=pending
 // 管理员看全站；普通用户仅自己文档。
 func (a *App) ListPendingAccessRequests(c *gin.Context) {
 	user := middleware.CurrentUser(c)
@@ -436,7 +436,7 @@ func (a *App) ListPendingAccessRequests(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": out, "total": total})
 }
 
-// ListAccessRequests 文档访问申请列表（属主/admin）：GET /admin/api/docs/:id/access-requests
+// ListAccessRequests 文档访问申请列表（属主/管理员）：GET /console/api/docs/:id/access-requests
 func (a *App) ListAccessRequests(c *gin.Context) {
 	doc := a.loadDoc(c)
 	if doc == nil {
@@ -466,7 +466,7 @@ func (a *App) ListAccessRequests(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": out})
 }
 
-// ReviewAccessRequest 审批访问申请：POST /admin/api/docs/:id/access-requests/:rid {action: approve|reject}
+// ReviewAccessRequest 审批访问申请：POST /console/api/docs/:id/access-requests/:rid {action: approve|reject}
 func (a *App) ReviewAccessRequest(c *gin.Context) {
 	doc := a.loadDoc(c)
 	if doc == nil {
