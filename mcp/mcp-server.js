@@ -190,13 +190,16 @@ const TOOLS = [
   },
   {
     name: 'docshare_update_doc',
-    description: '更新文档：content 未传 = 不修改（只改标题/归属安全）；传值 = 整体覆盖。html 整站类型拒绝修改内容',
+    description: '更新文档：content 未传 = 不修改（只改标题/归属安全）；传值 = 整体覆盖。version 传空字符串 = 清空版本号（不传 = 不修改）。html 整站类型拒绝修改内容',
     schema: docSchema,
     async run(args) {
-      return apiCall('PUT', `/openapi/v1/docs/${Number(args.id)}`, null, clean({
-        title: args.title, version: args.version, content: args.content,
+      const body = clean({
+        title: args.title, content: args.content,
         project_id: args.project_id, category_id: args.category_id,
-      }));
+      });
+      // version 不走 clean（会过滤空串）：显式传空字符串 = 清空，未传 = 不修改
+      if (args.version !== undefined) body.version = String(args.version);
+      return apiCall('PUT', `/openapi/v1/docs/${Number(args.id)}`, null, body);
     },
   },
   {

@@ -997,7 +997,6 @@ func (a *App) DuplicateDoc(c *gin.Context) {
 	}
 	newDoc := model.Document{
 		Title:       string(r) + "（副本）",
-		Version:     doc.Version,
 		Slug:        util.RandomSlug(8),
 		Type:        doc.Type,
 		Content:     doc.Content,
