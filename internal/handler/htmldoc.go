@@ -23,6 +23,7 @@ import (
 	"doc-share/internal/util"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 const (
@@ -34,11 +35,11 @@ const (
 
 // HTMLSiteManifest html 整站文档的 Content 存储格式（manifest JSON）
 type HTMLSiteManifest struct {
-	Prefix    string   `json:"prefix"`    // 存储前缀 html/{docID}/{rand}/
-	Entry     string   `json:"entry"`     // 入口文件，固定 index.html
-	Files     []string `json:"files"`     // 站点内全部文件（相对路径）
-	Size      int64    `json:"size"`      // 解包后总大小（字节）
-	Count     int      `json:"count"`     // 文件数
+	Prefix    string   `json:"prefix"` // 存储前缀 html/{docID}/{rand}/
+	Entry     string   `json:"entry"`  // 入口文件，固定 index.html
+	Files     []string `json:"files"`  // 站点内全部文件（相对路径）
+	Size      int64    `json:"size"`   // 解包后总大小（字节）
+	Count     int      `json:"count"`  // 文件数
 	UpdatedAt string   `json:"updated_at"`
 }
 
@@ -293,23 +294,23 @@ func finalizeSiteFiles(files []siteFile) ([]siteFile, error) {
 
 // siteContentTypes 站点文件 Content-Type 白名单；未知扩展名一律 octet-stream
 var siteContentTypes = map[string]string{
-	".html": "text/html; charset=utf-8",
-	".htm":  "text/html; charset=utf-8",
-	".css":  "text/css; charset=utf-8",
-	".js":   "text/javascript; charset=utf-8",
-	".mjs":  "text/javascript; charset=utf-8",
-	".json": "application/json; charset=utf-8",
-	".txt":  "text/plain; charset=utf-8",
-	".xml":  "application/xml; charset=utf-8",
-	".svg":  "image/svg+xml",
-	".png":  "image/png",
-	".jpg":  "image/jpeg",
-	".jpeg": "image/jpeg",
-	".gif":  "image/gif",
-	".webp": "image/webp",
-	".bmp":  "image/bmp",
-	".ico":  "image/x-icon",
-	".wasm": "application/wasm",
+	".html":  "text/html; charset=utf-8",
+	".htm":   "text/html; charset=utf-8",
+	".css":   "text/css; charset=utf-8",
+	".js":    "text/javascript; charset=utf-8",
+	".mjs":   "text/javascript; charset=utf-8",
+	".json":  "application/json; charset=utf-8",
+	".txt":   "text/plain; charset=utf-8",
+	".xml":   "application/xml; charset=utf-8",
+	".svg":   "image/svg+xml",
+	".png":   "image/png",
+	".jpg":   "image/jpeg",
+	".jpeg":  "image/jpeg",
+	".gif":   "image/gif",
+	".webp":  "image/webp",
+	".bmp":   "image/bmp",
+	".ico":   "image/x-icon",
+	".wasm":  "application/wasm",
 	".woff":  "font/woff",
 	".woff2": "font/woff2",
 	".ttf":   "font/ttf",
@@ -317,13 +318,13 @@ var siteContentTypes = map[string]string{
 	".eot":   "application/vnd.ms-fontobject",
 	".map":   "application/json; charset=utf-8",
 	".csv":   "text/csv; charset=utf-8",
-	".mp4":  "video/mp4",
-	".webm": "video/webm",
-	".ogv":  "video/ogg",
-	".mp3":  "audio/mpeg",
-	".ogg":  "audio/ogg",
-	".wav":  "audio/wav",
-	".pdf":  "application/pdf",
+	".mp4":   "video/mp4",
+	".webm":  "video/webm",
+	".ogv":   "video/ogg",
+	".mp3":   "audio/mpeg",
+	".ogg":   "audio/ogg",
+	".wav":   "audio/wav",
+	".pdf":   "application/pdf",
 }
 
 func siteContentType(name string) string {
@@ -457,6 +458,7 @@ func (a *App) createHTMLDocFromFiles(c *gin.Context, files []siteFile, title str
 	}
 	doc := model.Document{
 		Title:       title,
+		Version:     derivedDocVersion(0), // 版本号自动生成，从 v1.0.0 起算
 		Slug:        util.RandomSlug(8),
 		Type:        model.DocTypeHTML,
 		OwnerID:     user.ID,
@@ -465,7 +467,8 @@ func (a *App) createHTMLDocFromFiles(c *gin.Context, files []siteFile, title str
 	}
 	for {
 		var n int64
-		a.DB.Model(&model.Document{}).Where("slug = ?", doc.Slug).Count(&n)
+		// Unscoped：同时避开回收站文档占用的 slug，否则撞唯一索引导致插入失败
+		a.DB.Unscoped().Model(&model.Document{}).Where("slug = ?", doc.Slug).Count(&n)
 		if n == 0 {
 			break
 		}
@@ -474,23 +477,24 @@ func (a *App) createHTMLDocFromFiles(c *gin.Context, files []siteFile, title str
 	if err := a.DB.Create(&doc).Error; err != nil {
 		return nil, fmt.Errorf("创建失败")
 	}
+	// 失败补偿用 Unscoped 物理删除：刚建的残品不应进回收站成为可还原的幽灵文档
 	prefix := fmt.Sprintf("html/%d/%s/", doc.ID, util.RandomSlug(8))
 	m, written, err := a.putSiteFiles(c.Request.Context(), prefix, files)
 	if err != nil {
 		a.deleteSiteFilesAsync(written)
-		a.DB.Delete(&model.Document{}, doc.ID)
+		a.DB.Unscoped().Delete(&model.Document{}, doc.ID)
 		log.Printf("[htmldoc] 创建站点文件失败 doc=%d: %v", doc.ID, err)
 		return nil, fmt.Errorf("保存站点文件失败")
 	}
 	content, err := m.toJSON()
 	if err != nil {
 		a.deleteSiteFilesAsync(written)
-		a.DB.Delete(&model.Document{}, doc.ID)
+		a.DB.Unscoped().Delete(&model.Document{}, doc.ID)
 		return nil, fmt.Errorf("生成站点清单失败")
 	}
 	if err := a.DB.Model(&model.Document{}).Where("id = ?", doc.ID).Update("content", content).Error; err != nil {
 		a.deleteSiteFilesAsync(written)
-		a.DB.Delete(&model.Document{}, doc.ID)
+		a.DB.Unscoped().Delete(&model.Document{}, doc.ID)
 		return nil, fmt.Errorf("保存站点清单失败")
 	}
 	doc.Content = content
@@ -633,9 +637,12 @@ func (a *App) ReplaceHTMLDoc(c *gin.Context) {
 	if u := middleware.CurrentUser(c); u != nil {
 		updaterID = u.ID
 	}
+	// 整站替换也是一次内容保存：content_version 原子 +1，版本号同步派生 v1.0.N
 	if err := a.DB.Model(&model.Document{}).Where("id = ?", doc.ID).
 		Updates(map[string]any{"content": content, "updated_at": time.Now(),
-			"updated_by_id": updaterID, "updated_via": ""}).Error; err != nil {
+			"content_version": gorm.Expr("content_version + 1"),
+			"version":         derivedDocVersion(doc.ContentVersion + 1),
+			"updated_by_id":   updaterID, "updated_via": ""}).Error; err != nil {
 		a.deleteSiteFilesAsync(written) // 切换失败则清掉新文件，旧版本仍可读
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新站点清单失败"})
 		return

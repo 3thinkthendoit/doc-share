@@ -181,11 +181,13 @@ func (a *App) DeleteUser(c *gin.Context) {
 		return
 	}
 	err := a.DB.Transaction(func(tx *gorm.DB) error {
+		// 子查询为原始 SQL，不受 GORM 软删作用域影响，返回该用户名下全部文档 id（含回收站），分享一次性清干净
 		if err := tx.Where("document_id IN (SELECT id FROM documents WHERE owner_id = ?)", id).
 			Delete(&model.Share{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("owner_id = ?", id).Delete(&model.Document{}).Error; err != nil {
+		// 销户级联为管理性清除，需 Unscoped 物理删除（否则仅软删，站内残留无主幽灵文档）
+		if err := tx.Unscoped().Where("owner_id = ?", id).Delete(&model.Document{}).Error; err != nil {
 			return err
 		}
 		if err := tx.Where("owner_id = ?", id).Delete(&model.Project{}).Error; err != nil {

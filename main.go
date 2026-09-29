@@ -82,6 +82,7 @@ func main() {
 	signer := session.NewSigner(cfg.Auth.SessionSecret)
 	app := handler.NewApp(cfg, db, signer, tmpl, bundle)
 	app.TmplRoot = tmplRoot // dev 热载用：render 时据此重新解析模板
+	app.StartTrashSweeper() // 回收站 30 天到期清扫（启动即扫一次，之后每小时）
 
 	gin.SetMode(gin.ReleaseMode)
 	engine := router.New(app, staticRoot)

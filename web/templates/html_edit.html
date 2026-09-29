@@ -91,7 +91,7 @@
         <h2>{{$.T "html.metaTitle"}}</h2>
         <input type="text" id="docTitle" class="input-title" style="margin-bottom:10px" placeholder="{{$.T "edit.titlePh"}}" value="{{.doc.Title}}">
         <label class="muted" style="display:block;font-size:12.5px;margin:0 0 6px">{{$.T "docs.colVersion"}}
-          <input type="text" id="docVersion" class="input-title" style="font-size:14px;font-weight:400;padding:8px 12px;margin:6px 0 0" maxlength="32" autocomplete="off" placeholder="{{$.T "edit.versionPh"}}" value="{{.doc.Version}}">
+          <input type="text" id="docVersion" class="input-title" style="font-size:14px;font-weight:400;padding:8px 12px;margin:6px 0 0" readonly tabindex="-1" title="{{$.T "edit.versionAuto"}}" value="{{.doc.Version}}">
         </label>
         <p class="muted" style="font-size:12.5px;margin:0">{{$.T "html.metaHint"}}</p>
       </div>
@@ -120,7 +120,6 @@
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({
           title: document.getElementById('docTitle').value,
-          version: document.getElementById('docVersion').value,
           project_id: parseInt(document.getElementById('docProject').value, 10) || 0,
           category_id: parseInt(document.getElementById('docCategory').value, 10) || 0
         })

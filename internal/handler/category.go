@@ -161,7 +161,8 @@ func (a *App) DeleteCategory(c *gin.Context) {
 		return
 	}
 	err := a.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&model.Document{}).Where("category_id = ?", category.ID).
+		// Unscoped：回收站内文档也需脱离本分类，否则还原后残留悬挂 category_id
+		if err := tx.Unscoped().Model(&model.Document{}).Where("category_id = ?", category.ID).
 			UpdateColumn("category_id", 0).Error; err != nil {
 			return err
 		}

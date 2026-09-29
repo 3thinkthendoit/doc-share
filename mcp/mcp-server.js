@@ -132,7 +132,7 @@ const docSchema = {
   properties: {
     id: { ...num, description: '文档 ID' },
     title: { type: 'string', description: '文档标题（更新时留空表示不修改）' },
-    version: { type: 'string', description: '业务版本号（如 v1.0.1，最多 32 字符；更新时留空表示不修改）' },
+    version: { type: 'string', description: '业务版本号（只读，系统自动生成 v1.0.N，从 v1.0.0 起每次内容保存 +1；传入值被忽略）' },
     content: { type: 'string', description: '内容（markdown 正文 / mindmap·board 画布 JSON / drawio mxfile XML）；更新时可选，未传表示不修改，传值整体覆盖' },
     project_id: { type: 'number', description: '所属项目 ID（0=未分组；只能归属到密钥属主自己的项目）' },
     category_id: { type: 'number', description: '所属分类 ID（0=未分类；同上）' },
@@ -173,7 +173,6 @@ const TOOLS = [
       type: 'object',
       properties: {
         title: { type: 'string', description: '文档标题（必填）' },
-        version: { type: 'string', description: '业务版本号（可选，如 v1.0.1，最多 32 字符）' },
         type: { type: 'string', enum: ['markdown', 'mindmap', 'board', 'drawio'], description: '文档类型，默认 markdown' },
         content: { type: 'string', description: 'markdown 正文 / 画布 JSON / drawio mxfile XML 字符串' + CANVAS_DOC },
         project_id: { type: 'number', description: '所属项目 ID（可选，0=未分组）' },
@@ -183,22 +182,20 @@ const TOOLS = [
     },
     async run(args) {
       return apiCall('POST', '/openapi/v1/docs', null, clean({
-        title: args.title, version: args.version, type: args.type, content: args.content,
+        title: args.title, type: args.type, content: args.content,
         project_id: args.project_id, category_id: args.category_id,
       }));
     },
   },
   {
     name: 'docshare_update_doc',
-    description: '更新文档：content 未传 = 不修改（只改标题/归属安全）；传值 = 整体覆盖。version 传空字符串 = 清空版本号（不传 = 不修改）。html 整站类型拒绝修改内容',
+    description: '更新文档：content 未传 = 不修改（只改标题/归属安全）；传值 = 整体覆盖。version 由系统自动递增（内容变更时 +1），无需也不可手工传入。html 整站类型拒绝修改内容',
     schema: docSchema,
     async run(args) {
       const body = clean({
         title: args.title, content: args.content,
         project_id: args.project_id, category_id: args.category_id,
       });
-      // version 不走 clean（会过滤空串）：显式传空字符串 = 清空，未传 = 不修改
-      if (args.version !== undefined) body.version = String(args.version);
       return apiCall('PUT', `/openapi/v1/docs/${Number(args.id)}`, null, body);
     },
   },

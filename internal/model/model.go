@@ -1,8 +1,11 @@
 package model
 
 import (
+	"strconv"
 	"strings"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 // User 系统用户（后台登录账号）
@@ -139,7 +142,7 @@ func IsCanvasType(t string) bool {
 type Document struct {
 	ID      uint   `gorm:"primaryKey" json:"id"`
 	Title   string `gorm:"size:255;not null" json:"title"`
-	Version string `gorm:"size:32;not null;default:''" json:"version"` // 业务版本号（如 v1.0.1），列表「版本」列展示，可为空
+	Version string `gorm:"size:32;not null;default:''" json:"version"` // 业务版本号，由系统自动派生 v1.0.N（N = ContentVersion），列表「版本」列展示
 	Slug    string `gorm:"size:32;uniqueIndex;not null" json:"slug"`
 	Type    string `gorm:"size:16;not null;default:markdown" json:"type"` // markdown | html
 	Content string `gorm:"type:longtext" json:"content"`
@@ -160,9 +163,19 @@ type Document struct {
 	UpdatedBy   *User     `gorm:"foreignKey:UpdatedByID" json:"updated_by,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+	// DeletedAt 软删除（回收站）：Valid=true 表示在回收站，30 天内可还原，到期由清扫器彻底销毁；
+	// GORM 常规查询自动附加 deleted_at IS NULL，回收站文档天然退出列表/搜索/分享/开放平台
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
 
 	// Share 关联的分享配置（一对一）
 	Share *Share `gorm:"foreignKey:DocumentID" json:"share,omitempty"`
+}
+
+// DerivedVersion 业务版本号派生规则：v1.0.N（N = ContentVersion 乐观锁计数）。
+// 新文档为 v1.0.0，每次内容真实落库（控制台保存 / 分享页编辑 / 回滚 / 整站替换）自动 +1；
+// 作为全局单一数据源，handler 写入与 database 启动回填共用此规则，保证一致
+func DerivedVersion(contentVersion int64) string {
+	return "v1.0." + strconv.FormatInt(contentVersion, 10)
 }
 
 // DocTemplate 文档模板：用户维护的文档初始内容（不支持 html 整站类型）。

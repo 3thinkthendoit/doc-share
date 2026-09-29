@@ -26,7 +26,7 @@
         </label>
         {{if not .tplMode}}
         <label class="meta-select">{{$.T "docs.colVersion"}}
-          <input type="text" id="docVersion" maxlength="32" autocomplete="off" placeholder="{{$.T "edit.versionPh"}}" value="{{if .doc}}{{.doc.Version}}{{end}}">
+          <input type="text" id="docVersion" readonly tabindex="-1" title="{{$.T "edit.versionAuto"}}" placeholder="{{$.T "edit.versionAuto"}}" value="{{if .doc}}{{.doc.Version}}{{end}}">
         </label>
         {{end}}
         {{if and (not .doc) (not .tplMode)}}
@@ -198,6 +198,7 @@
 <script src="/static/mindmap_toolbar.js"></script>
 <script src="/static/drawio_editor.js"></script>
 <script src="/static/embeds.js"></script>
+<script src="/static/revisions.js"></script>
 <script src="/static/editor.js"></script>
 </body>
 </html>

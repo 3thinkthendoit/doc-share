@@ -484,6 +484,7 @@ func (a *App) RollbackRevision(c *gin.Context) {
 			Where("id = ? AND content_version = ?", doc.ID, fresh.ContentVersion).
 			Updates(map[string]any{
 				"content": rev.Content, "content_version": fresh.ContentVersion + 1,
+				"version":       derivedDocVersion(fresh.ContentVersion + 1), // 回滚也是一次内容保存，版本号同步递增
 				"updated_by_id": editorID, "updated_via": "",
 			})
 		if res.Error != nil {
@@ -646,6 +647,7 @@ func (a *App) saveShareContentBody(c *gin.Context, doc *model.Document, user *mo
 			Updates(map[string]any{
 				"content":         req.Content,
 				"content_version": fresh.ContentVersion + 1,
+				"version":         derivedDocVersion(fresh.ContentVersion + 1), // 分享页编辑同样自动递增版本号
 				"updated_by_id":   user.ID,
 				"updated_via":     "",
 			})

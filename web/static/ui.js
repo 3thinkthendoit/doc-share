@@ -512,6 +512,30 @@ window.UI = (function () {
   };
 })();
 
+// 相对时间：任何带 data-ts（unix 秒）的元素一年内显示相对时间（刚刚/N分钟前/…/N个月前），
+// ≥1 年保留服务端绝对时间，并把绝对时间写入 title 供悬停查看；文案用 Intl 随页面语言自动本地化
+document.addEventListener('DOMContentLoaded', function () {
+  if (!window.UI) return;
+  var rtf = null;
+  try { rtf = new Intl.RelativeTimeFormat(UI.lang, { numeric: 'auto' }); } catch (e) { return; }
+  var DAY = 86400;
+  document.querySelectorAll('[data-ts]').forEach(function (el) {
+    var ts = parseInt(el.getAttribute('data-ts'), 10) || 0;
+    if (!ts || el.title) return;
+    var diff = Math.round(Date.now() / 1000) - ts;
+    if (diff < 0) diff = 0;
+    if (diff >= DAY * 365) return; /* 太久：保留绝对时间 */
+    var rel;
+    if (diff < 60) rel = UI.t('time.just');
+    else if (diff < 3600) rel = rtf.format(-Math.round(diff / 60), 'minute');
+    else if (diff < DAY) rel = rtf.format(-Math.round(diff / 3600), 'hour');
+    else if (diff < DAY * 30) rel = rtf.format(-Math.round(diff / DAY), 'day');
+    else rel = rtf.format(-Math.round(diff / (DAY * 30)), 'month');
+    el.title = el.textContent.trim(); /* 悬停仍可看精确绝对时间 */
+    el.textContent = rel;
+  });
+});
+
 // 导航栏用户菜单与修改密码弹窗（ui.js 在 head 加载，需等 DOM 就绪）
 document.addEventListener('DOMContentLoaded', function () {
   if (!window.UI) return;

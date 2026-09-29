@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"doc-share/internal/middleware"
 	"doc-share/internal/model"
@@ -23,7 +22,8 @@ import (
 // 可见范围：自己的文档 ∪ 所参与项目内的他人文档（未挂项目的他人文档不可见）
 func (a *App) DocsPage(c *gin.Context) {
 	q := c.Query("q")
-	origin := c.Query("origin") // ""=全部 mine=我创建的 shared=项目共享
+	origin := c.Query("origin")      // ""=全部 mine=我创建的 shared=项目共享
+	trash := c.Query("trash") == "1" // 回收站视图：仅软删文档，30 天内可还原
 	pg := parseWebPage(c)
 
 	user := middleware.CurrentUser(c)
@@ -34,6 +34,9 @@ func (a *App) DocsPage(c *gin.Context) {
 	}
 
 	tx := a.DB.Model(&model.Document{})
+	if trash {
+		tx = tx.Unscoped().Where("deleted_at IS NOT NULL")
+	}
 	if user != nil && !user.IsAdmin() {
 		switch origin {
 		case "mine":
@@ -88,8 +91,12 @@ func (a *App) DocsPage(c *gin.Context) {
 
 	var docs []model.Document
 	// 列表不拉 Content（longtext）；嵌入标签另用 LIKE 只取 id
+	orderCol := "updated_at desc"
+	if trash {
+		orderCol = "deleted_at desc" // 回收站按删除时间倒序
+	}
 	tx.Omit("Content").Preload("Owner").Preload("Share").Preload("Project").Preload("Category").Preload("UpdatedBy").
-		Order("updated_at desc").Offset(pg.Offset).Limit(pg.Size).Find(&docs)
+		Order(orderCol).Offset(pg.Offset).Limit(pg.Size).Find(&docs)
 
 	embedTags := detectEmbedTags(a.DB, docs)
 
@@ -137,8 +144,14 @@ func (a *App) DocsPage(c *gin.Context) {
 	if origin != "" {
 		extra += "&origin=" + url.QueryEscape(origin)
 	}
+	if trash {
+		extra += "&trash=1"
+	}
 	// 侧栏切换项目时保留其它筛选（不含 project）；无前导 &
 	sideParts := []string{"size=" + strconv.Itoa(pg.Size)}
+	if trash {
+		sideParts = append(sideParts, "trash=1")
+	}
 	if q != "" {
 		sideParts = append(sideParts, "q="+url.QueryEscape(q))
 	}
@@ -161,6 +174,7 @@ func (a *App) DocsPage(c *gin.Context) {
 		"project":    c.Query("project"),
 		"category":   c.Query("category"),
 		"shared":     c.Query("shared"),
+		"trash":      trash,
 		"projects":   projects,
 		"categories": categories,
 		"canEdit":    canEdit,
@@ -465,7 +479,7 @@ func openapiVia(c *gin.Context) string {
 
 type docReq struct {
 	Title       string  `json:"title" form:"title"`
-	Version     *string `json:"version" form:"version"`         // nil = 未传，不修改；传值 = 覆盖（含清空），最长 32 字符
+	Version     *string `json:"version" form:"version"`         // 已废弃：版本号由系统按内容保存次数自动生成（v1.0.N），传入值被忽略
 	Content     *string `json:"content" form:"content"`         // nil = 未传：更新时不修改；传值 = 整体覆盖
 	Type        string  `json:"type" form:"type"`               // 创建时可选：markdown（默认）/ mindmap / board / drawio；html 走专用上传接口
 	ProjectID   *uint   `json:"project_id" form:"project_id"`   // nil 表示未传，不修改；0 表示清空
@@ -474,17 +488,11 @@ type docReq struct {
 	Force       bool    `json:"force"`                          // true = 忽略版本冲突强制覆盖
 }
 
-// docVersionMaxRunes 业务版本号最大字符数，与 model.Document.Version 的 size:32 一致
-const docVersionMaxRunes = 32
-
-// normalizeVersion 去空白并按字符数校验版本号长度，超限返回 ok=false。
-// 仅在调用方已判定 req.Version != nil 时使用
-func normalizeVersion(v string) (string, bool) {
-	trimmed := strings.TrimSpace(v)
-	if utf8.RuneCountInString(trimmed) > docVersionMaxRunes {
-		return "", false
-	}
-	return trimmed, true
+// derivedDocVersion 业务版本号由系统派生（v1.0.N），规则集中在 model.DerivedVersion（与启动回填共用）。
+// 新文档为 v1.0.0，每次内容真实落库（控制台保存 / 分享页编辑 / 回滚 / 整站替换）自动 +1，
+// 不再接受手工填写；与内容写入同事务更新，保证版本与内容严格同步
+func derivedDocVersion(contentVersion int64) string {
+	return model.DerivedVersion(contentVersion)
 }
 
 // validProjectRef 项目引用校验：0 合法；与当前值相同（未改动）合法；否则必须存在且非 admin 只能用自己的
@@ -541,15 +549,6 @@ func (a *App) CreateDoc(c *gin.Context) {
 	if title == "" {
 		title = a.tr(c, "edit.untitled")
 	}
-	version := ""
-	if req.Version != nil {
-		v, ok := normalizeVersion(*req.Version)
-		if !ok {
-			c.JSON(http.StatusBadRequest, gin.H{"error": errParam})
-			return
-		}
-		version = v
-	}
 	user := middleware.CurrentUser(c)
 	content := ""
 	if req.Content != nil {
@@ -557,7 +556,7 @@ func (a *App) CreateDoc(c *gin.Context) {
 	}
 	doc := model.Document{
 		Title:       title,
-		Version:     version,
+		Version:     derivedDocVersion(0), // 版本号自动生成，从 v1.0.0 起算
 		Slug:        util.RandomSlug(8),
 		Type:        docType,
 		Content:     content,
@@ -577,7 +576,8 @@ func (a *App) CreateDoc(c *gin.Context) {
 	}
 	for {
 		var n int64
-		a.DB.Model(&model.Document{}).Where("slug = ?", doc.Slug).Count(&n)
+		// Unscoped：同时避开回收站文档占用的 slug，否则撞唯一索引导致插入失败
+		a.DB.Unscoped().Model(&model.Document{}).Where("slug = ?", doc.Slug).Count(&n)
 		if n == 0 {
 			break
 		}
@@ -602,21 +602,12 @@ func (a *App) UpdateDoc(c *gin.Context) {
 	actor := middleware.CurrentUser(c)
 	oldTitle, oldContent := doc.Title, doc.Content
 	oldProj, oldCat := doc.ProjectID, doc.CategoryID
-	oldVersion := doc.Version
 	var req docReq
 	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": errParam})
 		return
 	}
-	// 版本号：传值即覆盖（含清空），未传（nil）则不修改；超长直接 400
-	if req.Version != nil {
-		v, ok := normalizeVersion(*req.Version)
-		if !ok {
-			c.JSON(http.StatusBadRequest, gin.H{"error": errParam})
-			return
-		}
-		doc.Version = v
-	}
+	// 版本号不再接受手工修改（req.Version 忽略），由内容落库时自动派生 v1.0.N
 	// 内容更新语义：未传 content = 不修改（防止 MCP 等客户端只改标题时清空正文/画布）；
 	// 显式传值 = 整体覆盖。HTML 整站的内容（manifest）只经整站替换接口变更。
 	var newContent *string
@@ -672,6 +663,7 @@ func (a *App) UpdateDoc(c *gin.Context) {
 			}
 			updates["content"] = *newContent
 			updates["content_version"] = fresh.ContentVersion + 1
+			updates["version"] = derivedDocVersion(fresh.ContentVersion + 1) // 版本号随内容保存自动递增
 		}
 		if actor != nil {
 			updates["updated_by_id"] = actor.ID
@@ -679,9 +671,6 @@ func (a *App) UpdateDoc(c *gin.Context) {
 		}
 		if doc.Title != oldTitle {
 			updates["title"] = doc.Title
-		}
-		if doc.Version != oldVersion {
-			updates["version"] = doc.Version
 		}
 		if doc.ProjectID != oldProj {
 			updates["project_id"] = doc.ProjectID
@@ -744,7 +733,8 @@ func (a *App) UpdateDoc(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": doc})
 }
 
-// DeleteDoc 删除文档及其分享配置
+// DeleteDoc 将文档移入回收站（软删除）：仅置 deleted_at，不销毁分享配置/修订/站点文件，
+// 30 天内可还原；到期由 StartTrashSweeper 调 purgeDoc 执行真正销毁
 func (a *App) DeleteDoc(c *gin.Context) {
 	doc := a.loadDoc(c)
 	if doc == nil {
@@ -753,21 +743,109 @@ func (a *App) DeleteDoc(c *gin.Context) {
 	if !a.requireDocEdit(c, doc) {
 		return
 	}
-	// HTML 整站：后台清理存储中的站点文件
-	a.cleanupHTMLDoc(doc)
-	if err := a.DB.Where("document_id = ?", doc.ID).Delete(&model.Share{}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
-		return
-	}
-	if err := a.DB.Where("document_id = ?", doc.ID).Delete(&model.ShareAccessRequest{}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
-		return
-	}
 	if err := a.DB.Delete(&model.Document{}, doc.ID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// loadDocTrashed 按 id 加载回收站文档（Unscoped + 已删过滤）；找不到时写响应并返回 nil
+func (a *App) loadDocTrashed(c *gin.Context) *model.Document {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var doc model.Document
+	if err := a.DB.Unscoped().Preload("Owner").Where("deleted_at IS NOT NULL").First(&doc, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": errDocNotFound})
+		return nil
+	}
+	return &doc
+}
+
+// RestoreDoc 还原回收站文档；slug 恰被活跃文档占用时返回 409（随机 slug 概率极低，仍严格校验）
+func (a *App) RestoreDoc(c *gin.Context) {
+	doc := a.loadDocTrashed(c)
+	if doc == nil {
+		return
+	}
+	if !a.requireDocEdit(c, doc) {
+		return
+	}
+	var n int64
+	a.DB.Model(&model.Document{}).Where("slug = ?", doc.Slug).Count(&n)
+	if n > 0 {
+		c.JSON(http.StatusConflict, gin.H{"error": a.tr(c, "docs.restoreSlugTaken")})
+		return
+	}
+	if err := a.DB.Unscoped().Model(&model.Document{}).Where("id = ?", doc.ID).
+		Update("deleted_at", nil).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// PurgeDoc 彻底删除回收站文档：立即执行完整销毁链
+func (a *App) PurgeDoc(c *gin.Context) {
+	doc := a.loadDocTrashed(c)
+	if doc == nil {
+		return
+	}
+	if !a.requireDocEdit(c, doc) {
+		return
+	}
+	if err := a.purgeDoc(doc); err != nil {
+		log.Printf("[trash] 彻底删除失败 doc=%d: %v", doc.ID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// purgeDoc 真正销毁链：「彻底删除」端点与 30 天到期清扫共用；
+// 站点文件 → 分享配置/分享申请/修订/访客/评论 → 文档行本身
+func (a *App) purgeDoc(doc *model.Document) error {
+	a.cleanupHTMLDoc(doc)
+	return a.DB.Transaction(func(tx *gorm.DB) error {
+		for _, m := range []any{
+			&model.Share{}, &model.ShareAccessRequest{}, &model.DocumentRevision{},
+			&model.DocumentVisitor{}, &model.Comment{},
+		} {
+			if err := tx.Where("document_id = ?", doc.ID).Delete(m).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Unscoped().Delete(&model.Document{}, doc.ID).Error
+	})
+}
+
+// StartTrashSweeper 回收站 30 天到期清扫：启动即扫一次，之后每小时一轮
+func (a *App) StartTrashSweeper() {
+	go func() {
+		for {
+			a.sweepTrash()
+			time.Sleep(time.Hour)
+		}
+	}()
+}
+
+// sweepTrash 销毁所有 deleted_at 早于 30 天前的回收站文档
+func (a *App) sweepTrash() {
+	var docs []model.Document
+	if err := a.DB.Unscoped().Where("deleted_at < ?", time.Now().AddDate(0, 0, -30)).Find(&docs).Error; err != nil {
+		log.Printf("[trash] 查询到期回收站失败: %v", err)
+		return
+	}
+	purged := 0
+	for i := range docs {
+		if err := a.purgeDoc(&docs[i]); err != nil {
+			log.Printf("[trash] 清扫失败 doc=%d: %v", docs[i].ID, err)
+			continue
+		}
+		purged++
+	}
+	if purged > 0 {
+		log.Printf("[trash] 已清扫 %d 篇超 30 天文档", purged)
+	}
 }
 
 type shareReq struct {
@@ -997,6 +1075,7 @@ func (a *App) DuplicateDoc(c *gin.Context) {
 	}
 	newDoc := model.Document{
 		Title:       string(r) + "（副本）",
+		Version:     derivedDocVersion(0), // 副本从 v1.0.0 重新起算
 		Slug:        util.RandomSlug(8),
 		Type:        doc.Type,
 		Content:     doc.Content,
@@ -1008,7 +1087,7 @@ func (a *App) DuplicateDoc(c *gin.Context) {
 	}
 	for {
 		var n int64
-		a.DB.Model(&model.Document{}).Where("slug = ?", newDoc.Slug).Count(&n)
+		a.DB.Unscoped().Model(&model.Document{}).Where("slug = ?", newDoc.Slug).Count(&n)
 		if n == 0 {
 			break
 		}
@@ -1022,7 +1101,8 @@ func (a *App) DuplicateDoc(c *gin.Context) {
 	// 否则删除原文档或整站替换时会连坐副本（站点文件 404）
 	if doc.Type == model.DocTypeHTML {
 		if err := a.duplicateHTMLSite(c, doc, &newDoc); err != nil {
-			a.DB.Delete(&model.Document{}, newDoc.ID)
+			// 复制残品物理删除（duplicateHTMLSite 已自清站点文件），不进回收站
+			a.DB.Unscoped().Delete(&model.Document{}, newDoc.ID)
 			log.Printf("[doc] 复制 HTML 整站失败 doc=%d -> %d: %v", doc.ID, newDoc.ID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "复制站点文件失败"})
 			return

@@ -192,7 +192,6 @@ func openAPIGroups() []apiGroup {
 			{Method: "POST", Path: openAPIBase + "/docs", DescKey: "ep.docCreate", LabelKey: "ep.tDocCreate",
 				ReqExample: `{
   "title": "接入指南",
-  "version": "v1.0.0",
   "type": "markdown",
   "content": "# 接入指南\n\n正文 Markdown…",
   "project_id": 3,
@@ -242,7 +241,6 @@ Content-Type: application/zip
 			{Method: "PUT", Path: openAPIBase + "/docs/:id", DescKey: "ep.docUpdate", LabelKey: "ep.tDocUpdate",
 				ReqExample: `{
   "title": "接入指南（修订）",
-  "version": "v1.0.1",
   "content": "# 接入指南 v2\n\n更新后的正文…",
   "project_id": 0,
   "category_id": 1

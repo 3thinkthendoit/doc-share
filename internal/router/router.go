@@ -113,6 +113,8 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.POST("/api/docs", app.CreateDoc)
 		admin.PUT("/api/docs/:id", app.UpdateDoc)
 		admin.DELETE("/api/docs/:id", app.DeleteDoc)
+		admin.POST("/api/docs/:id/restore", app.RestoreDoc)
+		admin.POST("/api/docs/:id/purge", app.PurgeDoc)
 		admin.POST("/api/docs/html", app.CreateHTMLDoc)
 		admin.PUT("/api/docs/:id/html", app.ReplaceHTMLDoc)
 		admin.POST("/api/docs/:id/editing", app.MarkEditing)

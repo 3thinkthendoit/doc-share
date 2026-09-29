@@ -189,16 +189,13 @@ html[data-theme="light"] .theme-toggle .i-moon{display:none}
 .docs-side-label{padding:4px 14px 10px;font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--faint)}
 .docs-side a{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .docs-main{flex:1;min-width:0}
-/* 桌面用侧栏选项目；下拉仅查询时提交，视觉隐藏 */
-.filter-bar select.docs-project-mobile{
-  position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0;max-width:none
-}
-@media (max-width:960px){
+/* 桌面用侧栏选项目：隐藏查询栏的项目下拉（含 skinSelect 外层 .xsel 容器，而非原生 select） */
+.filter-bar .xsel:has(> select.docs-project-mobile){display:none}
+/* 13 寸等窄屏（≤1440 CSS px）：隐藏左侧项目栏让表格占满宽度；项目筛选改用查询栏下拉 */
+@media (max-width:1440px){
   .docs-layout{display:block}
   .docs-side{display:none}
-  .filter-bar select.docs-project-mobile{
-    position:static;width:auto;height:auto;margin:0;clip:auto;overflow:visible;max-width:180px
-  }
+  .filter-bar .xsel:has(> select.docs-project-mobile){display:inline-flex}
 }
 /* 可用接口：分组标题 + 逐接口卡片 + 参数表 */
 .ep-group{margin:20px 0 10px;font-size:14.5px;font-weight:650;color:var(--text)}

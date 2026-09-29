@@ -20,10 +20,11 @@
     <span class="tag tag-embed">{{if eq .docKind "mindmap"}}{{$.T "docs.tagMindmap"}}{{else if eq .docKind "drawio"}}{{$.T "docs.tagDrawio"}}{{else}}{{$.T "docs.tagBoard"}}{{end}}</span>
     <input type="text" id="docTitle" class="input-title" style="max-width:480px" placeholder="{{if .tplMode}}{{$.T "tpl.namePh"}}{{else}}{{$.T "edit.titlePh"}}{{end}}" value="{{if .doc}}{{.doc.Title}}{{else if .tpl}}{{.tpl.Name}}{{end}}">
     {{if not .tplMode}}<span class="ver-label">{{$.T "docs.colVersion"}}</span>
-    <input type="text" id="docVersion" class="input-ver" maxlength="32" autocomplete="off" placeholder="{{$.T "edit.versionPh"}}" value="{{if .doc}}{{.doc.Version}}{{end}}">{{end}}
+    <input type="text" id="docVersion" class="input-ver" readonly tabindex="-1" title="{{$.T "edit.versionAuto"}}" placeholder="{{$.T "edit.versionAuto"}}" value="{{if .doc}}{{.doc.Version}}{{end}}">{{end}}
     <a href="{{if .tplMode}}/console/templates{{else}}/console/docs{{end}}" class="btn">{{$.T "返回列表"}}</a>
     {{if .doc}}<a href="/console/docs/{{.doc.ID}}/preview" target="_blank" class="btn">{{$.T "edit.preview"}}</a>{{end}}
     {{if .isOwner}}<button type="button" id="shareBtn" class="btn">{{$.T "分享"}}</button>{{end}}
+    {{if .doc}}<button type="button" id="revisionsBtn" class="btn">{{$.T "revisions.title"}}</button>{{end}}
     {{if .canEditDoc}}<button type="button" id="saveBtn" class="btn btn-primary">{{$.T "保存"}}</button>{{end}}
   </div>
   <div id="jsonMount" class="json-mount {{if eq .docKind "mindmap"}}embed-mount embed-mount-mindmap{{else}}embed-mount embed-mount-excalidraw{{end}}"></div>
@@ -32,6 +33,44 @@
 {{if .isOwner}}
 <!-- 分享设置弹窗（公共壳）：状态由 share_modal.js 注入；画布不可分享页编辑 -->
 {{template "shareSettingsModal" .}}
+{{end}}
+
+{{if .doc}}
+<!-- 历史版本弹窗（公共组件 revisions.js）：画布类型后端同样记录修订快照，与 Markdown 编辑页一致 -->
+<div class="modal-overlay" id="revisionsModal" hidden>
+  <div class="modal modal-lg" role="dialog" aria-modal="true" aria-label="{{$.T "revisions.title"}}">
+    <div class="modal-head">
+      <h2>{{$.T "revisions.title"}}</h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+    </div>
+    <div class="modal-body" style="padding:0">
+      <div id="revisionsList"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="labelRevModal" hidden>
+  <div class="modal modal-sm" role="dialog" aria-modal="true" aria-label="{{$.T "revisions.labelTitle"}}">
+    <div class="modal-head">
+      <h2>{{$.T "revisions.labelTitle"}}</h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+    </div>
+    <div class="modal-body share-body" style="padding:18px 22px">
+      <div class="muted" id="labelRevTarget" style="font-size:12.5px;margin-bottom:14px"></div>
+      <label>{{$.T "revisions.labelField"}}
+        <input type="text" id="labelRevInput" maxlength="32" autocomplete="off" placeholder="{{$.T "revisions.labelPh"}}">
+      </label>
+      <label>{{$.T "revisions.noteField"}}
+        <textarea id="labelRevNote" rows="3" maxlength="500" placeholder="{{$.T "revisions.notePh"}}"></textarea>
+      </label>
+      <div class="muted" style="font-size:12px">{{$.T "revisions.labelHint"}}</div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn" data-close-modal>{{$.T "common.cancel"}}</button>
+      <button type="button" class="btn btn-primary" id="labelRevSave">{{$.T "common.save"}}</button>
+    </div>
+  </div>
+</div>
 {{end}}
 
 <script>
@@ -54,6 +93,7 @@
 <script src="/static/drawio_editor.js"></script>
 <script src="/static/json_editor.js"></script>
 <script src="/static/share_modal.js"></script>
+<script src="/static/revisions.js"></script>
 <script>
 (function () {
   var DOC_ID = window.JSON_DOC.docId;
@@ -90,12 +130,9 @@
   var lastSavedTitle = document.getElementById('docTitle').value;
   var lastVersion = window.JSON_DOC.contentVersion || 0;
   var versionEl = document.getElementById('docVersion');
-  function curVersion() { return versionEl ? versionEl.value : ''; }
-  var lastSavedVersion = curVersion();
 
   async function persist(isAuto, force) {
     var title = document.getElementById('docTitle').value;
-    var version = curVersion();
     var json = currentJSON();
     var url, method, body;
     if (TPL_MODE) {
@@ -111,11 +148,11 @@
                category_id: Number(window.JSON_DOC.tplCategoryId) || 0 };
     } else if (DOC_ID) {
       url = '/console/api/docs/' + DOC_ID; method = 'PUT';
-      body = { title: title, version: version, content: json, base_version: lastVersion, force: !!force };
+      body = { title: title, content: json, base_version: lastVersion, force: !!force };
     } else {
       url = '/console/api/docs'; method = 'POST';
       // 从模板创建时带入项目/分类归属（普通新建为 0，即未分组）
-      body = { title: title, version: version, type: KIND, content: json,
+      body = { title: title, type: KIND, content: json,
                project_id: Number(window.JSON_DOC.tplProjectId) || 0,
                category_id: Number(window.JSON_DOC.tplCategoryId) || 0 };
     }
@@ -176,9 +213,11 @@
     if (data.data && typeof data.data.content_version !== 'undefined') {
       lastVersion = data.data.content_version; // 乐观锁：以服务端返回的新版本为基线
     }
+    if (versionEl && data.data && data.data.version) {
+      versionEl.value = data.data.version; // 版本号由系统自动派生，保存后回填展示
+    }
     lastSavedJSON = json;
     lastSavedTitle = title;
-    lastSavedVersion = version;
     return true;
   }
 
@@ -216,7 +255,7 @@
       if ((!DOC_ID && !TPL_ID) || !window.JSON_DOC.canEdit || !editorReady || saving) return;
       var title = document.getElementById('docTitle').value;
       var json = currentJSON();
-      if (json === lastSavedJSON && title === lastSavedTitle && curVersion() === lastSavedVersion) return;
+      if (json === lastSavedJSON && title === lastSavedTitle) return;
       saving = true; saveBtn.disabled = true;
       try {
         var ok = await persist(true);
@@ -254,7 +293,7 @@
     if (!window.JSON_DOC.canEdit) return;
     var title = document.getElementById('docTitle').value;
     var json = currentJSON();
-    if (json === lastSavedJSON && title === lastSavedTitle && curVersion() === lastSavedVersion) return;
+    if (json === lastSavedJSON && title === lastSavedTitle) return;
     try {
       if (TPL_MODE) {
         if (!TPL_ID) return;
@@ -272,7 +311,7 @@
       fetch('/console/api/docs/' + DOC_ID, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-        body: JSON.stringify({ title: title, version: curVersion(), content: json }),
+        body: JSON.stringify({ title: title, content: json }),
         keepalive: true, credentials: 'same-origin'
       });
     } catch (e) { /* 离开时尽力而为 */ }
@@ -295,6 +334,9 @@
     shareState.title = document.getElementById('docTitle').value;
     ShareModal.openFor(shareState);
   });
+
+  // 历史版本面板（公共组件 revisions.js）：DOC_ID 首次保存后才出现，用闭包实时读取
+  if (window.Revisions) window.Revisions.init(function () { return DOC_ID; });
 })();
 </script>
 {{template "adminfoot" .}}

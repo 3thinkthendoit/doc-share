@@ -28,7 +28,8 @@ func newAuthApp(t *testing.T) (*App, *model.Document) {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.Project{}, &model.ProjectMember{}, &model.Document{}, &model.Share{}, &model.DocumentRevision{}, &model.SystemSetting{}, &model.Message{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Project{}, &model.ProjectMember{}, &model.Document{}, &model.Share{}, &model.DocumentRevision{}, &model.SystemSetting{}, &model.Message{},
+		&model.ShareAccessRequest{}, &model.DocumentVisitor{}, &model.Comment{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	owner := model.User{Username: "owner", Nickname: "属主", Role: model.RoleViewer, Status: model.StatusEnabled}
