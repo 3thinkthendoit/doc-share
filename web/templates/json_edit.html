@@ -6,6 +6,9 @@
 <style>
 .json-edit-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 0}
 .json-edit-head .input-title{flex:1;min-width:220px;margin-bottom:0}
+.json-edit-head .input-ver{width:120px;padding:8px 10px;font-size:13px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:inherit;background:var(--input-bg);color:var(--text);transition:all .15s}
+.json-edit-head .input-ver:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+.json-edit-head .ver-label{font-size:13px;color:var(--muted);font-weight:500}
 /* 挂载容器复用 embed-mount 体系（style.css：mindmap 需清零 margin/padding、excalidraw 需子层满宽高） */
 .json-mount{height:calc(100vh - 130px);min-height:420px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--panel)}
 </style>
@@ -16,6 +19,8 @@
   <div class="json-edit-head">
     <span class="tag tag-embed">{{if eq .docKind "mindmap"}}{{$.T "docs.tagMindmap"}}{{else if eq .docKind "drawio"}}{{$.T "docs.tagDrawio"}}{{else}}{{$.T "docs.tagBoard"}}{{end}}</span>
     <input type="text" id="docTitle" class="input-title" style="max-width:480px" placeholder="{{if .tplMode}}{{$.T "tpl.namePh"}}{{else}}{{$.T "edit.titlePh"}}{{end}}" value="{{if .doc}}{{.doc.Title}}{{else if .tpl}}{{.tpl.Name}}{{end}}">
+    {{if not .tplMode}}<span class="ver-label">{{$.T "docs.colVersion"}}</span>
+    <input type="text" id="docVersion" class="input-ver" maxlength="32" autocomplete="off" placeholder="{{$.T "edit.versionPh"}}" value="{{if .doc}}{{.doc.Version}}{{end}}">{{end}}
     <a href="{{if .tplMode}}/console/templates{{else}}/console/docs{{end}}" class="btn">{{$.T "返回列表"}}</a>
     {{if .doc}}<a href="/console/docs/{{.doc.ID}}/preview" target="_blank" class="btn">{{$.T "edit.preview"}}</a>{{end}}
     {{if .isOwner}}<button type="button" id="shareBtn" class="btn">{{$.T "分享"}}</button>{{end}}
@@ -84,9 +89,13 @@
   var lastSavedJSON = window.JSON_DOC.content || '';
   var lastSavedTitle = document.getElementById('docTitle').value;
   var lastVersion = window.JSON_DOC.contentVersion || 0;
+  var versionEl = document.getElementById('docVersion');
+  function curVersion() { return versionEl ? versionEl.value : ''; }
+  var lastSavedVersion = curVersion();
 
   async function persist(isAuto, force) {
     var title = document.getElementById('docTitle').value;
+    var version = curVersion();
     var json = currentJSON();
     var url, method, body;
     if (TPL_MODE) {
@@ -102,11 +111,11 @@
                category_id: Number(window.JSON_DOC.tplCategoryId) || 0 };
     } else if (DOC_ID) {
       url = '/console/api/docs/' + DOC_ID; method = 'PUT';
-      body = { title: title, content: json, base_version: lastVersion, force: !!force };
+      body = { title: title, version: version, content: json, base_version: lastVersion, force: !!force };
     } else {
       url = '/console/api/docs'; method = 'POST';
       // 从模板创建时带入项目/分类归属（普通新建为 0，即未分组）
-      body = { title: title, type: KIND, content: json,
+      body = { title: title, version: version, type: KIND, content: json,
                project_id: Number(window.JSON_DOC.tplProjectId) || 0,
                category_id: Number(window.JSON_DOC.tplCategoryId) || 0 };
     }
@@ -169,6 +178,7 @@
     }
     lastSavedJSON = json;
     lastSavedTitle = title;
+    lastSavedVersion = version;
     return true;
   }
 
@@ -206,7 +216,7 @@
       if ((!DOC_ID && !TPL_ID) || !window.JSON_DOC.canEdit || !editorReady || saving) return;
       var title = document.getElementById('docTitle').value;
       var json = currentJSON();
-      if (json === lastSavedJSON && title === lastSavedTitle) return;
+      if (json === lastSavedJSON && title === lastSavedTitle && curVersion() === lastSavedVersion) return;
       saving = true; saveBtn.disabled = true;
       try {
         var ok = await persist(true);
@@ -244,7 +254,7 @@
     if (!window.JSON_DOC.canEdit) return;
     var title = document.getElementById('docTitle').value;
     var json = currentJSON();
-    if (json === lastSavedJSON && title === lastSavedTitle) return;
+    if (json === lastSavedJSON && title === lastSavedTitle && curVersion() === lastSavedVersion) return;
     try {
       if (TPL_MODE) {
         if (!TPL_ID) return;
@@ -262,7 +272,7 @@
       fetch('/console/api/docs/' + DOC_ID, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-        body: JSON.stringify({ title: title, content: json }),
+        body: JSON.stringify({ title: title, version: curVersion(), content: json }),
         keepalive: true, credentials: 'same-origin'
       });
     } catch (e) { /* 离开时尽力而为 */ }

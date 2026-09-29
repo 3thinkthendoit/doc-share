@@ -47,7 +47,7 @@ function loadConfig() {
 const cfg = loadConfig();
 
 /* ---------- HMAC 签名请求（与服务端 stringToSign 严格对齐） ----------
- * 待签串 = appKey \n METHOD \n path(不含 query) \n timestamp \n nonce \n hex(sha256(body))
+ * 待签串 = appKey、METHOD、path(不含 query)、timestamp、nonce、hex(sha256(body)) 六段依次用换行符连接
  * 签名   = hex( HMAC-SHA256(secret, 待签串) )
  */
 function clean(obj) {
@@ -132,6 +132,7 @@ const docSchema = {
   properties: {
     id: { ...num, description: '文档 ID' },
     title: { type: 'string', description: '文档标题（更新时留空表示不修改）' },
+    version: { type: 'string', description: '业务版本号（如 v1.0.1，最多 32 字符；更新时留空表示不修改）' },
     content: { type: 'string', description: '内容（markdown 正文 / mindmap·board 画布 JSON / drawio mxfile XML）；更新时可选，未传表示不修改，传值整体覆盖' },
     project_id: { type: 'number', description: '所属项目 ID（0=未分组；只能归属到密钥属主自己的项目）' },
     category_id: { type: 'number', description: '所属分类 ID（0=未分类；同上）' },
@@ -172,6 +173,7 @@ const TOOLS = [
       type: 'object',
       properties: {
         title: { type: 'string', description: '文档标题（必填）' },
+        version: { type: 'string', description: '业务版本号（可选，如 v1.0.1，最多 32 字符）' },
         type: { type: 'string', enum: ['markdown', 'mindmap', 'board', 'drawio'], description: '文档类型，默认 markdown' },
         content: { type: 'string', description: 'markdown 正文 / 画布 JSON / drawio mxfile XML 字符串' + CANVAS_DOC },
         project_id: { type: 'number', description: '所属项目 ID（可选，0=未分组）' },
@@ -181,7 +183,7 @@ const TOOLS = [
     },
     async run(args) {
       return apiCall('POST', '/openapi/v1/docs', null, clean({
-        title: args.title, type: args.type, content: args.content,
+        title: args.title, version: args.version, type: args.type, content: args.content,
         project_id: args.project_id, category_id: args.category_id,
       }));
     },
@@ -192,7 +194,7 @@ const TOOLS = [
     schema: docSchema,
     async run(args) {
       return apiCall('PUT', `/openapi/v1/docs/${Number(args.id)}`, null, clean({
-        title: args.title, content: args.content,
+        title: args.title, version: args.version, content: args.content,
         project_id: args.project_id, category_id: args.category_id,
       }));
     },

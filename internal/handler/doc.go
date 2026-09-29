@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"doc-share/internal/middleware"
 	"doc-share/internal/model"
@@ -76,7 +77,10 @@ func (a *App) DocsPage(c *gin.Context) {
 	}
 	if q != "" {
 		like := "%" + q + "%"
-		tx = tx.Where("title LIKE ? OR slug LIKE ?", like, like)
+		// 正文搜索：html 整站文档的 Content 只是 manifest（正文在对象存储），
+		// 须按类型显式排除，否则搜 "index" 会误命中所有整站文档的文件名清单
+		tx = tx.Where("title LIKE ? OR slug LIKE ? OR (type <> ? AND content LIKE ?)",
+			like, like, model.DocTypeHTML, like)
 	}
 	var total int64
 	tx.Count(&total)
@@ -461,12 +465,26 @@ func openapiVia(c *gin.Context) string {
 
 type docReq struct {
 	Title       string  `json:"title" form:"title"`
+	Version     *string `json:"version" form:"version"`         // nil = 未传，不修改；传值 = 覆盖（含清空），最长 32 字符
 	Content     *string `json:"content" form:"content"`         // nil = 未传：更新时不修改；传值 = 整体覆盖
 	Type        string  `json:"type" form:"type"`               // 创建时可选：markdown（默认）/ mindmap / board / drawio；html 走专用上传接口
 	ProjectID   *uint   `json:"project_id" form:"project_id"`   // nil 表示未传，不修改；0 表示清空
 	CategoryID  *uint   `json:"category_id" form:"category_id"` // 同上
 	BaseVersion *int64  `json:"base_version"`                   // 乐观锁：内容更新时校验，不一致返回 409
 	Force       bool    `json:"force"`                          // true = 忽略版本冲突强制覆盖
+}
+
+// docVersionMaxRunes 业务版本号最大字符数，与 model.Document.Version 的 size:32 一致
+const docVersionMaxRunes = 32
+
+// normalizeVersion 去空白并按字符数校验版本号长度，超限返回 ok=false。
+// 仅在调用方已判定 req.Version != nil 时使用
+func normalizeVersion(v string) (string, bool) {
+	trimmed := strings.TrimSpace(v)
+	if utf8.RuneCountInString(trimmed) > docVersionMaxRunes {
+		return "", false
+	}
+	return trimmed, true
 }
 
 // validProjectRef 项目引用校验：0 合法；与当前值相同（未改动）合法；否则必须存在且非 admin 只能用自己的
@@ -523,6 +541,15 @@ func (a *App) CreateDoc(c *gin.Context) {
 	if title == "" {
 		title = a.tr(c, "edit.untitled")
 	}
+	version := ""
+	if req.Version != nil {
+		v, ok := normalizeVersion(*req.Version)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": errParam})
+			return
+		}
+		version = v
+	}
 	user := middleware.CurrentUser(c)
 	content := ""
 	if req.Content != nil {
@@ -530,6 +557,7 @@ func (a *App) CreateDoc(c *gin.Context) {
 	}
 	doc := model.Document{
 		Title:       title,
+		Version:     version,
 		Slug:        util.RandomSlug(8),
 		Type:        docType,
 		Content:     content,
@@ -574,10 +602,20 @@ func (a *App) UpdateDoc(c *gin.Context) {
 	actor := middleware.CurrentUser(c)
 	oldTitle, oldContent := doc.Title, doc.Content
 	oldProj, oldCat := doc.ProjectID, doc.CategoryID
+	oldVersion := doc.Version
 	var req docReq
 	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": errParam})
 		return
+	}
+	// 版本号：传值即覆盖（含清空），未传（nil）则不修改；超长直接 400
+	if req.Version != nil {
+		v, ok := normalizeVersion(*req.Version)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": errParam})
+			return
+		}
+		doc.Version = v
 	}
 	// 内容更新语义：未传 content = 不修改（防止 MCP 等客户端只改标题时清空正文/画布）；
 	// 显式传值 = 整体覆盖。HTML 整站的内容（manifest）只经整站替换接口变更。
@@ -641,6 +679,9 @@ func (a *App) UpdateDoc(c *gin.Context) {
 		}
 		if doc.Title != oldTitle {
 			updates["title"] = doc.Title
+		}
+		if doc.Version != oldVersion {
+			updates["version"] = doc.Version
 		}
 		if doc.ProjectID != oldProj {
 			updates["project_id"] = doc.ProjectID
@@ -956,6 +997,7 @@ func (a *App) DuplicateDoc(c *gin.Context) {
 	}
 	newDoc := model.Document{
 		Title:       string(r) + "（副本）",
+		Version:     doc.Version,
 		Slug:        util.RandomSlug(8),
 		Type:        doc.Type,
 		Content:     doc.Content,

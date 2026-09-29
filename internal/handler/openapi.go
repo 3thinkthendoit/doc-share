@@ -297,7 +297,7 @@ func (a *App) OpenListDocs(c *gin.Context) {
 	tx.Count(&total)
 	pg = pg.withTotal(total)
 	var docs []model.Document
-	tx.Select("id, title, slug, type, owner_id, project_id, category_id, is_shared, view_count, created_at, updated_at").
+	tx.Select("id, title, version, slug, type, owner_id, project_id, category_id, is_shared, view_count, created_at, updated_at").
 		Order("updated_at desc").Offset(pg.Offset).Limit(pg.Size).Find(&docs)
 	c.JSON(http.StatusOK, gin.H{"data": docs, "total": pg.Total, "page": pg.Page, "size": pg.Size})
 }

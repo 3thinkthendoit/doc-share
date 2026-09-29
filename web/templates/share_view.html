@@ -9,7 +9,7 @@
 <body class="reader-body">
   {{template "siteNav" .}}
   <article class="reader">
-    <h1 class="doc-title">{{.doc.Title}}</h1>
+    <h1 class="doc-title">{{.doc.Title}}{{if .doc.Version}} <span class="doc-version-tag">{{.doc.Version}}</span>{{end}}</h1>
     <div class="doc-author">
       {{if .doc.Owner}}
       <span class="user-avatar user-avatar-sm">{{if .doc.Owner.Avatar}}<img src="{{.doc.Owner.Avatar}}" alt="">{{else}}{{avatar .doc.Owner.Nickname .doc.Owner.Username}}{{end}}</span>

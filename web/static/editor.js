@@ -98,8 +98,10 @@
   if (titleEl) titleEl.addEventListener('input', markDirty);
   var projEl = document.getElementById('docProject');
   var catEl = document.getElementById('docCategory');
+  var versionEl = document.getElementById('docVersion');
   if (projEl) projEl.addEventListener('change', markDirty);
   if (catEl) catEl.addEventListener('change', markDirty);
+  if (versionEl) versionEl.addEventListener('input', markDirty);
 
   // 从模板创建：预填内容与归属（内容非空时先确认再替换，避免误覆盖已输入文字）
   function applyTemplateData(tpl, force) {
@@ -811,6 +813,7 @@
     }
     return {
       title: name,
+      version: versionEl ? versionEl.value : '',
       content: contentEl.value,
       project_id: proj,
       category_id: cat
@@ -873,6 +876,7 @@
     var snapTitle = title;
     var snapProj = payload.project_id;
     var snapCat = payload.category_id;
+    var snapVersion = payload.version;
     var url = id
       ? (TPL_MODE ? '/console/api/templates/' + id : '/console/api/docs/' + id)
       : (TPL_MODE ? '/console/api/templates' : '/console/api/docs');
@@ -923,6 +927,7 @@
     var stillDirty =
       contentEl.value !== snapContent ||
       effectiveTitle() !== snapTitle ||
+      (versionEl ? versionEl.value : '') !== snapVersion ||
       (parseInt((projEl && projEl.value) || '0', 10) || 0) !== snapProj ||
       (parseInt((catEl && catEl.value) || '0', 10) || 0) !== snapCat;
     dirty = stillDirty;

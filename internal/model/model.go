@@ -139,6 +139,7 @@ func IsCanvasType(t string) bool {
 type Document struct {
 	ID      uint   `gorm:"primaryKey" json:"id"`
 	Title   string `gorm:"size:255;not null" json:"title"`
+	Version string `gorm:"size:32;not null;default:''" json:"version"` // 业务版本号（如 v1.0.1），列表「版本」列展示，可为空
 	Slug    string `gorm:"size:32;uniqueIndex;not null" json:"slug"`
 	Type    string `gorm:"size:16;not null;default:markdown" json:"type"` // markdown | html
 	Content string `gorm:"type:longtext" json:"content"`

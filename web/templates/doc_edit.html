@@ -24,6 +24,11 @@
             {{range .categories}}<option value="{{.ID}}" {{if or (and $.doc (eq $.doc.CategoryID .ID)) (and $.tpl (eq $.tpl.CategoryID .ID))}}selected{{end}}>{{.Name}}</option>{{end}}
           </select>
         </label>
+        {{if not .tplMode}}
+        <label class="meta-select">{{$.T "docs.colVersion"}}
+          <input type="text" id="docVersion" maxlength="32" autocomplete="off" placeholder="{{$.T "edit.versionPh"}}" value="{{if .doc}}{{.doc.Version}}{{end}}">
+        </label>
+        {{end}}
         {{if and (not .doc) (not .tplMode)}}
         <label class="meta-select">{{$.T "tpl.fromTemplate"}}
           <select id="docTemplate">

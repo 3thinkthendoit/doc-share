@@ -31,7 +31,7 @@
           <option value="0" {{if eq .project "0"}}selected{{end}}>{{$.T "未分组"}}</option>
           {{range .projects}}<option value="{{.ID}}" {{if eq $.project (print .ID)}}selected{{end}}>{{.Name}}</option>{{end}}
         </select>
-        <input type="text" name="q" placeholder="{{$.T "搜索标题 / slug"}}" value="{{.q}}">
+        <input type="text" name="q" placeholder="{{$.T "搜索标题 / slug / 正文"}}" value="{{.q}}">
         <select name="category">
           <option value="">{{$.T "全部分类"}}</option>
           <option value="0" {{if eq .category "0"}}selected{{end}}>{{$.T "未分类"}}</option>
@@ -53,7 +53,7 @@
 
       <div class="panel">
         <table class="table">
-          <thead><tr><th>{{$.T "标题"}}</th><th>{{$.T "docs.typeCol"}}</th><th>{{$.T "项目"}}</th><th>{{$.T "分类"}}</th><th>{{$.T "所有者"}}</th><th>{{$.T "浏览"}}</th><th>{{$.T "分享"}}</th><th>{{$.T "docs.permHeader"}}</th><th>{{$.T "common.createdAt"}}</th><th>{{$.T "common.updater"}}</th><th>{{$.T "更新时间"}}</th><th class="col-actions">{{$.T "操作"}}</th></tr></thead>
+          <thead><tr><th>{{$.T "标题"}}</th><th>{{$.T "docs.typeCol"}}</th><th>{{$.T "docs.colVersion"}}</th><th>{{$.T "项目"}}</th><th>{{$.T "分类"}}</th><th>{{$.T "所有者"}}</th><th>{{$.T "浏览"}}</th><th>{{$.T "分享"}}</th><th>{{$.T "docs.permHeader"}}</th><th>{{$.T "common.createdAt"}}</th><th>{{$.T "common.updater"}}</th><th>{{$.T "更新时间"}}</th><th class="col-actions">{{$.T "操作"}}</th></tr></thead>
           <tbody>
           {{range .docs}}
             <tr>
@@ -68,6 +68,7 @@
                 <div class="muted mono" title="{{.Slug}}">{{.Slug}}</div>
               </td>
               <td>{{if eq .Type "html"}}<span class="tag tag-embed">HTML</span>{{else if eq .Type "mindmap"}}<span class="tag tag-embed">{{$.T "docs.tagMindmap"}}</span>{{else if eq .Type "board"}}<span class="tag tag-embed">{{$.T "docs.tagBoard"}}</span>{{else if eq .Type "drawio"}}<span class="tag tag-embed">{{$.T "docs.tagDrawio"}}</span>{{else}}<span class="muted">Markdown</span>{{end}}</td>
+              <td>{{if .Version}}<span class="tag">{{.Version}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
               <td class="cell-clip" {{if .Project}}title="{{.Project.Name}}"{{end}}>{{if .Project}}{{.Project.Name}}{{else}}<span class="muted">—</span>{{end}}</td>
               <td class="cell-clip" {{if .Category}}title="{{.Category.Name}}"{{end}}>{{if .Category}}{{.Category.Name}}{{else}}<span class="muted">—</span>{{end}}</td>
               <td class="cell-clip">{{if .Owner.ID}}{{if and $.user (eq .OwnerID $.user.ID)}}<span class="me-badge"><svg class="me-ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg>{{$.T "docs.me"}}</span>{{else}}<span class="owner-link" title="{{.Owner.DisplayName}}" data-name="{{.Owner.DisplayName}}" data-username="{{.Owner.Username}}" data-avatar="{{.Owner.Avatar}}" data-email="{{.Owner.MaskedEmail}}" data-phone="{{.Owner.MaskedPhone}}" data-active="{{if .Owner.LastActiveAt}}{{.Owner.LastActiveAt.Format "2006-01-02 15:04"}}{{end}}">{{.Owner.DisplayName}}</span>{{end}}{{else}}<span class="muted">—</span>{{end}}</td>
@@ -104,7 +105,7 @@
               </td>
             </tr>
           {{else}}
-            <tr><td colspan="10" class="empty">{{$.T "没有文档"}}</td></tr>
+            <tr><td colspan="11" class="empty">{{$.T "没有文档"}}</td></tr>
           {{end}}
           </tbody>
         </table>
