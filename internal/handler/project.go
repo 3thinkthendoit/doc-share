@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -276,9 +277,18 @@ func (a *App) DeleteProject(c *gin.Context) {
 		if err := tx.Where("project_id = ?", project.ID).Delete(&model.ProjectMember{}).Error; err != nil {
 			return err
 		}
+		// 项目分享与项目级访问申请一并清理：残留的 ProjectShare 会让 /ps/:token
+		// 继续指向已删项目，且 project_id 被新项目复用后，旧 token 可越权访问新项目
+		if err := tx.Where("project_id = ?", project.ID).Delete(&model.ProjectShare{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("project_id = ?", project.ID).Delete(&model.ShareAccessRequest{}).Error; err != nil {
+			return err
+		}
 		return tx.Delete(&model.Project{}, project.ID).Error
 	})
 	if err != nil {
+		log.Printf("[project] 删除项目失败 project=%d: %v", project.ID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
 		return
 	}

@@ -311,16 +311,16 @@ func (a *App) EditDocPage(c *gin.Context) {
 	// 结构化画布（思维导图/画板/drawio 图表）：专用编辑页
 	if model.IsCanvasType(doc.Type) {
 		a.render(c, "json_edit.html", gin.H{
-			"title":            doc.Title,
-			"rawTitle":         true,
-			"doc":              doc,
-			"docKind":          doc.Type,
-			"share":            shareOrNil(hasShare, &share),
-			"shareURL":         shareURL(c, &share, hasShare),
-			"canEditDoc":       canEditDoc,
-			"isOwner":          user != nil && (user.IsAdmin() || user.ID == doc.OwnerID),
-			"tplProjectId":     0,
-			"tplCategoryId":    0,
+			"title":         doc.Title,
+			"rawTitle":      true,
+			"doc":           doc,
+			"docKind":       doc.Type,
+			"share":         shareOrNil(hasShare, &share),
+			"shareURL":      shareURL(c, &share, hasShare),
+			"canEditDoc":    canEditDoc,
+			"isOwner":       user != nil && (user.IsAdmin() || user.ID == doc.OwnerID),
+			"tplProjectId":  0,
+			"tplCategoryId": 0,
 		})
 		return
 	}
@@ -351,16 +351,16 @@ func (a *App) renderHTMLDocEdit(c *gin.Context, doc *model.Document, share *mode
 		isOwner = true
 	}
 	a.render(c, "html_edit.html", gin.H{
-		"title":           doc.Title,
-		"rawTitle":        true,
-		"doc":             doc,
-		"share":           share,
-		"shareURL":        shareURL,
-		"canEditDoc":      canEditDoc,
-		"isOwner":         isOwner,
-		"projects":        projects,
-		"categories":      categories,
-		"manifest":        manifest,
+		"title":            doc.Title,
+		"rawTitle":         true,
+		"doc":              doc,
+		"share":            share,
+		"shareURL":         shareURL,
+		"canEditDoc":       canEditDoc,
+		"isOwner":          isOwner,
+		"projects":         projects,
+		"categories":       categories,
+		"manifest":         manifest,
 		"ShareLockCanEdit": true, // HTML 整站不可分享页编辑：隐藏「可编辑」选项
 	})
 }
@@ -613,15 +613,16 @@ func (a *App) UpdateDoc(c *gin.Context) {
 		}
 		doc.CategoryID = *req.CategoryID
 	}
-	// 乐观锁 + 字段更新在同一事务：内容变化时按 base_version 原子校验并递增
-	// （WHERE content_version），冲突返回 409；未传 base_version 的旧客户端/MCP
-	// 不校验但版本仍递增。单条 Updates 保证"校验 + 写入"无竞态窗口，且不会用
-	// 事务外读取的旧快照覆盖并发写入者的其他字段。
+	// 乐观锁 + 字段更新 + 修订快照在同一事务：内容变化时带 content_version 守卫写入
+	// （校验与更新是同一条 SQL，无竞态窗口），冲突返回 409；未传 base_version 的旧
+	// 客户端 / MCP 不做前置校验，但仍受守卫保护——他人抢先提交时同样得到 409
+	// 而非静默覆盖。守卫 UPDATE 同时是行锁获取点，与 RollbackRevision / 分享保存
+	// 顺序统一，避免交错写入导致 pruneRevisions 误删对方刚写的修订。
 	hasConflict := false
 	conflictVersion := int64(0)
 	err := a.DB.Transaction(func(tx *gorm.DB) error {
 		var fresh model.Document
-		if err := tx.Select("id", "content_version").First(&fresh, doc.ID).Error; err != nil {
+		if err := tx.Select("id", "content", "content_version").First(&fresh, doc.ID).Error; err != nil {
 			return err
 		}
 		updates := map[string]any{}
@@ -650,13 +651,44 @@ func (a *App) UpdateDoc(c *gin.Context) {
 		if len(updates) == 0 {
 			return nil
 		}
-		return tx.Model(&model.Document{}).Where("id = ?", doc.ID).Updates(updates).Error
+		q := tx.Model(&model.Document{}).Where("id = ?", doc.ID)
+		if newContent != nil {
+			q = q.Where("content_version = ?", fresh.ContentVersion)
+		}
+		res := q.Updates(updates)
+		if res.Error != nil {
+			return res.Error
+		}
+		if newContent != nil && res.RowsAffected == 0 {
+			// 守卫落空 = 未传 base_version 的写入者也撞上了并发提交；
+			// 此时事务内读到的版本已过期，conflictVersion 置 0 由响应前回读
+			hasConflict = true
+			return nil
+		}
+		// 内容实际变化时同事务快照覆盖前正文（历史版本）；仅改标题/归属不产生修订
+		if newContent != nil && *newContent != fresh.Content {
+			editorID, editorName := uint(0), "系统"
+			if actor != nil {
+				editorID, editorName = actor.ID, actor.DisplayName()
+			}
+			if err := tx.Create(&model.DocumentRevision{
+				DocumentID: doc.ID, EditorID: editorID, EditorName: editorName, Content: fresh.Content,
+			}).Error; err != nil {
+				return err
+			}
+			return pruneRevisions(tx, doc.ID)
+		}
+		return nil
 	})
 	if err != nil {
+		log.Printf("[doc] 更新失败 doc=%d: %v", doc.ID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新失败"})
 		return
 	}
 	if hasConflict {
+		if conflictVersion == 0 {
+			conflictVersion = a.currentContentVersion(doc.ID)
+		}
 		c.JSON(http.StatusConflict, gin.H{"error": "内容已被其他人修改", "current_version": conflictVersion})
 		return
 	}
@@ -699,10 +731,10 @@ func (a *App) DeleteDoc(c *gin.Context) {
 
 type shareReq struct {
 	Enabled        bool   `json:"enabled" form:"enabled"`
-	CanEdit        bool   `json:"can_edit" form:"can_edit"`                 // 登录用户可编辑
-	Password       string `json:"password" form:"password"`                 // 非空 = 设置密码；空 = 不修改（新建时无密码）
-	RemovePassword bool   `json:"remove_password" form:"remove_password"`   // true = 清除已设密码（优先级低于 Password 非空）
-	ExpireDays     int    `json:"expire_days" form:"expire_days"`           // 0 表示永不过期
+	CanEdit        bool   `json:"can_edit" form:"can_edit"`               // 登录用户可编辑
+	Password       string `json:"password" form:"password"`               // 非空 = 设置密码；空 = 不修改（新建时无密码）
+	RemovePassword bool   `json:"remove_password" form:"remove_password"` // true = 清除已设密码（优先级低于 Password 非空）
+	ExpireDays     int    `json:"expire_days" form:"expire_days"`         // 0 表示永不过期
 }
 
 // ---- 编辑占用心跳（HTTP 轮询）：提示他人正在编辑同一文档 ----

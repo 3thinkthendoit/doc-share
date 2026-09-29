@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"doc-share/internal/middleware"
 	"doc-share/internal/model"
@@ -431,9 +432,18 @@ func (a *App) ListRevisions(c *gin.Context) {
 		return
 	}
 	var revs []model.DocumentRevision
-	a.DB.Where("document_id = ?", doc.ID).
-		Select("id", "document_id", "editor_id", "editor_name", "created_at").
-		Order("created_at DESC").Limit(100).Find(&revs)
+	if err := a.DB.Where("document_id = ?", doc.ID).
+		Select("id", "document_id", "editor_id", "editor_name", "label", "note", "created_at").
+		Order("created_at DESC").Limit(100).Find(&revs).Error; err != nil {
+		log.Printf("[collab] 修订列表查询失败 doc=%d: %v", doc.ID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "加载失败"})
+		return
+	}
+	// 展示序号按时间正序编号：列表为倒序，故最新一条 = 总条数
+	// （Seq 不入库，理由见 model.DocumentRevision 注释）
+	for i := range revs {
+		revs[i].Seq = len(revs) - i
+	}
 	c.JSON(http.StatusOK, gin.H{"revisions": revs})
 }
 
@@ -459,25 +469,112 @@ func (a *App) RollbackRevision(c *gin.Context) {
 		editorID = user.ID
 		editorName = user.DisplayName()
 	}
+	// 事务内顺序固定为「带 content_version 守卫的文档行 UPDATE → 写快照 → 清理」：
+	// 守卫 UPDATE 就是行锁获取点，与 UpdateDoc / 分享保存保持一致，避免两个写入者
+	// 交错导致 pruneRevisions 误删对方刚写的修订（不用 SELECT ... FOR UPDATE：
+	// SQLite 不支持该语法，会破坏现有测试）。快照取事务内 fresh.Content 而非页面
+	// 加载时的 doc.Content，否则并发下会覆盖他人内容且快照记错 = 真实数据丢失。
+	hasConflict := false
 	err := a.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&model.DocumentRevision{
-			DocumentID: doc.ID, EditorID: editorID, EditorName: editorName, Content: doc.Content,
-		}).Error; err != nil {
+		var fresh model.Document
+		if err := tx.Select("id", "content", "content_version").First(&fresh, doc.ID).Error; err != nil {
 			return err
 		}
-		if err := tx.Model(&model.Document{}).Where("id = ?", doc.ID).Updates(map[string]any{
-			"content": rev.Content, "content_version": gorm.Expr("content_version + 1"),
-			"updated_by_id": editorID, "updated_via": "",
+		res := tx.Model(&model.Document{}).
+			Where("id = ? AND content_version = ?", doc.ID, fresh.ContentVersion).
+			Updates(map[string]any{
+				"content": rev.Content, "content_version": fresh.ContentVersion + 1,
+				"updated_by_id": editorID, "updated_via": "",
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			hasConflict = true // 他人已抢先提交，不盲目覆盖
+			return nil
+		}
+		if err := tx.Create(&model.DocumentRevision{
+			DocumentID: doc.ID, EditorID: editorID, EditorName: editorName, Content: fresh.Content,
 		}).Error; err != nil {
 			return err
 		}
 		return pruneRevisions(tx, doc.ID)
 	})
 	if err != nil {
+		log.Printf("[collab] 回滚修订失败 doc=%d rev=%d: %v", doc.ID, rev.ID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "回滚失败"})
 		return
 	}
+	if hasConflict {
+		c.JSON(http.StatusConflict, gin.H{"error": "内容已被其他人修改", "current_version": a.currentContentVersion(doc.ID)})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// LabelRevision 给指定修订打版本标签（如 v1.0.1）与说明，供发版记录引用。
+// 权限与回滚一致（属主 / 管理员 / edit 角色项目成员）。标签在同文档内唯一：
+// 空标签表示取消发版标记且允许多条，所以不能建唯一索引，只能应用层查重
+func (a *App) LabelRevision(c *gin.Context) {
+	doc := a.loadDoc(c)
+	if doc == nil {
+		return
+	}
+	if !a.requireDocEdit(c, doc) {
+		return
+	}
+	rid, _ := parseIntParam(c.Param("rid"))
+	var rev model.DocumentRevision
+	if rid == 0 || a.DB.Select("id").Where("id = ? AND document_id = ?", rid, doc.ID).First(&rev).Error != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "修订不存在"})
+		return
+	}
+	var req struct {
+		Label string `json:"label"`
+		Note  string `json:"note"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": errParam})
+		return
+	}
+	label := strings.TrimSpace(req.Label)
+	note := strings.TrimSpace(req.Note)
+	// 按字符数而非字节数校验，与前端 maxlength 及数据库 size 保持一致
+	if utf8.RuneCountInString(label) > 32 || utf8.RuneCountInString(note) > 500 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": errParam})
+		return
+	}
+	if label != "" {
+		var dup int64
+		if err := a.DB.Model(&model.DocumentRevision{}).
+			Where("document_id = ? AND label = ? AND id <> ?", doc.ID, label, rev.ID).
+			Count(&dup).Error; err != nil {
+			log.Printf("[collab] 版本标签查重失败 doc=%d rev=%d: %v", doc.ID, rev.ID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
+			return
+		}
+		if dup > 0 {
+			c.JSON(http.StatusConflict, gin.H{"error": "版本号已被其他历史版本使用"})
+			return
+		}
+	}
+	if err := a.DB.Model(&model.DocumentRevision{}).Where("id = ?", rev.ID).
+		Updates(map[string]any{"label": label, "note": note}).Error; err != nil {
+		log.Printf("[collab] 版本标签保存失败 doc=%d rev=%d: %v", doc.ID, rev.ID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "label": label, "note": note})
+}
+
+// currentContentVersion 并发冲突后回读文档当前版本号，供客户端作为新的 base_version 重试；
+// 文档已删除或查询失败时返回 0（客户端应重新加载页面）
+func (a *App) currentContentVersion(docID uint) int64 {
+	var d model.Document
+	if err := a.DB.Select("content_version").First(&d, docID).Error; err != nil {
+		return 0
+	}
+	return d.ContentVersion
 }
 
 // ShareSaveContent 分享链接编辑保存：PUT /s/:token/content
@@ -570,6 +667,7 @@ func (a *App) saveShareContentBody(c *gin.Context, doc *model.Document, user *mo
 		return pruneRevisions(tx, doc.ID)
 	})
 	if err != nil {
+		log.Printf("[collab] 分享保存失败 doc=%d: %v", doc.ID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
 		return
 	}
@@ -586,11 +684,20 @@ const maxRevisions = 50
 
 // pruneRevisions 清理超出保留数量的最旧修订（需在事务内调用）
 func pruneRevisions(tx *gorm.DB, docID uint) error {
-	return tx.Where("document_id = ? AND id NOT IN (?)", docID,
-		tx.Model(&model.DocumentRevision{}).Select("id").
-			Where("document_id = ?", docID).
-			Order("created_at DESC, id DESC").Limit(maxRevisions),
-	).Delete(&model.DocumentRevision{}).Error
+	// MySQL 不支持 IN 子查询带 LIMIT（错误 1235），DELETE 目标表亦不得出现在子查询中（错误 1093），
+	// 故先物化要保留的 id，再按常量列表删除；SQLite / Postgres 同样适用
+	var keepIDs []uint
+	if err := tx.Model(&model.DocumentRevision{}).
+		Where("document_id = ?", docID).
+		Order("created_at DESC, id DESC").Limit(maxRevisions).
+		Pluck("id", &keepIDs).Error; err != nil {
+		return err
+	}
+	if len(keepIDs) < maxRevisions {
+		return nil // 未超上限，无需清理
+	}
+	return tx.Where("document_id = ? AND id NOT IN ?", docID, keepIDs).
+		Delete(&model.DocumentRevision{}).Error
 }
 
 // parseIntParam 解析数字路径参数，非法返回 0

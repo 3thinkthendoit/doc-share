@@ -62,7 +62,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.POST("/api/settings/test-mail", middleware.RequireAdmin(), app.TestMail)
 		admin.POST("/api/settings/test-rustfs", middleware.RequireAdmin(), app.TestRustFS)
 
-			// 项目内文档列表（属主/管理员/成员）：项目弹窗用
+		// 项目内文档列表（属主/管理员/成员）：项目弹窗用
 		admin.GET("/api/projects/:id/docs", app.ListProjectDocs)
 
 		// 项目管理（个人归属，viewer 管自己的）；成员管理仅属主
@@ -134,9 +134,10 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.POST("/api/docs/:id/comments", app.DocAddComment)
 		admin.DELETE("/api/docs/:id/comments/:cid", app.DocDeleteComment)
 
-		// 版本修订（分享编辑覆盖前自动快照，可回滚）
+		// 版本修订（内容覆盖前自动快照，可回滚；支持作者给快照打版本标签如 v1.0.1）
 		admin.GET("/api/docs/:id/revisions", app.ListRevisions)
 		admin.POST("/api/docs/:id/revisions/:rid/rollback", app.RollbackRevision)
+		admin.PUT("/api/docs/:id/revisions/:rid/label", app.LabelRevision)
 
 		// 图片上传 / 异步删除（嵌入预览覆盖）
 		admin.POST("/api/upload", app.Upload)

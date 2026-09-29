@@ -144,13 +144,37 @@
 
 {{if .doc}}
 <div class="modal-overlay" id="revisionsModal" hidden>
-  <div class="modal modal-sm" role="dialog" aria-modal="true" aria-label="{{$.T "revisions.title"}}">
+  <div class="modal modal-lg" role="dialog" aria-modal="true" aria-label="{{$.T "revisions.title"}}">
     <div class="modal-head">
       <h2>{{$.T "revisions.title"}}</h2>
       <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
     </div>
-    <div class="modal-body import-body" style="padding:14px 22px">
+    <div class="modal-body" style="padding:0">
       <div id="revisionsList"></div>
+    </div>
+  </div>
+</div>
+
+{{/* 版本标签弹窗：给历史快照打 v1.0.1 这类版本号并写修订说明；复用 share-body 表单样式 */}}
+<div class="modal-overlay" id="labelRevModal" hidden>
+  <div class="modal modal-sm" role="dialog" aria-modal="true" aria-label="{{$.T "revisions.labelTitle"}}">
+    <div class="modal-head">
+      <h2>{{$.T "revisions.labelTitle"}}</h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+    </div>
+    <div class="modal-body share-body" style="padding:18px 22px">
+      <div class="muted" id="labelRevTarget" style="font-size:12.5px;margin-bottom:14px"></div>
+      <label>{{$.T "revisions.labelField"}}
+        <input type="text" id="labelRevInput" maxlength="32" autocomplete="off" placeholder="{{$.T "revisions.labelPh"}}">
+      </label>
+      <label>{{$.T "revisions.noteField"}}
+        <textarea id="labelRevNote" rows="3" maxlength="500" placeholder="{{$.T "revisions.notePh"}}"></textarea>
+      </label>
+      <div class="muted" style="font-size:12px">{{$.T "revisions.labelHint"}}</div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn" data-close-modal>{{$.T "common.cancel"}}</button>
+      <button type="button" class="btn btn-primary" id="labelRevSave">{{$.T "common.save"}}</button>
     </div>
   </div>
 </div>

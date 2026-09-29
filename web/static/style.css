@@ -619,10 +619,22 @@ body.modal-open{overflow:hidden}
 .comment-images{display:flex;flex-wrap:wrap;gap:8px;padding:6px 0 2px 32px}
 .comment-image-link{display:block;max-width:220px;padding:0;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:var(--bg-soft);cursor:zoom-in}
 .comment-image-link img{display:block;max-width:100%;max-height:180px;width:auto;height:auto;object-fit:contain}
-/* 历史版本列表 */
-.revision-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}
-.revision-row:last-child{border-bottom:none}
-.revision-info{color:var(--text)}
+/* 历史版本表格：版本号 / 更新人 / 更新时间 / 操作 四列；说明跨四列显示在该行下方 */
+.revision-table{width:100%;border-collapse:collapse;font-size:13px}
+.revision-table th{padding:10px 16px;text-align:left;font-size:12px;font-weight:600;color:var(--muted);background:var(--bg-soft);border-bottom:1px solid var(--border);white-space:nowrap}
+.revision-table th.rev-ops-th{text-align:right}
+.revision-table td{padding:11px 16px;vertical-align:middle}
+/* 分隔线只画在逻辑行之间：主行与它的说明行之间不画 */
+.revision-table tr.rev-row td{border-bottom:none}
+.revision-table tr.rev-row + tr.rev-row td{border-top:1px solid var(--border)}
+.revision-table tr.rev-note-row td{padding-top:2px;padding-bottom:12px;border-bottom:1px solid var(--border);color:var(--muted);font-size:12px;line-height:1.6;word-break:break-word;white-space:pre-wrap}
+.revision-table tbody tr:last-child td{border-bottom:none}
+/* 版本号：手工标签主色胶囊突出，自动编号（v1.0.3）弱化等宽 */
+.revision-label{display:inline-block;padding:1px 8px;border-radius:999px;background:var(--primary-soft);color:var(--primary);font-size:11.5px;font-weight:600;line-height:1.7;white-space:nowrap}
+.rev-auto{font-family:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;font-size:12.5px;color:var(--muted);white-space:nowrap}
+.rev-time{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.rev-ops{display:flex;gap:8px;justify-content:flex-end;white-space:nowrap}
+.rev-empty{padding:22px}
 .reader{width:min(1080px,100%);max-width:1080px;margin:0 auto;padding:44px 24px 96px;box-sizing:border-box}
 .doc-title{font-size:34px;font-weight:700;letter-spacing:-.03em;margin:0 0 12px;padding:0;border:none}
 /* 阅读页作者信息：头像 + 昵称 + 更新时间 + 浏览 + 访客 */

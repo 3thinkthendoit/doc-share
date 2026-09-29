@@ -78,9 +78,9 @@ type Project struct {
 	Description string    `gorm:"size:500" json:"description"`
 	OwnerID     uint      `gorm:"index;not null" json:"owner_id"`
 	Owner       User      `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
-	DocCount    int64     `gorm:"-" json:"doc_count"`            // 子查询统计，非数据库列
-	MemberCount int64     `gorm:"-" json:"member_count"`         // 成员数统计，非数据库列
-	Role        string    `gorm:"-" json:"role,omitempty"`       // 当前用户在该项目中的成员角色（列表回填，空=属主/无关联）
+	DocCount    int64     `gorm:"-" json:"doc_count"`      // 子查询统计，非数据库列
+	MemberCount int64     `gorm:"-" json:"member_count"`   // 成员数统计，非数据库列
+	Role        string    `gorm:"-" json:"role,omitempty"` // 当前用户在该项目中的成员角色（列表回填，空=属主/无关联）
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -137,28 +137,28 @@ func IsCanvasType(t string) bool {
 
 // Document Markdown 文档
 type Document struct {
-	ID         uint      `gorm:"primaryKey" json:"id"`
-	Title      string    `gorm:"size:255;not null" json:"title"`
-	Slug       string    `gorm:"size:32;uniqueIndex;not null" json:"slug"`
-	Type       string    `gorm:"size:16;not null;default:markdown" json:"type"` // markdown | html
-	Content    string    `gorm:"type:longtext" json:"content"`
+	ID      uint   `gorm:"primaryKey" json:"id"`
+	Title   string `gorm:"size:255;not null" json:"title"`
+	Slug    string `gorm:"size:32;uniqueIndex;not null" json:"slug"`
+	Type    string `gorm:"size:16;not null;default:markdown" json:"type"` // markdown | html
+	Content string `gorm:"type:longtext" json:"content"`
 	// ContentVersion 乐观锁版本：每次内容落库原子 +1（见 ShareSaveContent / UpdateDoc）。
 	// 客户端保存时携带 base_version，与服务端不一致返回 409，防止并发编辑互相覆盖
-	ContentVersion int64 `gorm:"not null;default:0" json:"content_version"`
-	OwnerID    uint      `gorm:"index;not null" json:"owner_id"`
-	Owner      User      `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
-	ProjectID  uint      `gorm:"index;not null;default:0" json:"project_id"` // 0 表示未分组
-	Project    *Project  `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
-	CategoryID uint      `gorm:"index;not null;default:0" json:"category_id"` // 0 表示未分类
-	Category   *Category `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
-	IsShared   bool      `gorm:"not null;default:false" json:"is_shared"`
-	ViewCount  int64     `gorm:"not null;default:0" json:"view_count"`
+	ContentVersion int64     `gorm:"not null;default:0" json:"content_version"`
+	OwnerID        uint      `gorm:"index;not null" json:"owner_id"`
+	Owner          User      `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
+	ProjectID      uint      `gorm:"index;not null;default:0" json:"project_id"` // 0 表示未分组
+	Project        *Project  `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
+	CategoryID     uint      `gorm:"index;not null;default:0" json:"category_id"` // 0 表示未分类
+	Category       *Category `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
+	IsShared       bool      `gorm:"not null;default:false" json:"is_shared"`
+	ViewCount      int64     `gorm:"not null;default:0" json:"view_count"`
 	// 最后更新人：0 = 本字段上线前的历史数据（展示时回退为所有者）；UpdatedVia = api 表示经开放平台更新
 	UpdatedByID uint      `gorm:"index;not null;default:0" json:"updated_by_id"`
 	UpdatedVia  string    `gorm:"size:16;not null;default:''" json:"updated_via"`
 	UpdatedBy   *User     `gorm:"foreignKey:UpdatedByID" json:"updated_by,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 
 	// Share 关联的分享配置（一对一）
 	Share *Share `gorm:"foreignKey:DocumentID" json:"share,omitempty"`
@@ -187,10 +187,10 @@ type Share struct {
 	ID         uint       `gorm:"primaryKey" json:"id"`
 	DocumentID uint       `gorm:"uniqueIndex;not null" json:"document_id"`
 	ShareToken string     `gorm:"size:32;uniqueIndex;not null" json:"share_token"`
-	CanEdit    bool       `gorm:"not null;default:false" json:"can_edit"`   // 登录用户可编辑
-	AllowApply bool       `gorm:"not null;default:true" json:"-"`           // 已废弃：改由站点设置 allow_share_apply 控制
-	Password   string     `gorm:"size:255" json:"-"`                        // bcrypt 哈希，空表示无密码
-	ExpireAt   *time.Time `json:"expire_at"`                                  // nil 表示永不过期
+	CanEdit    bool       `gorm:"not null;default:false" json:"can_edit"` // 登录用户可编辑
+	AllowApply bool       `gorm:"not null;default:true" json:"-"`         // 已废弃：改由站点设置 allow_share_apply 控制
+	Password   string     `gorm:"size:255" json:"-"`                      // bcrypt 哈希，空表示无密码
+	ExpireAt   *time.Time `json:"expire_at"`                              // nil 表示永不过期
 	CreatedAt  time.Time  `json:"created_at"`
 	UpdatedAt  time.Time  `json:"updated_at"`
 }
@@ -241,11 +241,11 @@ type ShareAccessRequest struct {
 	ID           uint       `gorm:"primaryKey" json:"id"`
 	DocumentID   uint       `gorm:"index;not null;default:0" json:"document_id"`
 	ProjectID    uint       `gorm:"index;not null;default:0" json:"project_id"` // >0 表示项目级申请
-	UserID       uint       `gorm:"index;not null;default:0" json:"user_id"` // 0=游客
-	GuestName    string     `gorm:"size:64" json:"guest_name"`               // 称呼（游客必填；登录可预填）
-	GuestContact string     `gorm:"size:128" json:"guest_contact"`           // 可选联系方式
-	Message      string     `gorm:"size:500" json:"message"`                 // 可选留言
-	ClientIP     string     `gorm:"size:64;index" json:"-"`                  // 游客防刷：同 IP 复用 pending
+	UserID       uint       `gorm:"index;not null;default:0" json:"user_id"`    // 0=游客
+	GuestName    string     `gorm:"size:64" json:"guest_name"`                  // 称呼（游客必填；登录可预填）
+	GuestContact string     `gorm:"size:128" json:"guest_contact"`              // 可选联系方式
+	Message      string     `gorm:"size:500" json:"message"`                    // 可选留言
+	ClientIP     string     `gorm:"size:64;index" json:"-"`                     // 游客防刷：同 IP 复用 pending
 	Status       int        `gorm:"not null;default:0;index" json:"status"`
 	RequestToken string     `gorm:"size:32;uniqueIndex;not null" json:"-"` // 浏览器 cookie 凭证
 	CreatedAt    time.Time  `json:"created_at"`
@@ -270,12 +270,22 @@ type SystemSetting struct {
 
 // DocumentRevision 文档内容修订快照：分享编辑等覆盖保存前自动创建，支持回滚
 type DocumentRevision struct {
-	ID         uint      `gorm:"primaryKey" json:"id"`
-	DocumentID uint      `gorm:"index;not null" json:"document_id"`
-	EditorID   uint      `gorm:"not null;default:0" json:"editor_id"` // 0=系统
-	EditorName string    `gorm:"size:64" json:"editor_name"`
-	Content    string    `gorm:"type:longtext" json:"content"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID         uint   `gorm:"primaryKey" json:"id"`
+	DocumentID uint   `gorm:"index;not null" json:"document_id"`
+	EditorID   uint   `gorm:"not null;default:0" json:"editor_id"` // 0=系统
+	EditorName string `gorm:"size:64" json:"editor_name"`
+	Content    string `gorm:"type:longtext" json:"content"`
+	// Label 作者手工打的版本标签（如 v1.0.1）；空 = 未发版的自动快照。
+	// 同文档内不重复由 LabelRevision 应用层校验：空标签允许多条，故不能建唯一索引
+	Label string `gorm:"size:32;not null;default:''" json:"label"`
+	// Note 版本说明（发版时填写的修订要点）
+	Note string `gorm:"size:500;not null;default:''" json:"note"`
+	// Seq 文档内展示序号（#1 #2 …），不入库：由 ListRevisions 按时间顺序计算。
+	// 存量快照无编号，入库需回填 + 唯一索引，而 MySQL 5.7 无窗口函数、
+	// 且存量 seq=0 重复会让唯一索引迁移直接失败；修订上限 maxRevisions(50)
+	// 小于列表 Limit(100)，不会因截断错位，故计算即可
+	Seq       int       `gorm:"-" json:"seq"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // Comment 文档评论：分享页/阅读页可发，游客以游客身份（UserID=0，GuestName）发表
@@ -292,16 +302,16 @@ type Comment struct {
 
 // 站内消息类型（持久化到 Message.Kind）
 const (
-	MsgAccessApply     = "access_apply"     // 有人申请查看文档
-	MsgAccessApproved  = "access_approved"  // 申请已通过
-	MsgAccessRejected  = "access_rejected"  // 申请已拒绝
-	MsgComment         = "comment"          // 文档新评论
-	MsgCommentReply    = "comment_reply"    // 评论被回复
-	MsgProjectAdded    = "project_added"    // 被加入项目
-	MsgProjectRole     = "project_role"     // 项目角色变更
-	MsgProjectRemoved  = "project_removed"  // 被移出项目
-	MsgShareEdited     = "share_edited"     // 分享页协作编辑保存
-	MsgDocUpdated      = "doc_updated"      // 他人更新了你的文档
+	MsgAccessApply    = "access_apply"    // 有人申请查看文档
+	MsgAccessApproved = "access_approved" // 申请已通过
+	MsgAccessRejected = "access_rejected" // 申请已拒绝
+	MsgComment        = "comment"         // 文档新评论
+	MsgCommentReply   = "comment_reply"   // 评论被回复
+	MsgProjectAdded   = "project_added"   // 被加入项目
+	MsgProjectRole    = "project_role"    // 项目角色变更
+	MsgProjectRemoved = "project_removed" // 被移出项目
+	MsgShareEdited    = "share_edited"    // 分享页协作编辑保存
+	MsgDocUpdated     = "doc_updated"     // 他人更新了你的文档
 )
 
 // Message 站内消息：投递给登录用户；邮件为可选旁路（有邮箱且 SMTP 已配置时异步发送）
