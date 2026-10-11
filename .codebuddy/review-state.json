@@ -1,6 +1,6 @@
 {
-  "head": "802e0def23ed213600b13b95b44cfdc2df5403e7",
+  "head": "3a62f4c",
   "reviewedAt": "2026-10-11T23:05:00+08:00",
-  "lastReviewedCommit": "802e0def23ed213600b13b95b44cfdc2df5403e7",
+  "lastReviewedCommit": "3a62f4c",
   "notes": "第九次审核：HEAD 无新提交，重点审 P1 四条（200KB 写入上限、单次/单日创建配额、注入防御提示词）+ 复核第八次已审改动（trimHistory/停止重发/tool 事件前移）。可合并无 P0/P1。P2：①日配额用 Truncate(24h) 是 UTC 截断，应改 time.Date 本地零点并核对 DB 时区；②日配额 Count 错误被忽略。历史遗留：aiExecTool 不感知 ctx 取消、流中 error 无重发按钮、toolCache 重复调用执行后拦截、标题-only 文案、会话列表无分页、content LIKE 全表扫。"
 }

@@ -45,6 +45,7 @@
       previewEl.textContent = contentEl.value || '';
     }
     bindPreviewTables();
+    bindPreviewText();
     bindPreviewEmbeds();
   }
 
@@ -661,6 +662,93 @@
           info.colIdx = Math.min(pos.colIdx, info.rows[0].length - 1);
           return info;
         }, { focusSource: false });
+      });
+    });
+  }
+
+  // ---- 预览正文直接编辑：段落/标题/列表项等文字改动回写 Markdown 源 ----
+  var PREVIEW_TEXT_SEL = 'p, h1, h2, h3, h4, h5, h6, li';
+
+  function stripInlineMd(t) {
+    return String(t)
+      .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/(\*\*|__)(.*?)\1/g, '$2')
+      .replace(/(\*|_)(.*?)\1/g, '$2')
+      .replace(/~~(.*?)~~/g, '$1')
+      .replace(/`([^`]*)`/g, '$1');
+  }
+  function normText(t) {
+    return stripInlineMd(t).replace(/\s+/g, ' ').trim();
+  }
+  // 解析一行的结构前缀与正文（用于匹配 + 回写时保留前缀）
+  function lineParts(line) {
+    var m = line.match(/^(\s{0,3}#{1,6})\s+(.*)$/);
+    if (m) return { prefix: m[1] + ' ', text: m[2] };
+    m = line.match(/^(\s*(?:[-*+]|\d+[.)])\s+)(.*)$/);
+    if (m) return { prefix: m[1], text: m[2] };
+    m = line.match(/^(\s{0,3}>\s?)(.*)$/);
+    if (m) return { prefix: m[1], text: m[2] };
+    return { prefix: '', text: line };
+  }
+  function unescapeHtml(t) {
+    return String(t).replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  }
+  // 在源码中定位与 oldText 对应的行区间；先单行匹配，再尝试连续段落行合并匹配
+  function findSourceRange(src, oldText) {
+    var target = normText(unescapeHtml(oldText));
+    if (!target) return null;
+    var lines = src.split('\n');
+    var i, parts, n;
+    for (i = 0; i < lines.length; i++) {
+      parts = lineParts(lines[i]);
+      if (normText(parts.text) === target) return { start: i, end: i, prefix: parts.prefix };
+    }
+    for (i = 0; i < lines.length; i++) {
+      if (!lines[i].trim() || lineParts(lines[i]).prefix) continue;
+      var joined = '', start = i;
+      for (n = i; n < lines.length && n < i + 6; n++) {
+        if (lines[n].trim() && lineParts(lines[n]).prefix) break;
+        if (n > i) joined += ' ';
+        joined += lineParts(lines[n]).text;
+        if (normText(joined) === target) return { start: start, end: n, prefix: '' };
+        if (!lines[n].trim()) break;
+      }
+    }
+    return null;
+  }
+  function syncPreviewTextToMarkdown(el) {
+    var newText = (el.textContent || '').replace(/\u00a0/g, ' ').trim();
+    var oldText = el.dataset.srcText || '';
+    el.dataset.srcText = newText;
+    if (!newText || normText(unescapeHtml(newText)) === normText(unescapeHtml(oldText))) return;
+    var range = findSourceRange(contentEl.value, oldText);
+    if (!range) return; // 找不到对应源码（如嵌套结构差异）时静默跳过，不影响源码
+    var lines = contentEl.value.split('\n');
+    lines.splice(range.start, range.end - range.start + 1, range.prefix + newText);
+    contentEl.value = lines.join('\n');
+    markDirty();
+  }
+  function bindPreviewText() {
+    if (!previewEl || !saveBtn) return; // 无保存权限（只读）时不启用
+    previewEl.querySelectorAll(PREVIEW_TEXT_SEL).forEach(function (el) {
+      if (el.dataset.mdTextBound) return;
+      // 跳过表格单元格（已有独立绑定）、代码、嵌入块，以及列表内的段落（避免与 li 重复）
+      if (el.closest('table, pre, code, .md-embed')) return;
+      if (el.tagName === 'P' && el.closest('li')) return;
+      if (el.querySelector && el.querySelector(PREVIEW_TEXT_SEL)) return; // 只绑最内层文字块
+      el.dataset.mdTextBound = '1';
+      el.dataset.srcText = el.textContent || '';
+      el.contentEditable = 'true';
+      el.spellcheck = false;
+      var syncTimer = null;
+      el.addEventListener('input', function () {
+        clearTimeout(syncTimer);
+        syncTimer = setTimeout(function () { syncPreviewTextToMarkdown(el); }, 300);
+      });
+      el.addEventListener('blur', function () {
+        clearTimeout(syncTimer);
+        syncPreviewTextToMarkdown(el);
       });
     });
   }
