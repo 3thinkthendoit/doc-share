@@ -1005,7 +1005,7 @@
   "chat.stopped": "已停止產生。",
   "chat.resend": "重新傳送",
   "chat.toolRunning": "正在查閱平台文件…",
-  "chat.working": "正在處理",
+  "chat.working": "working",
   "chat.apprDelete": "AI 請求把文件移入回收站（軟刪除，可還原）。確認執行？",
   "chat.apprRestore": "AI 請求從回收站還原文件。確認執行？",
   "chat.apprRevision": "AI 請求把文件回滾到歷史修訂版本（目前內容會先存為新修訂）。確認執行？",

@@ -1,6 +1,6 @@
 {
   "head": "03a040f73f9bb1e9333b44f3000f552d6f9f0a99",
-  "reviewedAt": "2026-10-12T00:25:00+08:00",
+  "reviewedAt": "2026-10-12T00:55:00+08:00",
   "lastReviewedCommit": "03a040f73f9bb1e9333b44f3000f552d6f9f0a99",
-  "notes": "第十二次审核：未提交改动（chat.html 流式等待加载动画 workingHtml+chat-dots、5 语言包 chat.working）。结论：可合并，无 P0/P1。P2：流式出错前占位动画不停（遗留行为）。P2 遗留：提示词硬编码工具返回格式细节。历史遗留：预览整行回写抹行内标记、total_chars 措辞、aiExecTool 不感知 ctx 取消、流中 error 无重发按钮、toolCache 重复调用执行后拦截、日配额 UTC 截断、content LIKE 全表扫、会话列表无分页。"
+  "notes": "第十三次审核：未提交改动（chat.go assistant ToolCalls 回传真因修复 + chatSystemPrompt 精简重写 + 阅读意图本轮禁工具 + 文档预读兜底 + extractDocIDs；chat.html 流式 working 动画 + 错误清动画/重发；5 语言包 chat.working 改字面；client_test.go 回归）。审核中已清理 P1 死分支 + P2 死变量 preloaded，测试通过。结论：可合并。P2 提示：极少数严格网关拒绝 content:null+tool_calls 共存，备选方案 Content 改 RawMessage。历史遗留：预览整行回写抹行内标记、total_chars 措辞、aiExecTool 不感知 ctx 取消、content LIKE 全表扫（需 FTS）。已修：toolCache 前置、日配额本地零点、流中 error 重发按钮、会话消息上限。"
 }

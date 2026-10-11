@@ -112,3 +112,20 @@ func TestStreamChatToolCallsIncrementalNoOverwrite(t *testing.T) {
 		t.Fatalf("聚合结果不是合法 JSON: %v", err)
 	}
 }
+
+// 回归：assistant 消息回传时必须带上 ToolCalls（不能只剩空 Content）。
+// 严格网关会因"assistant 缺 tool_calls 但紧接 user 充当工具结果"的序列返回 400，
+// 触发 client.go 自动降级为纯对话，模型随后丢失工具上下文 → 答非所问。
+func TestMessageAssistantToolCallsRoundtrip(t *testing.T) {
+	m := Message{Role: "assistant", Content: ""}
+	m.ToolCalls = []ToolCallMsg{{ID: "c1", Type: "function"}}
+	m.ToolCalls[0].Function.Name = "replace_section"
+	m.ToolCalls[0].Function.Arguments = `{"id":19,"old_text":"a","new_text":"b"}`
+	data, err := json.Marshal(m)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(data), `"tool_calls"`) {
+		t.Fatalf("assistant 消息必须携带 tool_calls 字段: %s", data)
+	}
+}

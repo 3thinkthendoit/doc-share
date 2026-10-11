@@ -1005,7 +1005,7 @@
   "chat.stopped": "已停止生成。",
   "chat.resend": "重新发送",
   "chat.toolRunning": "正在查阅平台文档…",
-  "chat.working": "正在处理",
+  "chat.working": "working",
   "chat.apprDelete": "AI 请求把文档移入回收站（软删除，可恢复）。确认执行？",
   "chat.apprRestore": "AI 请求从回收站恢复文档。确认执行？",
   "chat.apprRevision": "AI 请求把文档回滚到历史修订版本（当前内容会先存为新修订）。确认执行？",
