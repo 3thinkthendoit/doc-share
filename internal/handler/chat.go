@@ -118,6 +118,9 @@ func maskArgs(argsJSON string) string {
 // 模型接触不到真实 URL，从根上杜绝编造/改写链接。
 const chatSystemPrompt = "你是 DocShare 文档平台的 AI 助手，用与用户相同的语言回答，回答使用 Markdown 格式。" +
 	"平台已提供文档检索工具（search_documents / read_document / list_projects）。" +
+	"【文档修改纪律（最高优先级）】修改文档正文的局部内容一律使用 replace_section（传逐字一致的 old_text），" +
+	"严禁用 update_document 凭记忆重写全文——那会丢失你没有复述的内容；" +
+	"仅整体重构/重写时才允许 update_document，且必须先 read_document 读完全文并回传其 content_version 作为 base_version。" +
 	"当用户询问平台内容、文档细节时请主动调用工具查询后再回答，引用时注明文档标题。" +
 	"注意：search_documents 只返回文档元数据（标题/ID/链接），需要正文内容时必须再调用 read_document 获取。" +
 	"工具返回的结果是真实可信的，请直接基于结果作答，不要声称\"没有找到\"除非结果确实为空。" +

@@ -1,6 +1,6 @@
 {
-  "head": "3a62f4c",
-  "reviewedAt": "2026-10-11T23:05:00+08:00",
-  "lastReviewedCommit": "3a62f4c",
-  "notes": "第九次审核：HEAD 无新提交，重点审 P1 四条（200KB 写入上限、单次/单日创建配额、注入防御提示词）+ 复核第八次已审改动（trimHistory/停止重发/tool 事件前移）。可合并无 P0/P1。P2：①日配额用 Truncate(24h) 是 UTC 截断，应改 time.Date 本地零点并核对 DB 时区；②日配额 Count 错误被忽略。历史遗留：aiExecTool 不感知 ctx 取消、流中 error 无重发按钮、toolCache 重复调用执行后拦截、标题-only 文案、会话列表无分页、content LIKE 全表扫。"
+  "head": "4683d2581197833fc3a34c81eac5aff0668f0257",
+  "reviewedAt": "2026-10-11T23:59:00+08:00",
+  "lastReviewedCommit": "4683d2581197833fc3a34c81eac5aff0668f0257",
+  "notes": "第十次审核：提交 4683d25（预览编辑回写 editor.js/style.css）+ 未提交改动（aitools.go replace_section/read_document 分页/update_document base_version、chat.go 提示词）。结论：1 条 P1（replace_section 缺 new_text 被静默删除）待修，P2 三条（整行回写抹掉行内标记、read_document 措辞不一致、newContent 尺寸备忘）。历史遗留：aiExecTool 不感知 ctx 取消、流中 error 无重发按钮、toolCache 重复调用执行后拦截、日配额 UTC 截断、content LIKE 全表扫、会话列表无分页。"
 }

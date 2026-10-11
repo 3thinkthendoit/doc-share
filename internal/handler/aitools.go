@@ -102,11 +102,13 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 		}},
 		{Type: "function", Function: llm.ToolFunc{
 			Name:        "read_document",
-			Description: "按文档 ID 读取当前用户可见文档的完整 Markdown 正文（超长时截断）。",
+			Description: "按文档 ID 读取当前用户可见文档的 Markdown 正文。长文档用 offset/length 分页读完，返回中的 total_chars 为全文总字符数。必须以返回的 content_version 作为后续 update_document 的 base_version。",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"id": map[string]any{"type": "integer", "description": "search_documents 返回的文档 ID"},
+					"id"     : map[string]any{"type": "integer", "description": "search_documents 返回的文档 ID"},
+					"offset" : map[string]any{"type": "integer", "description": "起始字符偏移（按字符计，默认 0）"},
+					"length" : map[string]any{"type": "integer", "description": "本次读取字符数（默认/上限 8000）"},
 				},
 				"required": []string{"id"},
 			},
@@ -224,15 +226,30 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 		}},
 		{Type: "function", Function: llm.ToolFunc{
 			Name:        "update_document",
-			Description: "修改当前用户有编辑权限的文档：可改标题和/或正文（Markdown）。正文整体覆盖，仅传要改的字段。",
+			Description: "整体覆盖当前用户有编辑权限的文档的标题和/或正文（Markdown）。修改正文必须传 base_version（取自 read_document 返回），版本不匹配会被拒绝；只改标题时无需 base_version。局部修改请改用 replace_section，仅新建场景或整体重构时才用本工具。",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"id"      : map[string]any{"type": "integer", "description": "文档 ID"},
-					"title"   : map[string]any{"type": "string", "description": "新标题（可选）"},
-					"content" : map[string]any{"type": "string", "description": "新的完整 Markdown 正文（可选；修改正文时必须给出完整内容，不是增量）"},
+					"id"           : map[string]any{"type": "integer", "description": "文档 ID"},
+					"title"        : map[string]any{"type": "string", "description": "新标题（可选）"},
+					"content"      : map[string]any{"type": "string", "description": "新的完整 Markdown 正文（可选；必须给出完整内容，不是增量）"},
+					"base_version" : map[string]any{"type": "integer", "description": "修改正文时必填：read_document 返回的 content_version，防止凭记忆覆盖丢失内容"},
 				},
 				"required": []string{"id"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "replace_section",
+			Description: "在文档正文中做局部替换：把唯一匹配的 old_text 替换为 new_text（服务端在最新正文上执行，不会影响其他内容）。修改文档正文的首选方式，无需提供全文。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id"       : map[string]any{"type": "integer", "description": "文档 ID"},
+					"old_text" : map[string]any{"type": "string", "description": "要被替换的原文片段，必须与正文逐字一致且唯一；命中多处时请扩写上下文或用 occurrence 指定第几处"},
+					"new_text" : map[string]any{"type": "string", "description": "替换后的新内容；删除内容时传空字符串"},
+					"occurrence": map[string]any{"type": "integer", "description": "替换第几处匹配（1 起，可选；不传时要求 old_text 唯一匹配）"},
+				},
+				"required": []string{"id", "old_text", "new_text"},
 			},
 		}},
 		{Type: "function", Function: llm.ToolFunc{
@@ -312,7 +329,29 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			if doc.Type == model.DocTypeHTML {
 				return clip(fmt.Sprintf("《%s》是整站文档（正文由多个文件组成，存储于对象存储），请引用链接 {{doc:%d}} 让用户自行查看。", doc.Title, doc.ID)), nil
 			}
-			return clip(fmt.Sprintf("《%s》（版本 %s）正文：\n\n%s", doc.Title, doc.Version, doc.Content)), nil
+			// 分页读取：offset/length 按字符计，默认从 0 读 aiToolMaxResult；返回 content_version 供 update_document 作 base_version
+			runes := []rune(doc.Content)
+			total := len(runes)
+			off := int(argInt("offset", 0))
+			if off < 0 || off >= total {
+				if total == 0 {
+					return fmt.Sprintf("《%s》（content_version=%d）正文为空。", doc.Title, doc.ContentVersion), nil
+				}
+				return "", fmt.Errorf("offset 超出范围（全文共 %d 字符）", total)
+			}
+			length := int(argInt("length", aiToolMaxResult))
+			if length <= 0 || length > aiToolMaxResult {
+				length = aiToolMaxResult
+			}
+			end := off + length
+			if end > total {
+				end = total
+			}
+			head := fmt.Sprintf("《%s》（content_version=%d，全文共 %d 字符）第 %d-%d 字符：\n\n", doc.Title, doc.ContentVersion, total, off, end)
+			if end < total {
+				head += fmt.Sprintf("（未读完，还有 %d 字符，请用 offset=%d 继续读取）\n\n", total-end, end)
+			}
+			return clip(head + string(runes[off:end])), nil
 
 		case "list_projects":
 			var projects []model.Project
@@ -654,6 +693,16 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			if !canEditDoc(&doc) {
 				return "", fmt.Errorf("没有该文档的编辑权限（id=%d）", id)
 			}
+			// 读后写校验：覆盖正文必须携带读取时的 content_version，杜绝模型凭记忆重写丢内容
+			if hasContent {
+				bv, ok := args["base_version"].(float64)
+				if !ok || bv < 0 {
+					return "", fmt.Errorf("修改正文必须提供 base_version（来自 read_document 返回的 content_version）；局部修改请改用 replace_section，无需全文")
+				}
+				if int64(bv) != doc.ContentVersion {
+					return "", fmt.Errorf("base_version=%d 与当前 content_version=%d 不一致，文档已被修改过；请重新 read_document 获取最新内容后再更新", int64(bv), doc.ContentVersion)
+				}
+			}
 			oldTitle := doc.Title // 改写前先留档
 			newTitleVal := oldTitle
 			if hasTitle {
@@ -673,7 +722,7 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 					hasContentChange = true
 				} else {
 					// 传了 content 但为空白：大概率是模型输出被截断，明确报错让它重试，而非静默忽略
-					return "", fmt.Errorf("content 为空白或非字符串，疑似输出被截断；请分段调用或改用 replace_section 语义重试")
+					return "", fmt.Errorf("content 为空白或非字符串，疑似输出被截断；请分段调用或改用 replace_section 做局部修改")
 				}
 			}
 			changed, err := a.aiApplyDocUpdate(user, &doc, oldTitle, newTitleVal, content, hasContentChange)
@@ -686,6 +735,63 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 				saved = "正文与当前版本相同，未做修改（仅可能更新了标题）。"
 			}
 			return fmt.Sprintf("文档已保存：{{doc:%d}}（id=%d，版本 %s）%s", doc.ID, doc.ID, ver, saved), nil
+
+		case "replace_section":
+			id := argInt("id", 0)
+			if id == 0 {
+				return "", fmt.Errorf("id 不能为空")
+			}
+			oldText, hasOld := args["old_text"].(string)
+			newText, hasNew := args["new_text"].(string)
+			if !hasNew {
+				return "", fmt.Errorf("new_text 不能为空（删除内容请显式传空字符串）")
+			}
+			if !hasOld || strings.TrimSpace(oldText) == "" {
+				return "", fmt.Errorf("old_text 不能为空")
+			}
+			var doc model.Document
+			if err := scope().Where("type <> ?", model.DocTypeHTML).First(&doc, id).Error; err != nil {
+				return "", fmt.Errorf("文档不存在或无权访问（id=%d）", id)
+			}
+			if !canEditDoc(&doc) {
+				return "", fmt.Errorf("没有该文档的编辑权限（id=%d）", id)
+			}
+			n := strings.Count(doc.Content, oldText)
+			if n == 0 {
+				return "", fmt.Errorf("old_text 在正文中未找到，请先 read_document 核对原文（注意空格与标点需逐字一致）后再重试")
+			}
+			occ := int64(0)
+			if v, ok := args["occurrence"].(float64); ok && v > 0 {
+				occ = int64(v)
+			}
+			if n > 1 {
+				if occ == 0 {
+					return "", fmt.Errorf("old_text 匹配到 %d 处，不唯一；请扩写 old_text 包含更多上下文使其唯一，或传 occurrence 指定替换第几处（1-%d）", n, n)
+				}
+				if occ > int64(n) {
+					return "", fmt.Errorf("old_text 匹配到 %d 处，occurrence=%d 超出范围", n, occ)
+				}
+			}
+			if n == 1 {
+				occ = 1
+			}
+			// 定位第 occ 处匹配并替换（occ 已校验在 1..n 范围内）
+			start := -1
+			for i := int64(0); i < occ; i++ {
+				next := strings.Index(doc.Content[start+1:], oldText)
+				if next < 0 { // 理论上不可达（n 已验证），防御性兜底
+					return "", fmt.Errorf("old_text 定位失败，请重试")
+				}
+				start += 1 + next
+			}
+			newContent := doc.Content[:start] + newText + doc.Content[start+len(oldText):]
+			if newContent == doc.Content {
+				return "old_text 与 new_text 相同，正文未变化。", nil
+			}
+			if _, err := a.aiApplyDocUpdate(user, &doc, doc.Title, doc.Title, newContent, true); err != nil {
+				return "", fmt.Errorf("保存失败: %v", err)
+			}
+			return fmt.Sprintf("已完成局部替换（id=%d，版本 %s）。预览：{{doc:%d}}", doc.ID, doc.Version, doc.ID), nil
 
 		case "create_document":
 			creates++
