@@ -114,6 +114,11 @@
 .chat-tool-status{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);padding:4px 2px}
 .chat-tool-dot{width:7px;height:7px;border-radius:50%;background:linear-gradient(135deg,var(--chat-accent),var(--chat-accent2));animation:chat-pulse 1s ease-in-out infinite}
 @keyframes chat-pulse{50%{opacity:.25;transform:scale(.8)}}
+/* 流式等待加载动画 */
+.chat-working{display:inline-flex;align-items:center;color:var(--muted);font-size:13.5px}
+.chat-working .chat-dots{display:inline-block;min-width:2.2em;text-align:left}
+.chat-working .chat-dots::after{content:"";animation:chat-dots 1.2s steps(1,end) infinite}
+@keyframes chat-dots{0%{content:""}17%{content:"·"}33%{content:"··"}50%{content:"···"}67%{content:"····"}83%{content:"·····"}100%{content:""}}
 /* 流式光标 */
 .chat-cursor{display:inline-block;animation:chat-blink 1s steps(2) infinite;color:var(--chat-accent);font-weight:700}
 @keyframes chat-blink{50%{opacity:0}}
@@ -270,12 +275,17 @@
     var bubble = document.createElement('div');
     bubble.className = 'chat-bubble';
     if (role === 'user') { bubble.textContent = text; }
-    else if (streaming) { bubble.innerHTML = '<span class="chat-cursor">▍</span>'; wrap._raw = text || ''; }
+    else if (streaming) { bubble.innerHTML = workingHtml(); wrap._raw = text || ''; }
     else setBubbleContent(bubble, text);
     wrap.appendChild(av); wrap.appendChild(bubble);
     msgsEl.appendChild(wrap);
     scrollBottom(true);
     return { wrap: wrap, bubble: bubble };
+  }
+
+  // 流式等待占位："正在处理"+动态点，首个增量到达后被内容替换
+  function workingHtml() {
+    return '<span class="chat-working">' + esc(UI.t('chat.working')) + '<span class="chat-dots"></span></span><span class="chat-cursor">▍</span>';
   }
 
   function appendDelta(target, delta) {
@@ -410,12 +420,21 @@
           if (payload.reset) { ai.bubble.textContent = ''; if (ai.status) { stopStatusAnim(ai); ai.status.remove(); ai.status = null; } }
           if (payload.tool) { showToolStatus(ai, payload.tool); }
           if (payload.approval) { showApproval(ai, payload.approval); }
-          if (payload.delta) { if (ai.status) { stopStatusAnim(ai); ai.status.remove(); ai.status = null; } ai.bubble.textContent = ''; appendDelta(ai, payload.delta); }
+          if (payload.delta) { if (ai.status) { stopStatusAnim(ai); ai.status.remove(); ai.status = null; } ai.bubble.textContent = ''; ai.gotDelta = true; appendDelta(ai, payload.delta); }
           if (payload.error) {
+            // 尚未有正文时清掉加载动画占位，避免"正在处理…"一直转
+            if (!ai.gotDelta) ai.bubble.textContent = '';
             var errEl = document.createElement('div');
             errEl.className = 'chat-m-error';
             errEl.textContent = UI.t('chat.streamError') + payload.error;
             ai.bubble.appendChild(errEl);
+            if (lastSent) {
+              var re = document.createElement('button');
+              re.type = 'button'; re.className = 'chat-resend';
+              re.textContent = UI.t('chat.resend');
+              re.addEventListener('click', function () { re.remove(); send(lastSent); });
+              ai.bubble.appendChild(re);
+            }
           }
           if (payload.done) done = true;
         }

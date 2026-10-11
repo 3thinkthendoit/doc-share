@@ -1005,6 +1005,7 @@
   "chat.stopped": "Generation stopped.",
   "chat.resend": "Resend",
   "chat.toolRunning": "Searching platform documents…",
+  "chat.working": "Working",
   "chat.apprDelete": "The AI wants to move a document to the trash (soft delete, recoverable). Proceed?",
   "chat.apprRestore": "The AI wants to restore a document from the trash. Proceed?",
   "chat.apprRevision": "The AI wants to roll the document back to a previous revision (current content will be saved as a new revision first). Proceed?",

@@ -1005,6 +1005,7 @@
   "chat.stopped": "Génération arrêtée.",
   "chat.resend": "Renvoyer",
   "chat.toolRunning": "Recherche dans les documents de la plateforme…",
+  "chat.working": "Traitement",
   "chat.apprDelete": "L'IA demande de déplacer un document à la corbeille (suppression douce, récupérable). Confirmer ?",
   "chat.apprRestore": "L'IA demande de restaurer un document depuis la corbeille. Confirmer ?",
   "chat.apprRevision": "L'IA demande de restaurer le document à une révision antérieure (le contenu actuel sera d'abord sauvegardé comme nouvelle révision). Confirmer ?",

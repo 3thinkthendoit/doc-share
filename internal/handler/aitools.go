@@ -102,7 +102,7 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 		}},
 		{Type: "function", Function: llm.ToolFunc{
 			Name:        "read_document",
-			Description: "按文档 ID 读取当前用户可见文档的 Markdown 正文。长文档用 offset/length 分页读完，返回中的 total_chars 为全文总字符数。必须以返回的 content_version 作为后续 update_document 的 base_version。",
+			Description: "按文档 ID 读取当前用户可见文档的 Markdown 正文。长文档用 offset/length 分页读完，返回头部标明全文总字符数与下一页 offset。必须以返回的 content_version 作为后续 update_document 的 base_version。",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -812,7 +812,9 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 				return "", fmt.Errorf("单次对话最多创建 %d 篇文档，已达到上限；请先确认已有文档是否满足需求", aiMaxCreatesPerReq)
 			}
 			var createdToday int64
-			startOfDay := time.Now().Truncate(24 * time.Hour)
+			// 按本地时区的自然日零点计算，避免 UTC 截断导致配额按错天重置
+			now := time.Now()
+			startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 			a.DB.Model(&model.Document{}).Where("owner_id = ? AND updated_via = ? AND created_at >= ?", user.ID, "ai", startOfDay).Count(&createdToday)
 			if createdToday >= aiMaxCreatesPerDay {
 				return "", fmt.Errorf("你今天通过 AI 创建的文档已达 %d 篇上限，请明天再试或手动创建", aiMaxCreatesPerDay)
