@@ -262,13 +262,15 @@ func (c Config) streamOnce(ctx context.Context, messages []Message, tools []Tool
 				toolAcc[tc.Index] = acc
 			}
 			// 兼容两种上游：标准实现按增量分片；部分代理每个 chunk 全量重发。
-			// 判别：新片段包含已累计内容（且不短于它）→ 全量重发，覆盖；否则追加。
+			// 判别：全量重发的片段必然以已累计内容为前缀 → 覆盖；否则按增量追加。
+			// 注意不能用 Contains：增量碎片恰好包含已累计子串时（长参数流式传输下并不罕见），
+			// 会被误判为全量重发而覆盖，拼出残缺 JSON。
 			merge := func(accStr *string, frag string) {
 				if frag == "" {
 					return
 				}
 				cur := *accStr
-				if len(frag) >= len(cur) && strings.Contains(frag, cur) {
+				if cur != "" && len(frag) >= len(cur) && strings.HasPrefix(frag, cur) {
 					*accStr = frag
 				} else {
 					*accStr = cur + frag

@@ -1,6 +1,6 @@
 {
-  "head": "4683d2581197833fc3a34c81eac5aff0668f0257",
-  "reviewedAt": "2026-10-11T23:59:00+08:00",
-  "lastReviewedCommit": "4683d2581197833fc3a34c81eac5aff0668f0257",
-  "notes": "第十次审核：提交 4683d25（预览编辑回写 editor.js/style.css）+ 未提交改动（aitools.go replace_section/read_document 分页/update_document base_version、chat.go 提示词）。结论：1 条 P1（replace_section 缺 new_text 被静默删除）待修，P2 三条（整行回写抹掉行内标记、read_document 措辞不一致、newContent 尺寸备忘）。历史遗留：aiExecTool 不感知 ctx 取消、流中 error 无重发按钮、toolCache 重复调用执行后拦截、日配额 UTC 截断、content LIKE 全表扫、会话列表无分页。"
+  "head": "03a040f73f9bb1e9333b44f3000f552d6f9f0a99",
+  "reviewedAt": "2026-10-12T00:10:00+08:00",
+  "lastReviewedCommit": "03a040f73f9bb1e9333b44f3000f552d6f9f0a99",
+  "notes": "第十一次审核：提交 61e6db8（replace_section/分页/base_version，P1 缺 new_text 已修）、03a040f（阅读纪律前置/分页 offset 对齐/版本回写）+ 未提交改动（chat.go 提示词精简重写、llm/client.go 增量聚合 Contains→HasPrefix 修复、回归测试）。结论：可合并，无 P0/P1。P2：提示词硬编码工具返回格式细节。历史遗留：预览整行回写抹行内标记、total_chars 措辞、aiExecTool 不感知 ctx 取消、流中 error 无重发按钮、toolCache 重复调用执行后拦截、日配额 UTC 截断、content LIKE 全表扫、会话列表无分页。"
 }

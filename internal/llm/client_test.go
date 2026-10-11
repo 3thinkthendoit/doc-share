@@ -85,3 +85,30 @@ func TestMessageToolCallsMarshalNoIndex(t *testing.T) {
 		t.Fatalf("消息体不应包含 index 字段: %s", data)
 	}
 }
+
+// 回归：标准增量分片中，后到碎片恰好"包含"已累计内容时不得被误判为全量重发而覆盖
+// （曾用 Contains 判别，长参数流式下会拼出残缺 JSON）
+func TestStreamChatToolCallsIncrementalNoOverwrite(t *testing.T) {
+	srv := sseServer(t, []string{
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"replace_section","arguments":"{\"id\":"}}]}}]}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":" 19, \"old_text\": \"id\""}}]}}]}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"}"}}]}}]}`,
+	})
+	defer srv.Close()
+
+	msg, err := cfgAt(srv.URL).StreamChat(context.Background(), []Message{{Role: "user", Content: "hi"}}, []Tool{}, nil)
+	if err != nil {
+		t.Fatalf("StreamChat: %v", err)
+	}
+	if len(msg.ToolCalls) != 1 {
+		t.Fatalf("期望 1 个 tool_calls，得到 %d", len(msg.ToolCalls))
+	}
+	want := `{"id": 19, "old_text": "id"}`
+	if msg.ToolCalls[0].Function.Arguments != want {
+		t.Fatalf("聚合错误: got %q want %q", msg.ToolCalls[0].Function.Arguments, want)
+	}
+	var args map[string]any
+	if err := json.Unmarshal([]byte(msg.ToolCalls[0].Function.Arguments), &args); err != nil {
+		t.Fatalf("聚合结果不是合法 JSON: %v", err)
+	}
+}
