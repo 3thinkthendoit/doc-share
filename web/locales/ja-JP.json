@@ -1006,6 +1006,7 @@
   "chat.edit": "編集",
   "chat.copy": "コピー",
   "chat.thinking": "思考プロセス",
+  "chat.busy": "モデルが回答中です。完了を待つか停止を押してください",
   "chat.resend": "再送信",
   "chat.working": "working",
   "chat.meta": "所要 {seconds}秒 · 入力 {prompt} · 出力 {completion} tokens",

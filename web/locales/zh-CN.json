@@ -1006,6 +1006,7 @@
   "chat.edit": "编辑",
   "chat.copy": "复制",
   "chat.thinking": "思考过程",
+  "chat.busy": "模型正在回答，请等待完成或点击停止",
   "chat.resend": "重新发送",
   "chat.working": "working",
   "chat.meta": "耗时 {seconds}s · 输入 {prompt} · 输出 {completion} tokens",

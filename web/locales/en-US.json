@@ -1006,6 +1006,7 @@
   "chat.edit": "Edit",
   "chat.copy": "Copy",
   "chat.thinking": "Thinking",
+  "chat.busy": "The model is still answering — wait or press stop",
   "chat.resend": "Resend",
   "chat.working": "working",
   "chat.meta": "{seconds}s · {prompt} in / {completion} out tokens",

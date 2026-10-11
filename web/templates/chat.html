@@ -444,9 +444,26 @@
   var abortCtrl = null;   // 当前流式请求的中止控制器
   var lastSent = '';      // 最近一次发送的内容（用于"重新发送"）
 
+  // 忙碌提示：生成中再次尝试发送时，给用户可见反馈而不是静默吞掉
+  var busyTimer = null;
+  function showBusyHint() {
+    var hint = document.getElementById('chat-busy-hint');
+    if (!hint) {
+      hint = document.createElement('div');
+      hint.id = 'chat-busy-hint';
+      hint.style.cssText = 'position:fixed;left:50%;bottom:110px;transform:translateX(-50%);background:var(--text);color:var(--bg);font-size:12.5px;padding:6px 14px;border-radius:999px;box-shadow:0 4px 12px rgba(0,0,0,.12);z-index:99;opacity:0;transition:opacity .15s';
+      hint.textContent = UI.t('chat.busy');
+      document.body.appendChild(hint);
+    }
+    requestAnimationFrame(function () { hint.style.opacity = '1'; });
+    clearTimeout(busyTimer);
+    busyTimer = setTimeout(function () { hint.style.opacity = '0'; }, 2000);
+  }
+
   async function send(resendText) {
     var text = (typeof resendText === 'string' ? resendText : inputEl.value).trim();
-    if (!text || sending) return;
+    if (!text) return;
+    if (sending) { showBusyHint(); return; }
     sending = true;
     lastSent = text;
     setSendBtnBusy(true);
