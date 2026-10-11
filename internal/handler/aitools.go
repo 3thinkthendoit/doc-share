@@ -351,7 +351,20 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			if end < total {
 				head += fmt.Sprintf("（未读完，还有 %d 字符，请用 offset=%d 继续读取）\n\n", total-end, end)
 			}
-			return clip(head + string(runes[off:end])), nil
+			// 按字符预算裁内容：head 占多少就少读多少，避免 clip 截掉正文导致翻页 offset 与实际内容错位
+			budget := aiToolMaxResult - utf8.RuneCountInString(head) - 16
+			if budget <= 0 {
+				return "", fmt.Errorf("分页元数据过长，请稍后重试")
+			}
+			cend := off + budget
+			if cend > end {
+				cend = end
+			}
+			if cend < end {
+				head = fmt.Sprintf("《%s》（content_version=%d，全文共 %d 字符）第 %d-%d 字符：\n\n", doc.Title, doc.ContentVersion, total, off, cend)
+				head += fmt.Sprintf("（未读完，还有 %d 字符，请用 offset=%d 继续读取）\n\n", total-cend, cend)
+			}
+			return clip(head + string(runes[off:cend])), nil
 
 		case "list_projects":
 			var projects []model.Project
@@ -884,7 +897,12 @@ func (a *App) aiApplyDocUpdate(user *model.User, doc *model.Document, oldTitle, 
 			}).Error; err != nil {
 				return err
 			}
-			return pruneRevisions(tx, doc.ID)
+			if err := pruneRevisions(tx, doc.ID); err != nil {
+				return err
+			}
+			// 回写新版本号，调用方返回给模型的信息才是落库后的真实版本
+			doc.ContentVersion = fresh.ContentVersion + 1
+			doc.Version = derivedDocVersion(fresh.ContentVersion + 1)
 		}
 		return nil
 	})
