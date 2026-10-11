@@ -608,8 +608,12 @@ func (a *App) ChatCompletions(c *gin.Context) {
 	startedAt := time.Now()
 	toolCache := map[string]string{} // 重复的相同调用直接复用结果，防止模型原地打转
 	for round := 0; round < aiToolRounds; round++ {
-		// 客户端已断开（用户点了停止/关页面）：不再继续烧后续轮次的 LLM 与工具调用
+		// 客户端已断开（用户点了停止/刷新/关页）：不再继续烧后续轮次的 LLM 与工具调用；
+		// 已有部分回答时继续走落库流程把它保存下来，而不是直接丢弃
 		if err := c.Request.Context().Err(); err != nil {
+			if anyEmitted {
+				break
+			}
 			return
 		}
 		var rc strings.Builder
@@ -637,8 +641,14 @@ func (a *App) ChatCompletions(c *gin.Context) {
 				`,"elapsed_ms":` + strconv.FormatInt(time.Since(startedAt).Milliseconds(), 10) + `}`)
 		}
 		if err != nil {
+			if c.Request.Context().Err() != nil {
+				// 流被用户断开打断（停止/刷新/关页）：保留用户消息与已生成的部分
+				// 回答，静默收尾 —— 不能算上游失败，更不能删用户消息
+				final.WriteString(rc.String())
+				break
+			}
 			if !anyEmitted {
-				// 一个字都没出来：算失败，删除用户消息避免留垃圾
+				// 真正的上游失败且一个字没出：删除用户消息避免留垃圾
 				a.DB.Delete(&userMsg)
 				writeEvent(`{"error":` + jsonQuote(err.Error()) + `}`)
 				return
@@ -749,7 +759,14 @@ func (a *App) ChatCompletions(c *gin.Context) {
 			reply = fb.String()
 		}
 	}
+	userGone := c.Request.Context().Err() != nil // 用户主动断开（停止/刷新/关页）
 	if strings.TrimSpace(reply) == "" {
+		if userGone {
+			// 断开且没有产出任何内容：不落 assistant 消息（避免"生成失败"假回复），
+			// 用户消息保留，下次提问模型能看到这个问题
+			log.Printf("[llm] 用户断开且无内容，保留用户消息 session=%d", s.ID)
+			return
+		}
 		reply = a.tr(c, "chat.generateFailed")
 		writeEvent(`{"error":` + jsonQuote(a.tr(c, "chat.generateFailed")) + `}`)
 	}
