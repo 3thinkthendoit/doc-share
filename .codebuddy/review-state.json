@@ -1,0 +1,6 @@
+{
+  "head": "fb4b4b9e4b9003a12990b9c8effcf8f761ef1a97",
+  "reviewedAt": "2026-10-11T21:42:58+08:00",
+  "lastReviewedCommit": "fb4b4b9e4b9003a12990b9c8effcf8f761ef1a97",
+  "notes": "第七次审核：HEAD 无新提交，审核未提交改动（aitools.go aiApplyDocUpdate 返回 changed/update_doc 空白 content 报错、chat.go 失败结果不进 toolCache+系统提示词思维方法、chat.html/style.css 移动端修复）。可合并，无 P0/P1。遗留：toolCache 重复调用在执行后拦截（建议改为变更类工具命中即拦）、标题-only 保存文案仍说正文已更新（aitools.go:677）、toolCache 无锁并发（既有）。上次遗留 P2 仍在：assistantMsg 落库失败仅 log、会话列表无分页、content LIKE 全表扫。"
+}

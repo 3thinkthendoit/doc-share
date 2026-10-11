@@ -54,7 +54,7 @@
 
 <style>
 /* ===== 在线体验页布局 ===== */
-.chat-body{height:100vh;display:flex;flex-direction:column;overflow:hidden;--chat-accent:#6366f1;--chat-accent2:#8b5cf6;background:var(--bg-soft)}
+.chat-body{height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;--chat-accent:#6366f1;--chat-accent2:#8b5cf6;background:var(--bg-soft)}
 .chat-body .topnav{flex:none}
 .chat-wrap{flex:1;display:flex;min-height:0;width:100%;max-width:1280px;margin:0 auto;padding:16px 20px 20px;gap:16px}
 /* 滚动条 */
@@ -79,7 +79,7 @@
 .chat-s-del:hover{color:#e5484d;background:rgba(229,72,77,.12)}
 /* ===== 主区 ===== */
 .chat-main{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg);border:1px solid var(--border);border-radius:18px;box-shadow:0 4px 20px rgba(0,0,0,.06);overflow:hidden}
-.chat-scroll{flex:1;overflow-y:auto;min-height:0;padding:6px 6px 0}
+.chat-scroll{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0;padding:6px 6px 0}
 /* 欢迎区 */
 .chat-hero{text-align:center;padding:11vh 16px 32px;animation:chat-fade .35s ease}
 .chat-hero-logo{width:64px;height:64px;margin:0 auto 18px;border-radius:19px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,var(--chat-accent),var(--chat-accent2));box-shadow:0 10px 28px rgba(99,102,241,.38),inset 0 1px 0 rgba(255,255,255,.25);overflow:hidden}
@@ -104,7 +104,9 @@
 .chat-m.assistant .chat-bubble>*:last-child{margin-bottom:0}
 .chat-m.assistant .chat-bubble pre{overflow-x:auto;padding:12px;border-radius:10px;background:rgba(127,127,127,.12);font-size:13px;border:1px solid var(--border)}
 .chat-m.assistant .chat-bubble code{font-size:13px}
-.chat-m.assistant .chat-bubble table{border-collapse:collapse}
+.chat-m.assistant .chat-bubble table{display:block;border-collapse:collapse;width:100%;overflow-x:auto}
+.chat-m.assistant .chat-bubble{overflow-wrap:break-word}
+.chat-m.assistant .chat-bubble img{max-width:100%}
 .chat-m.assistant .chat-bubble td,.chat-m.assistant .chat-bubble th{border:1px solid var(--border);padding:5px 10px}
 .chat-m-error{color:#e5484d;font-size:13.5px;margin-top:6px}
 .chat-tool-status{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);padding:4px 2px}
@@ -116,7 +118,7 @@
 @keyframes chat-fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @keyframes chat-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 /* 输入区 */
-.chat-composer{flex:none;max-width:860px;width:100%;margin:12px auto 0;padding:0 14px 14px}
+.chat-composer{flex:none;max-width:860px;width:100%;margin:12px auto 0;padding:0 14px calc(14px + env(safe-area-inset-bottom))}
 .chat-input-card{border:1px solid var(--border);border-radius:18px;background:var(--bg);box-shadow:0 4px 20px rgba(0,0,0,.07);padding:14px 16px 11px;transition:border-color .15s,box-shadow .2s}
 .chat-input-card:focus-within{border-color:var(--chat-accent);box-shadow:0 4px 24px rgba(99,102,241,.22)}
 .chat-input-card textarea{width:100%;border:none;outline:none;resize:none;background:transparent;color:var(--text);font:inherit;font-size:14.5px;line-height:1.6;max-height:180px}
@@ -146,9 +148,18 @@
   .chat-msgs{padding:6px 4px 12px;gap:16px}
   .chat-bubble{max-width:86%}
   .chat-m{gap:8px}
-  .chat-composer{padding:0 10px 10px}
+  .chat-composer{margin-top:8px;padding:0 10px calc(10px + env(safe-area-inset-bottom))}
   .chat-input-card{border-radius:15px;padding:11px 13px 9px}
   .chat-enter-hint-hide{display:none}
+  /* iOS：聚焦字号 <16px 会自动放大页面 */
+  .chat-input-card textarea{font-size:16px}
+  .chat-bubble{max-width:calc(100% - 44px)}
+  /* 触屏无 hover：会话删除按钮常显 */
+  .chat-s-item .chat-s-del{display:inline-flex}
+}
+/* 触屏设备（任意宽度）下删除按钮也常显 */
+@media (hover:none){
+  .chat-s-item .chat-s-del{display:inline-flex}
 }
 </style>
 

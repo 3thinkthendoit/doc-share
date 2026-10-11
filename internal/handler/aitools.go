@@ -426,7 +426,7 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			if err := a.DB.Where("id = ? AND document_id = ?", rid, doc.ID).First(&rev).Error; err != nil {
 				return "", fmt.Errorf("修订不存在（revision_id=%d）", rid)
 			}
-			if err := a.aiApplyDocUpdate(user, &doc, doc.Title, doc.Title, rev.Content, true); err != nil {
+			if _, err := a.aiApplyDocUpdate(user, &doc, doc.Title, doc.Title, rev.Content, true); err != nil {
 				return "", fmt.Errorf("恢复失败: %v", err)
 			}
 			return clip(fmt.Sprintf("已把《%s》恢复到修订 %d 的内容（当前内容已存为新修订，当前版本 %s）。预览：{{doc:%d}}", doc.Title, rid, doc.Version, doc.ID)), nil
@@ -664,18 +664,19 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 				if s, ok := newContent.(string); ok && strings.TrimSpace(s) != "" {
 					content = s
 					hasContentChange = true
+				} else {
+					// 传了 content 但为空白：大概率是模型输出被截断，明确报错让它重试，而非静默忽略
+					return "", fmt.Errorf("content 为空白或非字符串，疑似输出被截断；请分段调用或改用 replace_section 语义重试")
 				}
 			}
-			if err := a.aiApplyDocUpdate(user, &doc, oldTitle, newTitleVal, content, hasContentChange); err != nil {
+			changed, err := a.aiApplyDocUpdate(user, &doc, oldTitle, newTitleVal, content, hasContentChange)
+			if err != nil {
 				return "", fmt.Errorf("保存失败: %v", err)
 			}
 			ver := doc.Version
 			saved := "正文已更新。"
-			if !hasContentChange {
-				saved = "仅更新了标题。"
-			}
-			if hasContent && strings.TrimSpace(content) == "" {
-				saved += "（传入的 content 为空白，已忽略）"
+			if !changed {
+				saved = "正文与当前版本相同，未做修改（仅可能更新了标题）。"
 			}
 			return fmt.Sprintf("文档已保存：{{doc:%d}}（id=%d，版本 %s）%s", doc.ID, doc.ID, ver, saved), nil
 
@@ -717,8 +718,10 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 
 // aiApplyDocUpdate AI 通道的文档保存：与 UpdateDoc 相同的乐观锁 + 修订快照 + 版本派生，
 // updated_via 记为 "ai" 以便审计区分。oldTitle 为加载时的标题，newTitle 为期望的新标题。
-func (a *App) aiApplyDocUpdate(user *model.User, doc *model.Document, oldTitle, newTitle, newContent string, hasContent bool) error {
-	return a.DB.Transaction(func(tx *gorm.DB) error {
+// 返回 changed 表示是否有实际变更落库（false = 内容相同且标题未变，调用方应如实告知模型）。
+func (a *App) aiApplyDocUpdate(user *model.User, doc *model.Document, oldTitle, newTitle, newContent string, hasContent bool) (bool, error) {
+	changed := false
+	err := a.DB.Transaction(func(tx *gorm.DB) error {
 		var fresh model.Document
 		if err := tx.Select("id", "content", "content_version").First(&fresh, doc.ID).Error; err != nil {
 			return err
@@ -735,6 +738,7 @@ func (a *App) aiApplyDocUpdate(user *model.User, doc *model.Document, oldTitle, 
 		if len(updates) == 2 { // 只有 updated_by/updated_via：无实际变更
 			return nil
 		}
+		changed = true
 		q := tx.Model(&model.Document{}).Where("id = ?", doc.ID)
 		if hasContent {
 			q = q.Where("content_version = ?", fresh.ContentVersion)
@@ -744,6 +748,7 @@ func (a *App) aiApplyDocUpdate(user *model.User, doc *model.Document, oldTitle, 
 			return res.Error
 		}
 		if hasContent && res.RowsAffected == 0 {
+			changed = false
 			return fmt.Errorf("内容刚被其他人修改（并发冲突），请重新读取后再试")
 		}
 		if hasContent && newContent != fresh.Content {
@@ -756,4 +761,5 @@ func (a *App) aiApplyDocUpdate(user *model.User, doc *model.Document, oldTitle, 
 		}
 		return nil
 	})
+	return changed, err
 }

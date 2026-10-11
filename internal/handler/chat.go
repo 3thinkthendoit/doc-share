@@ -28,13 +28,14 @@ const aiToolRounds = 8
 // chatApprovalTTL 敏感操作等待用户确认的时限
 const chatApprovalTTL = 3 * time.Minute
 
-// aiExecTool 执行一次工具调用并整理结果（错误转文案回传模型）
-func (a *App) aiExecTool(exec func(name, argsJSON string) (string, error), tc llm.ToolCallMsg) string {
+// aiExecTool 执行一次工具调用并整理结果：错误转文案回传模型，同时把错误暴露给调用方
+// （调用方据此决定是否写入 toolCache——失败结果不得缓存，否则模型重试会被"不要重复调用"提示堵死）
+func (a *App) aiExecTool(exec func(name, argsJSON string) (string, error), tc llm.ToolCallMsg) (string, error) {
 	result, err := exec(tc.Function.Name, tc.Function.Arguments)
 	if err != nil {
-		result = "工具执行失败：" + err.Error()
+		return "工具执行失败：" + err.Error(), err
 	}
-	return result
+	return result, nil
 }
 
 // ReviewChatApproval 会话内 AI 敏感操作的用户裁决入口：approve=true 才放行执行
@@ -94,7 +95,11 @@ const chatSystemPrompt = "你是 DocShare 文档平台的 AI 助手，用与用�
 	"工具返回的结果是真实可信的，请直接基于结果作答，不要声称\"没有找到\"除非结果确实为空。" +
 	"【引用链接的唯一方式：原样输出工具结果中给出的占位符，如 {{doc:8}} 或 {{share:8}}，系统会自动替换为真实可点击链接】。" +
 	"严禁自己输出任何 http:// 或 https:// 开头的 URL，严禁改写、猜测或拼接链接格式。" +
-	"没有工具结果支持的信息（如分享链接、密码、过期时间）一律不要输出，先调用工具获取。"
+	"没有工具结果支持的信息（如分享链接、密码、过期时间）一律不要输出，先调用工具获取。" +
+	"【思维方法】回答前先思考：①第一性原理——把问题拆解到不可再分的事实与约束，区分\"事实/假设/猜测\"，不沿用未经检验的惯例；" +
+	"②实事求是——只基于工具查到的真实结果和确定的信息作答，不确定就明说\"不确定\"并去查证，绝不编造或夸大；" +
+	"③苏格拉底式提问——当用户需求含糊或有多个矛盾前提时，先用简短的问题澄清关键点（一次只问最关键的一个），再给出结论。" +
+	"回答结构建议：先一句话给结论，再列依据，最后指出仍不确定的点及验证方式。"
 
 // linkPlaceholderRe 匹配工具结果/模型输出中的链接占位符 {{doc:<id>}} 与 {{share:<id>}}
 var linkPlaceholderRe = regexp.MustCompile(`\{\{(doc|share):(\d+)\}\}`)
@@ -382,6 +387,7 @@ func (a *App) ChatCompletions(c *gin.Context) {
 
 			// 敏感操作（删除/恢复/回滚/开启公开分享）：先弹会话内审批，用户确认才执行
 			var result string
+			var execErr error
 			if aiNeedsApproval(tc) {
 				apprID := util.RandomHex(8)
 				decision := make(chan bool, 1)
@@ -401,26 +407,31 @@ func (a *App) ChatCompletions(c *gin.Context) {
 				}
 				a.approvals.Delete(apprID)
 				if approved && result == "" {
-					result = a.aiExecTool(execTool, tc)
+					result, execErr = a.aiExecTool(execTool, tc)
 				} else if result == "" {
 					result = "用户拒绝了该操作，未执行。请勿重复请求，向用户确认意图后继续。"
 					log.Printf("[llm] 用户拒绝 %s(%s)", tc.Function.Name, maskArgs(tc.Function.Arguments))
 				}
 			} else {
-				result = a.aiExecTool(execTool, tc)
+				result, execErr = a.aiExecTool(execTool, tc)
 			}
 
 			cacheKey := tc.Function.Name + "\x00" + tc.Function.Arguments
-			if cached, ok := toolCache[cacheKey]; ok {
-				log.Printf("[llm] 重复工具调用命中缓存 %s(%s)", tc.Function.Name, maskArgs(tc.Function.Arguments))
-				result = cached + "\n（该查询已执行过且结果相同，请基于已有结果直接作答，不要重复调用）"
-			} else {
-				logResult := result
-				if utf8.RuneCountInString(logResult) > 400 {
-					logResult = string([]rune(logResult)[:400]) + "…"
+			if execErr == nil {
+				if cached, ok := toolCache[cacheKey]; ok {
+					log.Printf("[llm] 重复工具调用命中缓存 %s(%s)", tc.Function.Name, maskArgs(tc.Function.Arguments))
+					result = cached + "\n（该查询已执行过且结果相同，请基于已有结果直接作答，不要重复调用）"
+				} else {
+					logResult := result
+					if utf8.RuneCountInString(logResult) > 400 {
+						logResult = string([]rune(logResult)[:400]) + "…"
+					}
+					log.Printf("[llm] 工具调用 %s(%s) -> %s", tc.Function.Name, maskArgs(tc.Function.Arguments), logResult)
+					toolCache[cacheKey] = result
 				}
-				log.Printf("[llm] 工具调用 %s(%s) -> %s", tc.Function.Name, maskArgs(tc.Function.Arguments), logResult)
-				toolCache[cacheKey] = result
+			} else {
+				// 失败结果不进缓存：允许模型修正参数后重试（如 JSON 截断、并发冲突）
+				log.Printf("[llm] 工具调用失败 %s(%s) -> %s", tc.Function.Name, maskArgs(tc.Function.Arguments), result)
 			}
 			results.WriteString("\n[" + tc.Function.Name + " 参数: " + maskArgs(tc.Function.Arguments) + "]\n" + result + "\n")
 		}
