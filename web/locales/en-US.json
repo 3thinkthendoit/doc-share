@@ -1002,6 +1002,8 @@
   "chat.sug2": "Summarize a technical doc into key points",
   "chat.sug3": "Explain what an API gateway does in plain words",
   "chat.generateFailed": "Failed to generate the answer. Please try again",
+  "chat.stopped": "Generation stopped.",
+  "chat.resend": "Resend",
   "chat.toolRunning": "Searching platform documents…",
   "chat.apprDelete": "The AI wants to move a document to the trash (soft delete, recoverable). Proceed?",
   "chat.apprRestore": "The AI wants to restore a document from the trash. Proceed?",

@@ -20,8 +20,11 @@ import (
 // 工具结果不落库，仅作为当轮上下文注入。
 
 const (
-	aiToolMaxResult = 8000 // 单次工具结果字符上限（防止撑爆上下文）
-	aiToolMaxDocs   = 10   // search_documents 返回条数上限
+	aiToolMaxResult   = 8000        // 单次工具结果字符上限（防止撑爆上下文）
+	aiToolMaxDocs     = 10          // search_documents 返回条数上限
+	aiMaxContentBytes = 200 << 10   // AI 写入文档正文的大小上限（200KB）
+	aiMaxCreatesPerReq  = 3         // 单次对话内 create_document 次数上限
+	aiMaxCreatesPerDay  = 50        // 单用户单日 AI 创建文档数上限
 )
 
 // aiApprovalTools 执行前必须经用户在会话中确认的敏感工具
@@ -254,6 +257,7 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 		return s
 	}
 	// 参数解析失败/执行出错时返回文本，让模型自行调整
+	creates := 0 // 本次对话内 create_document 已调用次数
 	exec = func(name, argsJSON string) (string, error) {
 		var args map[string]any
 		if strings.TrimSpace(argsJSON) != "" {
@@ -662,6 +666,9 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			var content string
 			if hasContent {
 				if s, ok := newContent.(string); ok && strings.TrimSpace(s) != "" {
+					if len(s) > aiMaxContentBytes {
+						return "", fmt.Errorf("content 超过 %dKB 上限（当前 %dKB），请只提交需要修改的部分或用 replace_section", aiMaxContentBytes>>10, len(s)>>10)
+					}
 					content = s
 					hasContentChange = true
 				} else {
@@ -681,14 +688,28 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			return fmt.Sprintf("文档已保存：{{doc:%d}}（id=%d，版本 %s）%s", doc.ID, doc.ID, ver, saved), nil
 
 		case "create_document":
+			creates++
+			if creates > aiMaxCreatesPerReq {
+				return "", fmt.Errorf("单次对话最多创建 %d 篇文档，已达到上限；请先确认已有文档是否满足需求", aiMaxCreatesPerReq)
+			}
+			var createdToday int64
+			startOfDay := time.Now().Truncate(24 * time.Hour)
+			a.DB.Model(&model.Document{}).Where("owner_id = ? AND updated_via = ? AND created_at >= ?", user.ID, "ai", startOfDay).Count(&createdToday)
+			if createdToday >= aiMaxCreatesPerDay {
+				return "", fmt.Errorf("你今天通过 AI 创建的文档已达 %d 篇上限，请明天再试或手动创建", aiMaxCreatesPerDay)
+			}
 			title := argStr("title")
 			if title == "" {
 				return "", fmt.Errorf("title 不能为空")
 			}
+			contentAI := argStr("content")
+			if len(contentAI) > aiMaxContentBytes {
+				return "", fmt.Errorf("content 超过 %dKB 上限（当前 %dKB），请精简后重试", aiMaxContentBytes>>10, len(contentAI)>>10)
+			}
 			doc := model.Document{
 				Title: title, Version: derivedDocVersion(0),
 				Slug: util.RandomSlug(8), Type: model.DocTypeMarkdown,
-				Content: argStr("content"), OwnerID: user.ID,
+				Content: contentAI, OwnerID: user.ID,
 				UpdatedByID: user.ID, UpdatedVia: "ai",
 			}
 			if pid := argInt("project_id", 0); pid > 0 {

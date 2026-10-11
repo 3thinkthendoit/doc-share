@@ -1002,6 +1002,8 @@
   "chat.sug2": "技術文書を要点にまとめて",
   "chat.sug3": "APIゲートウェイとは何か平易に説明して",
   "chat.generateFailed": "回答の生成に失敗しました。もう一度お試しください",
+  "chat.stopped": "生成を停止しました。",
+  "chat.resend": "再送信",
   "chat.toolRunning": "プラットフォームのドキュメントを検索中…",
   "chat.apprDelete": "AIがドキュメントをゴミ箱へ移動しようとしています（ソフト削除、復元可能）。実行しますか？",
   "chat.apprRestore": "AIがゴミ箱からドキュメントを復元しようとしています。実行しますか？",

@@ -109,6 +109,8 @@
 .chat-m.assistant .chat-bubble img{max-width:100%}
 .chat-m.assistant .chat-bubble td,.chat-m.assistant .chat-bubble th{border:1px solid var(--border);padding:5px 10px}
 .chat-m-error{color:#e5484d;font-size:13.5px;margin-top:6px}
+.chat-resend{display:inline-block;margin-top:8px;padding:4px 12px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--chat-accent);font-size:13px;cursor:pointer}
+.chat-resend:hover{border-color:var(--chat-accent)}
 .chat-tool-status{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);padding:4px 2px}
 .chat-tool-dot{width:7px;height:7px;border-radius:50%;background:linear-gradient(135deg,var(--chat-accent),var(--chat-accent2));animation:chat-pulse 1s ease-in-out infinite}
 @keyframes chat-pulse{50%{opacity:.25;transform:scale(.8)}}
@@ -282,13 +284,20 @@
     scrollBottom(false);
   }
 
-  // 工具调用状态条：显示“正在查阅文档…”
+  // 工具调用状态条：Worring + 点数 0→4 循环
+  function stopStatusAnim(target) {
+    if (target.statusTimer) { clearInterval(target.statusTimer); target.statusTimer = null; }
+  }
   function showToolStatus(target, names) {
+    stopStatusAnim(target);
     if (target.status) target.status.remove();
     target.status = document.createElement('div');
     target.status.className = 'chat-tool-status';
-    target.status.innerHTML = '<span class="chat-tool-dot"></span>' + UI.t('chat.toolRunning');
     target.status.title = names;
+    var dots = 0;
+    var render = function () { target.status.innerHTML = '<span class="chat-tool-dot"></span>Worring' + '.'.repeat(dots); };
+    render();
+    target.statusTimer = setInterval(function () { dots = (dots + 1) % 5; render(); }, 350);
     target.bubble.textContent = '';
     target.bubble.appendChild(target.status);
     scrollBottom(false);
@@ -296,7 +305,7 @@
 
   // 敏感操作审批：AI 请求删除/恢复类操作时弹窗让用户裁决，SSE 会阻塞等待结果
   async function showApproval(target, approval) {
-    if (target.status) { target.status.remove(); target.status = null; }
+    if (target.status) { stopStatusAnim(target); target.status.remove(); target.status = null; }
     var toolNames = {
       delete_document:  UI.t('chat.apprDelete'),
       restore_document: UI.t('chat.apprRestore'),
@@ -356,11 +365,15 @@
     return currentId;
   }
 
-  async function send() {
-    var text = inputEl.value.trim();
+  var abortCtrl = null;   // 当前流式请求的中止控制器
+  var lastSent = '';      // 最近一次发送的内容（用于"重新发送"）
+
+  async function send(resendText) {
+    var text = (typeof resendText === 'string' ? resendText : inputEl.value).trim();
     if (!text || sending) return;
     sending = true;
-    sendBtn.disabled = true;
+    lastSent = text;
+    setSendBtnBusy(true);
     inputEl.value = '';
     autoGrow();
     showHero(false);
@@ -368,10 +381,12 @@
     var ai = addMsg('assistant', '', true);
     try {
       var sid = await ensureSession();
+      abortCtrl = new AbortController();
       var res = await fetch('/console/api/chat/sessions/' + sid + '/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-        body: JSON.stringify({ content: text })
+        body: JSON.stringify({ content: text }),
+        signal: abortCtrl.signal
       });
       if (!res.ok) {
         var errData = await res.json().catch(function () { return {}; });
@@ -392,10 +407,10 @@
           if (line.indexOf('data:') !== 0) continue;
           var payload;
           try { payload = JSON.parse(line.slice(5).trim()); } catch (e) { continue; }
-          if (payload.reset) { ai.bubble.textContent = ''; if (ai.status) { ai.status.remove(); ai.status = null; } }
+          if (payload.reset) { ai.bubble.textContent = ''; if (ai.status) { stopStatusAnim(ai); ai.status.remove(); ai.status = null; } }
           if (payload.tool) { showToolStatus(ai, payload.tool); }
           if (payload.approval) { showApproval(ai, payload.approval); }
-          if (payload.delta) { if (ai.status) { ai.status.remove(); ai.status = null; } ai.bubble.textContent = ''; appendDelta(ai, payload.delta); }
+          if (payload.delta) { if (ai.status) { stopStatusAnim(ai); ai.status.remove(); ai.status = null; } ai.bubble.textContent = ''; appendDelta(ai, payload.delta); }
           if (payload.error) {
             var errEl = document.createElement('div');
             errEl.className = 'chat-m-error';
@@ -409,14 +424,36 @@
       ai.bubble.innerHTML = '';
       var el = document.createElement('div');
       el.className = 'chat-m-error';
-      el.textContent = e.message || UI.t('chat.sendFailed');
+      el.textContent = (e && e.name === 'AbortError') ? UI.t('chat.stopped') : (e.message || UI.t('chat.sendFailed'));
       ai.bubble.appendChild(el);
+      // 停止/失败后提供"重新发送"
+      if (lastSent) {
+        var re = document.createElement('button');
+        re.type = 'button'; re.className = 'chat-resend';
+        re.textContent = UI.t('chat.resend');
+        re.addEventListener('click', function () { re.remove(); send(lastSent); });
+        ai.bubble.appendChild(re);
+      }
     } finally {
       sending = false;
-      sendBtn.disabled = !inputEl.value.trim();
+      abortCtrl = null;
+      setSendBtnBusy(false);
       loadSessions();
       scrollBottom(false);
     }
+  }
+
+  // 发送中：按钮变"停止"；空闲：恢复"发送"
+  var sendIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+  var stopIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+  function setSendBtnBusy(busy) {
+    sendBtn.innerHTML = busy ? stopIcon : sendIcon;
+    sendBtn.disabled = busy ? false : !inputEl.value.trim();
+    sendBtn.setAttribute('aria-label', busy ? '停止' : '发送');
+  }
+
+  function stopGenerating() {
+    if (abortCtrl) abortCtrl.abort();
   }
 
   function autoGrow() {
@@ -429,7 +466,7 @@
   inputEl.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
   });
-  sendBtn.addEventListener('click', send);
+  sendBtn.addEventListener('click', function () { if (sending) stopGenerating(); else send(); });
   newBtn.addEventListener('click', newSession);
 
   // ===== 移动端抽屉侧栏 =====
