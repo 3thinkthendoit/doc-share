@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -82,16 +84,111 @@ func maskArgs(argsJSON string) string {
 	return argsJSON
 }
 
-// chatSystemPrompt 默认系统提示词（未启用智能体时使用）
+// chatSystemPrompt 默认系统提示词（未启用智能体时使用）。
+// 链接一律用占位符 {{doc:<id>}} / {{share:<id>}}，服务端流式替换为真实 URL ——
+// 模型接触不到真实 URL，从根上杜绝编造/改写链接。
 const chatSystemPrompt = "你是 DocShare 文档平台的 AI 助手，用与用户相同的语言回答，回答使用 Markdown 格式。" +
 	"平台已提供文档检索工具（search_documents / read_document / list_projects）。" +
 	"当用户询问平台内容、文档细节时请主动调用工具查询后再回答，引用时注明文档标题。" +
 	"注意：search_documents 只返回文档元数据（标题/ID/链接），需要正文内容时必须再调用 read_document 获取。" +
 	"工具返回的结果是真实可信的，请直接基于结果作答，不要声称\"没有找到\"除非结果确实为空。" +
-	"工具结果中的 Markdown 链接是可点击的预览/分享地址，修改或创建文档后请把链接贴给用户方便实时查看效果。" +
-	"【链接必须逐字引用工具返回的 Markdown 链接，严禁自己构造、改写或猜测任何 URL（包括把 /doc/<slug> 改写成 /docs/<id> 之类）】。" +
-	"本站链接只有两种正确格式：文档预览 https://<站点域名>/doc/<slug>，分享 https://<站点域名>/s/<token>；出现任何其他形式（如 /docs/<数字ID>）即为错误。" +
+	"【引用链接的唯一方式：原样输出工具结果中给出的占位符，如 {{doc:8}} 或 {{share:8}}，系统会自动替换为真实可点击链接】。" +
+	"严禁自己输出任何 http:// 或 https:// 开头的 URL，严禁改写、猜测或拼接链接格式。" +
 	"没有工具结果支持的信息（如分享链接、密码、过期时间）一律不要输出，先调用工具获取。"
+
+// linkPlaceholderRe 匹配工具结果/模型输出中的链接占位符 {{doc:<id>}} 与 {{share:<id>}}
+var linkPlaceholderRe = regexp.MustCompile(`\{\{(doc|share):(\d+)\}\}`)
+
+// newLinkResolver 流式链接替换器：把模型输出中的 {{doc:<id>}} / {{share:<id>}}
+// 占位符实时替换为查库得到的真实链接。模型全程接触不到真实 URL，无法编造。
+// 返回 (transform, flush)：transform 逐 delta 调用，返回替换后的文本；
+// flush 在流结束时调用，吐出缓冲中未闭合的残片。
+func (a *App) newLinkResolver(c *gin.Context, user *model.User) (transform func(string) string, flush func() string) {
+	base := a.siteBaseURL(c)
+	// 可见性：与文档列表一致（自己的 ∪ 参与项目内的；管理员全部）
+	var memberPids []uint
+	if !user.IsAdmin() {
+		a.DB.Model(&model.ProjectMember{}).Where("user_id = ?", user.ID).Pluck("project_id", &memberPids)
+	}
+	docCache := map[int64]string{}
+	docLink := func(id int64) (string, bool) {
+		if u, ok := docCache[id]; ok {
+			return u, u != ""
+		}
+		var doc model.Document
+		tx := a.DB.Select("id")
+		if !user.IsAdmin() {
+			if len(memberPids) == 0 {
+				tx = tx.Where("owner_id = ?", user.ID)
+			} else {
+				tx = tx.Where("owner_id = ? OR project_id IN ?", user.ID, memberPids)
+			}
+		}
+		if err := tx.First(&doc, id).Error; err != nil {
+			docCache[id] = "" // 不可见/不存在，缓存否定结果
+			return "", false
+		}
+		u := base + "/console/docs/" + strconv.FormatInt(id, 10) + "/preview"
+		docCache[id] = u
+		return u, true
+	}
+	shareLink := func(id int64) (string, bool) {
+		var doc model.Document
+		if err := a.DB.Select("id", "owner_id").First(&doc, id).Error; err != nil {
+			return "", false
+		}
+		// 分享 token 是属主的管理凭证：仅属主/管理员给真实分享链接，否则降级为文档链接
+		if !user.IsAdmin() && doc.OwnerID != user.ID {
+			return "", false
+		}
+		var sh model.Share
+		if err := a.DB.Where("document_id = ?", id).First(&sh).Error; err != nil {
+			return "", false
+		}
+		return base + "/s/" + sh.ShareToken, true
+	}
+	resolve := func(kind string, id int64) string {
+		if kind == "share" {
+			if u, ok := shareLink(id); ok {
+				return u
+			}
+		}
+		if u, ok := docLink(id); ok {
+			return u
+		}
+		return "（链接不可用）"
+	}
+	var buf string
+	transform = func(delta string) string {
+		buf += delta
+		var out strings.Builder
+		for {
+			loc := linkPlaceholderRe.FindStringSubmatchIndex(buf)
+			if loc == nil {
+				break
+			}
+			out.WriteString(buf[:loc[0]])
+			id, _ := strconv.ParseInt(buf[loc[4]:loc[5]], 10, 64)
+			out.WriteString(resolve(buf[loc[2]:loc[3]], id))
+			buf = buf[loc[1]:]
+		}
+		// 可能是半截占位符的部分留在缓冲，等下一个 delta 拼齐
+		if i := strings.LastIndex(buf, "{{"); i >= 0 {
+			out.WriteString(buf[:i])
+			buf = buf[i:]
+		} else {
+			out.WriteString(buf)
+			buf = ""
+		}
+		return out.String()
+	}
+	flush = func() string {
+		t := buf
+		buf = ""
+		return t
+	}
+	return transform, flush
+}
 
 // ChatPage 在线体验页面（登录用户）
 func (a *App) ChatPage(c *gin.Context) {
@@ -221,7 +318,7 @@ func (a *App) ChatCompletions(c *gin.Context) {
 	}
 
 	// 数据工具：按当前用户权限检索/读取站内文档
-	tools, execTool := a.chatTools(c, user)
+	tools, execTool := a.chatTools(user)
 
 	// SSE 响应头
 	c.Writer.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
@@ -235,6 +332,16 @@ func (a *App) ChatCompletions(c *gin.Context) {
 		}
 	}
 
+	// 流式链接替换：模型输出占位符 {{doc:id}}/{{share:id}}，此处查库换成真实链接
+	resolveDelta, flushDelta := a.newLinkResolver(c, user)
+	emitDelta := func(delta string) string {
+		out := resolveDelta(delta)
+		if out != "" {
+			writeEvent(`{"delta":` + jsonQuote(out) + `}`)
+		}
+		return out
+	}
+
 	var final strings.Builder   // 最终轮正文（唯一落库/外显的内容）
 	var anyEmitted bool         // 是否有任何正文流出过（用于错误兜底判断）
 	toolCache := map[string]string{} // 重复的相同调用直接复用结果，防止模型原地打转
@@ -243,7 +350,7 @@ func (a *App) ChatCompletions(c *gin.Context) {
 		assistant, err := cfg.StreamChat(c.Request.Context(), msgs, tools, func(delta string) {
 			rc.WriteString(delta)
 			anyEmitted = true
-			writeEvent(`{"delta":` + jsonQuote(delta) + `}`)
+			emitDelta(delta)
 		})
 		if err != nil {
 			if !anyEmitted {
@@ -321,6 +428,12 @@ func (a *App) ChatCompletions(c *gin.Context) {
 		writeEvent(`{"tool":` + jsonQuote(strings.Join(names, ", ")) + `}`)
 	}
 
+	// 吐出缓冲中未闭合的占位符残片
+	if tail := flushDelta(); tail != "" {
+		final.WriteString(tail)
+		writeEvent(`{"delta":` + jsonQuote(tail) + `}`)
+	}
+
 	reply := final.String()
 
 	// 兜底：轮数打满但模型全程未输出正文（如最后一轮仍在调工具）——
@@ -328,8 +441,7 @@ func (a *App) ChatCompletions(c *gin.Context) {
 	if strings.TrimSpace(reply) == "" {
 		var fb strings.Builder
 		respMsg, err := cfg.StreamChat(c.Request.Context(), msgs, nil, func(delta string) {
-			fb.WriteString(delta)
-			writeEvent(`{"delta":` + jsonQuote(delta) + `}`)
+			fb.WriteString(emitDelta(delta))
 		})
 		if err == nil && strings.TrimSpace(respMsg.Content) != "" {
 			reply = respMsg.Content

@@ -1013,6 +1013,7 @@
   "set.llmBaseURL": "API base URL",
   "set.llmAPIKey": "API Key",
   "set.llmModel": "Model name",
+"set.llmTemp": "Temperature (0 = provider default; lower is stricter)",
   "set.testLLM": "Test connection",
   "set.testLLMOk": "Connected, AI service is available",
   "set.testLLMFail": "Connection failed"

@@ -144,6 +144,9 @@
           <input type="text" name="llm_model" value="{{.set.LLM.Model}}" placeholder="deepseek-chat" autocomplete="off">
         </label>
       </div>
+      <label style="max-width:280px">{{$.T "set.llmTemp"}}
+        <input type="number" name="llm_temperature" value="{{.set.LLM.Temperature}}" min="0" max="2" step="0.1" placeholder="0 = 上游默认">
+      </label>
       <div style="display:flex;align-items:center;gap:12px;margin:14px 0 6px">
         <button type="button" class="btn btn-sm" id="testLLMBtn">{{$.T "set.testLLM"}}</button>
       </div>
@@ -348,7 +351,8 @@
       allow_share_apply: form.allow_share_apply.checked,
       llm_base_url: form.llm_base_url.value.trim(),
       llm_api_key: form.llm_api_key.value,
-      llm_model: form.llm_model.value.trim()
+      llm_model: form.llm_model.value.trim(),
+      llm_temperature: form.llm_temperature.value.trim()
     };
     try {
       var res = await fetch('/console/api/settings', {

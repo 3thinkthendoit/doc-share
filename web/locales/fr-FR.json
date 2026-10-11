@@ -1013,6 +1013,7 @@
   "set.llmBaseURL": "URL de base de l'API",
   "set.llmAPIKey": "Clé API",
   "set.llmModel": "Nom du modèle",
+"set.llmTemp": "Température d'échantillonnage (0 = défaut du fournisseur ; plus bas = plus strict)",
   "set.testLLM": "Tester la connexion",
   "set.testLLMOk": "Connexion réussie, le service IA est disponible",
   "set.testLLMFail": "Échec de la connexion"

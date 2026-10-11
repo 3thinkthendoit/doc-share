@@ -21,6 +21,8 @@ type Config struct {
 	BaseURL string `json:"base_url"` // 如 https://api.deepseek.com（不含 /chat/completions）
 	APIKey  string `json:"api_key"`
 	Model   string `json:"model"` // 如 deepseek-chat、qwen-max
+	// Temperature 采样温度：越低越保守。0 表示不传该字段（使用上游默认，通常 1.0）。
+	Temperature float64 `json:"temperature,omitempty"`
 }
 
 // Valid 配置是否完整可用
@@ -73,10 +75,11 @@ type ToolFunc struct {
 
 // completionsRequest /chat/completions 请求体（仅覆盖用到的字段）
 type completionsRequest struct {
-	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
-	Stream   bool      `json:"stream"`
-	Tools    []Tool    `json:"tools,omitempty"`
+	Model       string    `json:"model"`
+	Messages    []Message `json:"messages"`
+	Stream      bool      `json:"stream"`
+	Tools       []Tool    `json:"tools,omitempty"`
+	Temperature float64   `json:"temperature,omitempty"`
 }
 
 // completionsResponse 非流式响应（连通性测试用）
@@ -131,8 +134,9 @@ func (c Config) Ping(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, pingTimeout)
 	defer cancel()
 	req, err := c.newRequest(ctx, completionsRequest{
-		Model:    c.Model,
-		Messages: []Message{{Role: "user", Content: "hi"}},
+		Model:       c.Model,
+		Messages:    []Message{{Role: "user", Content: "hi"}},
+		Temperature: c.Temperature,
 	})
 	if err != nil {
 		return err
@@ -187,10 +191,11 @@ func (c Config) StreamChat(ctx context.Context, messages []Message, tools []Tool
 // streamOnce 执行一次流式请求（不降级）
 func (c Config) streamOnce(ctx context.Context, messages []Message, tools []Tool, onDelta func(string)) (Message, error) {
 	req, err := c.newRequest(ctx, completionsRequest{
-		Model:    c.Model,
-		Messages: messages,
-		Stream:   true,
-		Tools:    tools,
+		Model:       c.Model,
+		Messages:    messages,
+		Stream:      true,
+		Tools:       tools,
+		Temperature: c.Temperature,
 	})
 	if err != nil {
 		return Message{}, err

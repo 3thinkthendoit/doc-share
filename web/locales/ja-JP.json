@@ -1013,6 +1013,7 @@
   "set.llmBaseURL": "APIベースURL",
   "set.llmAPIKey": "APIキー",
   "set.llmModel": "モデル名",
+"set.llmTemp": "サンプリング温度（0=プロバイダ既定、低いほど厳密）",
   "set.testLLM": "接続テスト",
   "set.testLLMOk": "接続成功、AIサービスを利用できます",
   "set.testLLMFail": "接続に失敗しました"

@@ -1013,6 +1013,7 @@
   "set.llmBaseURL": "介面位址",
   "set.llmAPIKey": "API 金鑰",
   "set.llmModel": "模型名稱",
+"set.llmTemp": "取樣溫度（0=上游預設，越低越嚴謹）",
   "set.testLLM": "測試連通性",
   "set.testLLMOk": "連線成功，AI 服務可用",
   "set.testLLMFail": "連線失敗"

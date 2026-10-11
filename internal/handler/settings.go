@@ -106,6 +106,7 @@ const (
 	keyLLMBaseURL = "llm_base_url" // OpenAI 兼容接口地址
 	keyLLMAPIKey  = "llm_api_key"  // API Key
 	keyLLMModel   = "llm_model"    // 模型名
+	keyLLMTemp    = "llm_temperature" // 采样温度（0 = 用上游默认）
 )
 
 func boolVal(s string) bool { return s == "1" || s == "true" }
@@ -196,6 +197,10 @@ func (a *App) Settings() SiteSettings {
 			s.LLM.APIKey = strings.TrimSpace(r.Value)
 		case keyLLMModel:
 			s.LLM.Model = strings.TrimSpace(r.Value)
+		case keyLLMTemp:
+			if t, err := strconv.ParseFloat(strings.TrimSpace(r.Value), 64); err == nil && t >= 0 && t <= 2 {
+				s.LLM.Temperature = t
+			}
 		}
 	}
 
@@ -252,6 +257,7 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		LLMBaseURL string `json:"llm_base_url"`
 		LLMAPIKey  string `json:"llm_api_key"`
 		LLMModel   string `json:"llm_model"`
+		LLMTemp    string `json:"llm_temperature"`
 	}
 	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -366,6 +372,7 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		keyLLMBaseURL:           strings.TrimSpace(req.LLMBaseURL),
 		keyLLMAPIKey:            strings.TrimSpace(req.LLMAPIKey),
 		keyLLMModel:             strings.TrimSpace(req.LLMModel),
+		keyLLMTemp:              strings.TrimSpace(req.LLMTemp),
 	}
 	// 单条批量 upsert（INSERT ... ON DUPLICATE KEY UPDATE）：
 	// 一次网络往返写完全部设置。逐条 SELECT+UPDATE 在远程 MySQL 上要 2N 次往返，保存明显变慢
@@ -444,16 +451,22 @@ func (a *App) TestLLM(c *gin.Context) {
 		LLMBaseURL string `json:"llm_base_url"`
 		LLMAPIKey  string `json:"llm_api_key"`
 		LLMModel   string `json:"llm_model"`
+		LLMTemp    string `json:"llm_temperature"`
 	}
 	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 		return
 	}
 	saved := a.Settings().LLM
+	temp := saved.Temperature
+	if t, err := strconv.ParseFloat(strings.TrimSpace(req.LLMTemp), 64); err == nil && t >= 0 && t <= 2 {
+		temp = t
+	}
 	cfg := llm.Config{
-		BaseURL: firstNonEmpty(req.LLMBaseURL, saved.BaseURL),
-		APIKey:  firstNonEmpty(req.LLMAPIKey, saved.APIKey),
-		Model:   firstNonEmpty(req.LLMModel, saved.Model),
+		BaseURL:     firstNonEmpty(req.LLMBaseURL, saved.BaseURL),
+		APIKey:      firstNonEmpty(req.LLMAPIKey, saved.APIKey),
+		Model:       firstNonEmpty(req.LLMModel, saved.Model),
+		Temperature: temp,
 	}
 	if !cfg.Valid() {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请先填写接口地址与模型名"})

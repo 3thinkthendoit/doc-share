@@ -11,7 +11,6 @@ import (
 	"doc-share/internal/model"
 	"doc-share/internal/util"
 
-	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -49,9 +48,9 @@ func aiNeedsApproval(tc llm.ToolCallMsg) bool {
 }
 
 // chatTools 返回当前用户可用的工具定义与执行器（exec 按 OpenAI 传来的 JSON 参数执行）。
-// c 用于生成站点的绝对预览/分享链接。
-func (a *App) chatTools(c *gin.Context, user *model.User) (defs []llm.Tool, exec func(name, argsJSON string) (string, error)) {
-	base := a.siteBaseURL(c)
+// 工具结果中一律不出现真实 URL，链接用占位符 {{doc:<id>}} / {{share:<id>}} 表示，
+// 由服务端在流式输出时替换为真实链接（防止模型编造/改写 URL，见 chat.go 的 newLinkResolver）。
+func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, argsJSON string) (string, error)) {
 	// 用户可见的项目 ID 只查一次，scope 闭包复用
 	var memberPids []uint
 	if !user.IsAdmin() {
@@ -293,7 +292,7 @@ func (a *App) chatTools(c *gin.Context, user *model.User) (defs []llm.Tool, exec
 			}
 			out := make([]string, 0, len(docs))
 			for _, d := range docs {
-				out = append(out, fmt.Sprintf("- id=%d [%s] [%s](%s/doc/%s)（版本 %s）", d.ID, d.Type, d.Title, base, d.Slug, d.Version))
+				out = append(out, fmt.Sprintf("- id=%d [%s] 《%s》{{doc:%d}}（版本 %s）", d.ID, d.Type, d.Title, d.ID, d.Version))
 			}
 			return clip(strings.Join(out, "\n")), nil
 
@@ -307,7 +306,7 @@ func (a *App) chatTools(c *gin.Context, user *model.User) (defs []llm.Tool, exec
 				return "", fmt.Errorf("文档不存在或无权访问（id=%d）", id)
 			}
 			if doc.Type == model.DocTypeHTML {
-				return clip(fmt.Sprintf("《%s》是整站文档（正文由多个文件组成，存储于对象存储），请引用链接 [%s](%s/doc/%s) 让用户自行查看。", doc.Title, doc.Title, base, doc.Slug)), nil
+				return clip(fmt.Sprintf("《%s》是整站文档（正文由多个文件组成，存储于对象存储），请引用链接 {{doc:%d}} 让用户自行查看。", doc.Title, doc.ID)), nil
 			}
 			return clip(fmt.Sprintf("《%s》（版本 %s）正文：\n\n%s", doc.Title, doc.Version, doc.Content)), nil
 
@@ -343,7 +342,7 @@ func (a *App) chatTools(c *gin.Context, user *model.User) (defs []llm.Tool, exec
 			}
 			out := make([]string, 0, len(docs))
 			for _, d := range docs {
-				out = append(out, fmt.Sprintf("- id=%d [%s] [%s](%s/doc/%s)（版本 %s）", d.ID, d.Type, d.Title, base, d.Slug, d.Version))
+				out = append(out, fmt.Sprintf("- id=%d [%s] 《%s》{{doc:%d}}（版本 %s）", d.ID, d.Type, d.Title, d.ID, d.Version))
 			}
 			return clip(strings.Join(out, "\n")), nil
 
@@ -357,14 +356,14 @@ func (a *App) chatTools(c *gin.Context, user *model.User) (defs []llm.Tool, exec
 				return "", fmt.Errorf("文档不存在或无权访问（id=%d）", id)
 			}
 			var b strings.Builder
-			fmt.Fprintf(&b, "《%s》\n站内链接: [%s](%s/doc/%s)", doc.Title, doc.Title, base, doc.Slug)
+			fmt.Fprintf(&b, "《%s》\n站内链接: {{doc:%d}}", doc.Title, doc.ID)
 			var sh model.Share
 			if err := a.DB.Where("document_id = ?", doc.ID).First(&sh).Error; err == nil {
 				// 分享 token 是属主的管理凭证：仅属主/管理员可见，项目 edit 角色也不暴露
 				if !user.IsAdmin() && doc.OwnerID != user.ID {
 					b.WriteString("\n该文档已开启分享（详情请联系文档属主）。")
 				} else {
-					fmt.Fprintf(&b, "\n已开启分享: /share/%s（可编辑: %v", sh.ShareToken, sh.CanEdit)
+					fmt.Fprintf(&b, "\n已开启分享: {{share:%d}}（可编辑: %v", doc.ID, sh.CanEdit)
 					if sh.Password != "" {
 						b.WriteString("，需密码")
 					}
@@ -430,7 +429,7 @@ func (a *App) chatTools(c *gin.Context, user *model.User) (defs []llm.Tool, exec
 			if err := a.aiApplyDocUpdate(user, &doc, doc.Title, doc.Title, rev.Content, true); err != nil {
 				return "", fmt.Errorf("恢复失败: %v", err)
 			}
-			return clip(fmt.Sprintf("已把《%s》恢复到修订 %d 的内容（当前内容已存为新修订，当前版本 %s）。预览：[%s](%s/doc/%s)", doc.Title, rid, doc.Version, doc.Title, base, doc.Slug)), nil
+			return clip(fmt.Sprintf("已把《%s》恢复到修订 %d 的内容（当前内容已存为新修订，当前版本 %s）。预览：{{doc:%d}}", doc.Title, rid, doc.Version, doc.ID)), nil
 
 		case "delete_document":
 			id := argInt("id", 0)
@@ -492,7 +491,7 @@ func (a *App) chatTools(c *gin.Context, user *model.User) (defs []llm.Tool, exec
 			if err := a.DB.Unscoped().Model(&model.Document{}).Where("id = ?", doc.ID).Update("deleted_at", nil).Error; err != nil {
 				return "", fmt.Errorf("恢复失败: %v", err)
 			}
-			return clip(fmt.Sprintf("已从回收站恢复《%s》（id=%d）。预览：[%s](%s/doc/%s)", doc.Title, doc.ID, doc.Title, base, doc.Slug)), nil
+			return clip(fmt.Sprintf("已从回收站恢复《%s》（id=%d）。预览：{{doc:%d}}", doc.Title, doc.ID, doc.ID)), nil
 
 		case "list_templates":
 			tx := a.DB.Model(&model.DocTemplate{})
@@ -572,7 +571,7 @@ func (a *App) chatTools(c *gin.Context, user *model.User) (defs []llm.Tool, exec
 			if err := a.DB.Create(&doc).Error; err != nil {
 				return "", fmt.Errorf("创建失败: %v", err)
 			}
-			return clip(fmt.Sprintf("已按模板《%s》创建文档：[%s](%s/doc/%s)（id=%d）", tpl.Name, doc.Title, base, doc.Slug, doc.ID)), nil
+			return clip(fmt.Sprintf("已按模板《%s》创建文档：{{doc:%d}}（id=%d）", tpl.Name, doc.ID, doc.ID)), nil
 
 		case "set_share":
 			// 与页面 UpsertShare 相同的语义；权限：属主或管理员
@@ -624,7 +623,6 @@ func (a *App) chatTools(c *gin.Context, user *model.User) (defs []llm.Tool, exec
 				return "", fmt.Errorf("分享设置失败: %v", err)
 			}
 			a.DB.Model(&doc).Update("is_shared", true)
-			link := base + "/s/" + share.ShareToken
 			note := ""
 			if share.Password != "" {
 				note += "（已设密码）"
@@ -632,7 +630,7 @@ func (a *App) chatTools(c *gin.Context, user *model.User) (defs []llm.Tool, exec
 			if share.CanEdit {
 				note += "（登录用户可编辑）"
 			}
-			return clip(fmt.Sprintf("分享已开启：[%s](%s)%s", link, link, note)), nil
+			return clip(fmt.Sprintf("分享已开启：{{share:%d}}%s", doc.ID, note)), nil
 
 		case "update_document":
 			id := argInt("id", 0)
@@ -679,7 +677,7 @@ func (a *App) chatTools(c *gin.Context, user *model.User) (defs []llm.Tool, exec
 			if hasContent && strings.TrimSpace(content) == "" {
 				saved += "（传入的 content 为空白，已忽略）"
 			}
-			return fmt.Sprintf("文档已保存：[%s](%s/doc/%s)（id=%d，版本 %s）%s", doc.Title, base, doc.Slug, doc.ID, ver, saved), nil
+			return fmt.Sprintf("文档已保存：{{doc:%d}}（id=%d，版本 %s）%s", doc.ID, doc.ID, ver, saved), nil
 
 		case "create_document":
 			title := argStr("title")
@@ -710,7 +708,7 @@ func (a *App) chatTools(c *gin.Context, user *model.User) (defs []llm.Tool, exec
 			if err := a.DB.Create(&doc).Error; err != nil {
 				return "", fmt.Errorf("创建失败: %v", err)
 			}
-			return fmt.Sprintf("文档已创建：[%s](%s/doc/%s)（id=%d）", doc.Title, base, doc.Slug, doc.ID), nil
+			return fmt.Sprintf("文档已创建：{{doc:%d}}（id=%d）", doc.ID, doc.ID), nil
 		}
 		return "", fmt.Errorf("未知工具: %s", name)
 	}
