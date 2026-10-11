@@ -198,8 +198,11 @@ func (a *App) Settings() SiteSettings {
 		case keyLLMModel:
 			s.LLM.Model = strings.TrimSpace(r.Value)
 		case keyLLMTemp:
-			if t, err := strconv.ParseFloat(strings.TrimSpace(r.Value), 64); err == nil && t >= 0 && t <= 2 {
-				s.LLM.Temperature = t
+			// 空值 = 未设置（不传字段，用上游默认）；填了数字（含 0）= 显式下发
+			if v := strings.TrimSpace(r.Value); v == "" {
+				s.LLM.Temperature = nil
+			} else if t, err := strconv.ParseFloat(v, 64); err == nil && t >= 0 && t <= 2 {
+				s.LLM.Temperature = &t
 			}
 		}
 	}
@@ -459,8 +462,10 @@ func (a *App) TestLLM(c *gin.Context) {
 	}
 	saved := a.Settings().LLM
 	temp := saved.Temperature
-	if t, err := strconv.ParseFloat(strings.TrimSpace(req.LLMTemp), 64); err == nil && t >= 0 && t <= 2 {
-		temp = t
+	if v := strings.TrimSpace(req.LLMTemp); v != "" {
+		if t, err := strconv.ParseFloat(v, 64); err == nil && t >= 0 && t <= 2 {
+			temp = &t
+		}
 	}
 	cfg := llm.Config{
 		BaseURL:     firstNonEmpty(req.LLMBaseURL, saved.BaseURL),

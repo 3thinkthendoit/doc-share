@@ -1,6 +1,6 @@
 {
-  "head": "03a040f73f9bb1e9333b44f3000f552d6f9f0a99",
-  "reviewedAt": "2026-10-12T00:55:00+08:00",
-  "lastReviewedCommit": "03a040f73f9bb1e9333b44f3000f552d6f9f0a99",
-  "notes": "第十三次审核：未提交改动（chat.go assistant ToolCalls 回传真因修复 + chatSystemPrompt 精简重写 + 阅读意图本轮禁工具 + 文档预读兜底 + extractDocIDs；chat.html 流式 working 动画 + 错误清动画/重发；5 语言包 chat.working 改字面；client_test.go 回归）。审核中已清理 P1 死分支 + P2 死变量 preloaded，测试通过。结论：可合并。P2 提示：极少数严格网关拒绝 content:null+tool_calls 共存，备选方案 Content 改 RawMessage。历史遗留：预览整行回写抹行内标记、total_chars 措辞、aiExecTool 不感知 ctx 取消、content LIKE 全表扫（需 FTS）。已修：toolCache 前置、日配额本地零点、流中 error 重发按钮、会话消息上限。"
+  "head": "d9a200d1c966d60657325b697463b4b4ac5866d9",
+  "reviewedAt": "2026-10-12T02:40:00+08:00",
+  "lastReviewedCommit": "d9a200d1c966d60657325b697463b4b4ac5866d9",
+  "notes": "第十六次审核（chat.go 增量）：P0 已修——trimHistory 头插产出时间倒序上下文（日志实锤 [1]=最新问题），重写为正序+反转，新增 chat_trim_test.go 锁死顺序；P1 已修——reHistDocID 只认'文档 id=N'而真实历史是'- id=19 [markdown]'，编辑短句兜底成死代码，放宽为大小写不敏感+可省略前缀，补真实形态回归测试；P2 已修——readIntentTitle 宽松兜底对修改类消息整句当标题搜索，现修改类必须带 ID/《标题》；usage 改为仅最终轮回传。全量 go test ./internal/... 通过。结论：可合并。遗留：①Message.Usage 会随多轮 msgs 序列化发给上游（注释称不外发，严格网关可能 400）；②标题注入命中 HTML 整站文档时注入的是提示语而非正文但 forceAnswer=true；③提示词长度与 16 个工具数量对 flash 级模型可能有负作用（fb4b4b9 对照实验未做）。历史遗留：预览整行回写抹行内标记、content LIKE 全表扫（需 FTS）、严格网关拒绝 content:null+tool_calls 共存。"
 }

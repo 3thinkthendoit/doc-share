@@ -21,8 +21,9 @@ type Config struct {
 	BaseURL string `json:"base_url"` // 如 https://api.deepseek.com（不含 /chat/completions）
 	APIKey  string `json:"api_key"`
 	Model   string `json:"model"` // 如 deepseek-chat、qwen-max
-	// Temperature 采样温度：越低越保守。0 表示不传该字段（使用上游默认，通常 1.0）。
-	Temperature float64 `json:"temperature,omitempty"`
+	// Temperature 采样温度：越低越保守。指针类型，显式设置 0 也会下发；
+	// nil（未设置）才表示不传该字段、使用上游默认。
+	Temperature *float64 `json:"temperature,omitempty"`
 }
 
 // Valid 配置是否完整可用
@@ -37,6 +38,15 @@ type Message struct {
 	Content    string        `json:"content,omitempty"`
 	ToolCalls  []ToolCallMsg `json:"tool_calls,omitempty"`
 	ToolCallID string        `json:"tool_call_id,omitempty"`
+	// 单轮对话结束后由上游返回的 token 用量（仅最终轮有效，不外发到上游）
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+// Usage 单次调用的 token 用量（OpenAI 兼容协议字段命名）
+type Usage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
 }
 
 // ToolCallMsg 消息体里的函数调用（请求/响应序列化用，不含流式专用的 index 字段）
@@ -75,11 +85,17 @@ type ToolFunc struct {
 
 // completionsRequest /chat/completions 请求体（仅覆盖用到的字段）
 type completionsRequest struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	Stream      bool      `json:"stream"`
-	Tools       []Tool    `json:"tools,omitempty"`
-	Temperature float64   `json:"temperature,omitempty"`
+	Model       string        `json:"model"`
+	Messages    []Message     `json:"messages"`
+	Stream      bool          `json:"stream"`
+	Tools       []Tool        `json:"tools,omitempty"`
+	Temperature *float64      `json:"temperature,omitempty"`
+	// 要求上游在最终 chunk 返回本轮 usage；多数 OpenAI 兼容网关支持
+	StreamOptions *StreamOpts  `json:"stream_options,omitempty"`
+}
+
+type StreamOpts struct {
+	IncludeUsage bool `json:"include_usage"`
 }
 
 // completionsResponse 非流式响应（连通性测试用）
@@ -101,6 +117,7 @@ type streamChunk struct {
 		} `json:"delta"`
 		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
+	Usage *Usage    `json:"usage,omitempty"`
 	Error *struct {
 		Message string `json:"message"`
 	} `json:"error,omitempty"`
@@ -176,13 +193,29 @@ func (c Config) StreamChat(ctx context.Context, messages []Message, tools []Tool
 	ctx, cancel := context.WithTimeout(ctx, streamTimeout)
 	defer cancel()
 	log.Printf("[llm] 请求 model=%s msgs=%d tools=%d url=%s", c.Model, len(messages), len(tools), c.endpoint())
+	// 消息序列结构化日志：role + 长度 + 是否含 tool_calls + 开头摘要，
+	// 用于排查"工具结果是否真的发到了上游""哪条消息被截断"
+	var seq strings.Builder
+	for i, m := range messages {
+		head := m.Content
+		if r := []rune(head); len(r) > 30 {
+			head = string(r[:30])
+		}
+		tc := ""
+		if len(m.ToolCalls) > 0 {
+			tc = fmt.Sprintf(" tool_calls=%d", len(m.ToolCalls))
+		}
+		seq.WriteString(fmt.Sprintf("\n  [%d] %s len=%d%s %q", i, m.Role, len(m.Content), tc, head))
+	}
+	log.Printf("[llm] 消息序列:%s", seq.String())
 	msg, err := c.streamOnce(ctx, messages, tools, onDelta)
 	if err == nil {
 		log.Printf("[llm] 完成 model=%s tools=%d content_len=%d tool_calls=%d", c.Model, len(tools), len(msg.Content), len(msg.ToolCalls))
 		return msg, nil
 	}
 	if tools != nil && (strings.Contains(err.Error(), "服务返回 400") || strings.Contains(err.Error(), "服务返回 422")) {
-		log.Printf("[llm] 带 tools 请求被上游拒绝（%v），自动降级为纯对话重试", err)
+		// 降级是丢上下文的重灾区：原错误体必须完整留档，便于定位上游为何拒绝
+		log.Printf("[llm] 带 tools 请求被上游拒绝（%v），自动降级为纯对话重试（模型将看不到工具定义）", err)
 		return c.streamOnce(ctx, messages, nil, onDelta)
 	}
 	return msg, err
@@ -196,6 +229,7 @@ func (c Config) streamOnce(ctx context.Context, messages []Message, tools []Tool
 		Stream:      true,
 		Tools:       tools,
 		Temperature: c.Temperature,
+		StreamOptions: &StreamOpts{IncludeUsage: true},
 	})
 	if err != nil {
 		return Message{}, err
@@ -221,6 +255,7 @@ func (c Config) streamOnce(ctx context.Context, messages []Message, tools []Tool
 	}
 
 	var content strings.Builder
+	var lastUsage *Usage
 	toolAcc := map[int]*ToolCall{} // 按 index 聚合 tool_calls 增量
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -244,8 +279,10 @@ func (c Config) streamOnce(ctx context.Context, messages []Message, tools []Tool
 			return Message{}, fmt.Errorf("%s", chunk.Error.Message)
 		}
 		if len(chunk.Choices) == 0 {
+			if chunk.Usage != nil { lastUsage = chunk.Usage }
 			continue
 		}
+		if chunk.Usage != nil { lastUsage = chunk.Usage }
 		delta := chunk.Choices[0].Delta
 		if delta.Content != "" {
 			content.WriteString(delta.Content)
@@ -287,6 +324,9 @@ func (c Config) streamOnce(ctx context.Context, messages []Message, tools []Tool
 	}
 
 	assistant := Message{Role: "assistant", Content: content.String()}
+	if lastUsage != nil {
+		assistant.Usage = lastUsage
+	}
 	if len(toolAcc) > 0 {
 		idxs := make([]int, 0, len(toolAcc))
 		for i := range toolAcc {

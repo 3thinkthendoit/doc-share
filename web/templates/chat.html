@@ -109,14 +109,15 @@
 .chat-m.assistant .chat-bubble img{max-width:100%}
 .chat-m.assistant .chat-bubble td,.chat-m.assistant .chat-bubble th{border:1px solid var(--border);padding:5px 10px}
 .chat-m-error{color:#e5484d;font-size:13.5px;margin-top:6px}
+.chat-m-meta{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-top:6px;padding:3px 10px;border:1px solid var(--border);border-radius:999px;background:var(--bg);font-variant-numeric:tabular-nums}
 .chat-resend{display:inline-block;margin-top:8px;padding:4px 12px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--chat-accent);font-size:13px;cursor:pointer}
 .chat-resend:hover{border-color:var(--chat-accent)}
 .chat-tool-status{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);padding:4px 2px}
 .chat-tool-dot{width:7px;height:7px;border-radius:50%;background:linear-gradient(135deg,var(--chat-accent),var(--chat-accent2));animation:chat-pulse 1s ease-in-out infinite}
 @keyframes chat-pulse{50%{opacity:.25;transform:scale(.8)}}
 /* 流式等待加载动画 */
-.chat-working{display:inline-flex;align-items:center;color:var(--muted);font-size:13.5px}
-.chat-working .chat-dots{display:inline-block;min-width:2.2em;text-align:left}
+.chat-working{display:inline-flex;align-items:center;gap:2px;color:var(--muted);font-size:13.5px}
+.chat-working .chat-dots{display:inline-block;min-width:3em;text-align:left}
 .chat-working .chat-dots::after{content:"";animation:chat-dots 1.2s steps(1,end) infinite}
 @keyframes chat-dots{0%{content:""}17%{content:"."}33%{content:".."}50%{content:"..."}67%{content:"...."}83%{content:"....."}100%{content:""}}
 /* 流式光标 */
@@ -283,9 +284,9 @@
     return { wrap: wrap, bubble: bubble };
   }
 
-  // 流式等待占位："正在处理"+动态点，首个增量到达后被内容替换
+  // 流式等待占位：working+动态点，首个增量到达后被内容替换
   function workingHtml() {
-    return '<span class="chat-working">' + esc(UI.t('chat.working')) + '<span class="chat-dots"></span></span><span class="chat-cursor">▍</span>';
+    return '<span class="chat-working">' + esc(UI.t('chat.working')) + '<span class="chat-dots"></span></span>';
   }
 
   function appendDelta(target, delta) {
@@ -421,6 +422,18 @@
           if (payload.tool) { showToolStatus(ai, payload.tool); }
           if (payload.approval) { showApproval(ai, payload.approval); }
           if (payload.delta) { if (ai.status) { stopStatusAnim(ai); ai.status.remove(); ai.status = null; } ai.bubble.textContent = ''; ai.gotDelta = true; appendDelta(ai, payload.delta); }
+          if (payload.usage) {
+            // 多轮思考时实时更新：耗时 + 输入/输出 token 累计
+            if (!ai.meta) {
+              ai.meta = document.createElement('div');
+              ai.meta.className = 'chat-m-meta';
+              ai.wrap.appendChild(ai.meta);
+            }
+            var secs = (payload.elapsed_ms / 1000).toFixed(payload.elapsed_ms < 2000 ? 1 : 0);
+            ai.meta.textContent = UI.t('chat.meta', {
+              seconds: secs, prompt: payload.usage.prompt, completion: payload.usage.completion
+            });
+          }
           if (payload.error) {
             // 尚未有正文时清掉加载动画占位，避免"正在处理…"一直转
             if (!ai.gotDelta) ai.bubble.textContent = '';

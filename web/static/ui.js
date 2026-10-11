@@ -9,8 +9,16 @@ window.UI = (function () {
   var L10N = window.__L10N || {};
   function t(s) {
     var out = (s && L10N[s]) || s;
-    for (var i = 1; i < arguments.length; i++) {
-      out = String(out).split('{' + (i - 1) + '}').join(arguments[i]);
+    // 支持两种占位符：位置式 {0}{1}（t(key, a, b)）与命名式 {seconds}（t(key, {seconds:1})）
+    if (arguments.length === 2 && arguments[1] && typeof arguments[1] === 'object') {
+      var obj = arguments[1];
+      out = String(out).replace(/\{(\w+)\}/g, function (whole, name) {
+        return obj[name] !== undefined ? String(obj[name]) : whole;
+      });
+    } else {
+      for (var i = 1; i < arguments.length; i++) {
+        out = String(out).split('{' + (i - 1) + '}').join(arguments[i]);
+      }
     }
     return out;
   }

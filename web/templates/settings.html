@@ -145,7 +145,7 @@
         </label>
       </div>
       <label style="max-width:280px">{{$.T "set.llmTemp"}}
-        <input type="number" name="llm_temperature" value="{{.set.LLM.Temperature}}" min="0" max="2" step="0.1" placeholder="0 = 上游默认">
+        <input type="number" name="llm_temperature" {{with .set.LLM.Temperature}}value="{{.}}"{{end}} min="0" max="2" step="0.1" placeholder="留空 = 上游默认">
       </label>
       <div style="display:flex;align-items:center;gap:12px;margin:14px 0 6px">
         <button type="button" class="btn btn-sm" id="testLLMBtn">{{$.T "set.testLLM"}}</button>
