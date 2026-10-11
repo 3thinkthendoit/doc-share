@@ -61,6 +61,16 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.PUT("/api/settings", middleware.RequireAdmin(), app.UpdateSettings)
 		admin.POST("/api/settings/test-mail", middleware.RequireAdmin(), app.TestMail)
 		admin.POST("/api/settings/test-rustfs", middleware.RequireAdmin(), app.TestRustFS)
+		admin.POST("/api/settings/test-llm", middleware.RequireAdmin(), app.TestLLM)
+
+		// 在线体验：AI 对话（登录用户，会话归属个人）
+		admin.GET("/chat", app.ChatPage)
+		admin.GET("/api/chat/sessions", app.ListChatSessions)
+		admin.POST("/api/chat/sessions", app.CreateChatSession)
+		admin.DELETE("/api/chat/sessions/:id", app.DeleteChatSession)
+		admin.GET("/api/chat/sessions/:id/messages", app.ListChatMessages)
+		admin.POST("/api/chat/sessions/:id/completions", app.ChatCompletions)
+		admin.POST("/api/chat/approvals/:id", app.ReviewChatApproval)
 
 		// 项目内文档列表（属主/管理员/成员）：项目弹窗用
 		admin.GET("/api/projects/:id/docs", app.ListProjectDocs)

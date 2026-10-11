@@ -32,6 +32,17 @@ type App struct {
 
 	setMu    sync.RWMutex   // 站点设置缓存锁
 	setCache *SiteSettings  // nil 表示未加载
+
+	approvals sync.Map // AI 敏感操作待审批表：approvalID -> chatApproval
+}
+
+// chatApproval 一次待用户确认的敏感工具调用
+type chatApproval struct {
+	UserID uint
+	Tool   string
+	Args   string
+	Ch     chan bool
+	Expire time.Time
 }
 
 // NewApp 构造 App

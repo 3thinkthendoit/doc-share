@@ -15,6 +15,7 @@
     <a href="#sec-reg">{{$.T "set.regTitle"}}</a>
     <a href="#sec-mail">{{$.T "set.smtpTitle"}}</a>
     <a href="#sec-storage">{{$.T "set.storageTitle"}}</a>
+    <a href="#sec-llm">{{$.T "set.llmTitle"}}</a>
   </aside>
 
   <div class="docs-main">
@@ -126,6 +127,25 @@
             <button type="button" class="btn btn-sm" id="testRustFSBtn">{{$.T "set.testRustFS"}}</button>
           </div>
         </div>
+      </div>
+      </section>
+
+      <section id="sec-llm" class="set-sec">
+      <div class="settings-section">{{$.T "set.llmTitle"}}</div>
+      <p class="muted" style="font-size:12.5px;margin:4px 0 10px">{{$.T "set.llmTip"}}</p>
+      <label>{{$.T "set.llmBaseURL"}}
+        <input type="text" name="llm_base_url" value="{{.set.LLM.BaseURL}}" placeholder="https://api.deepseek.com" autocomplete="off">
+      </label>
+      <div class="smtp-grid">
+        <label>{{$.T "set.llmAPIKey"}}
+          <input type="password" name="llm_api_key" value="{{.set.LLM.APIKey}}" autocomplete="new-password" placeholder="sk-...">
+        </label>
+        <label>{{$.T "set.llmModel"}}
+          <input type="text" name="llm_model" value="{{.set.LLM.Model}}" placeholder="deepseek-chat" autocomplete="off">
+        </label>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;margin:14px 0 6px">
+        <button type="button" class="btn btn-sm" id="testLLMBtn">{{$.T "set.testLLM"}}</button>
       </div>
       </section>
 
@@ -279,6 +299,29 @@
     }
   });
 
+  document.getElementById('testLLMBtn').addEventListener('click', async function () {
+    var btn = this;
+    btn.disabled = true;
+    try {
+      var res = await fetch('/console/api/settings/test-llm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({
+          llm_base_url: form.llm_base_url.value.trim(),
+          llm_api_key: form.llm_api_key.value,
+          llm_model: form.llm_model.value.trim()
+        })
+      });
+      var data = await res.json();
+      if (!res.ok) { UI.alert((data && data.error) || UI.t('set.testLLMFail')); return; }
+      UI.toast(UI.t('set.testLLMOk'), 'success');
+    } catch (e) {
+      UI.alert(UI.t('set.testLLMFail'));
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
     var saveBtn = form.querySelector('button[type=submit]');
@@ -302,7 +345,10 @@
       rustfs_access_key: form.rustfs_access_key.value.trim(),
       rustfs_secret_key: form.rustfs_secret_key.value,
       rustfs_bucket: form.rustfs_bucket.value.trim(),
-      allow_share_apply: form.allow_share_apply.checked
+      allow_share_apply: form.allow_share_apply.checked,
+      llm_base_url: form.llm_base_url.value.trim(),
+      llm_api_key: form.llm_api_key.value,
+      llm_model: form.llm_model.value.trim()
     };
     try {
       var res = await fetch('/console/api/settings', {
