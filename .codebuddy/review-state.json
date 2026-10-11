@@ -1,6 +1,6 @@
 {
-  "head": "d9a200d1c966d60657325b697463b4b4ac5866d9",
-  "reviewedAt": "2026-10-12T02:40:00+08:00",
-  "lastReviewedCommit": "d9a200d1c966d60657325b697463b4b4ac5866d9",
-  "notes": "第十六次审核（chat.go 增量）：P0 已修——trimHistory 头插产出时间倒序上下文（日志实锤 [1]=最新问题），重写为正序+反转，新增 chat_trim_test.go 锁死顺序；P1 已修——reHistDocID 只认'文档 id=N'而真实历史是'- id=19 [markdown]'，编辑短句兜底成死代码，放宽为大小写不敏感+可省略前缀，补真实形态回归测试；P2 已修——readIntentTitle 宽松兜底对修改类消息整句当标题搜索，现修改类必须带 ID/《标题》；usage 改为仅最终轮回传。全量 go test ./internal/... 通过。结论：可合并。遗留：①Message.Usage 会随多轮 msgs 序列化发给上游（注释称不外发，严格网关可能 400）；②标题注入命中 HTML 整站文档时注入的是提示语而非正文但 forceAnswer=true；③提示词长度与 16 个工具数量对 flash 级模型可能有负作用（fb4b4b9 对照实验未做）。历史遗留：预览整行回写抹行内标记、content LIKE 全表扫（需 FTS）、严格网关拒绝 content:null+tool_calls 共存。"
+  "head": "b278bb5ece4384d3d928f9ed1ff23af426870e67",
+  "reviewedAt": "2026-10-12T03:05:00+08:00",
+  "lastReviewedCommit": "b278bb5ece4384d3d928f9ed1ff23af426870e67",
+  "notes": "第十七次审核：提交 b278bb5（trimHistory 正序修复+编辑意图兜底+temperature 指针化+usage 最终轮回传）已随提交审核通过；本次另审未提交工作区改动（+103/-9，8 文件）：①reasoning_content 全链路（client.go Delta 解析+StreamChat 变参 onThink+chat.go SSE think 事件+前端可折叠面板+5 语言包 chat.thinking）；②用户消息 hover 操作行（时间/编辑/复制）；③停止后 finally 清理 working 状态条；④meta 药丸换行至气泡下方。未发现 P0/P1：think 渲染用 textContent 无注入、jsonQuote 转义正确、变参保持存量调用兼容、测试全过。P3 记录：think 不落库（刷新丢失，与主流一致）；每 think 增量一个 SSE 事件+强制滚动，超长思考时事件量偏大；abort 后 think 面板保留半截内容（可回看，合理）。结论：可合并。遗留（沿上）：Message.Usage 外发上游、HTML 整站文档注入提示语、严格网关 content:null+tool_calls。历史遗留：预览整行回写抹行内标记、content LIKE 全表扫（需 FTS）。"
 }

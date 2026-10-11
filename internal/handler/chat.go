@@ -618,6 +618,9 @@ func (a *App) ChatCompletions(c *gin.Context) {
 			rc.WriteString(delta)
 			anyEmitted = true
 			emitDelta(delta)
+		}, func(think string) {
+			// 推理模型的思考过程实时下发，前端渲染为可折叠面板
+			writeEvent(`{"think":` + jsonQuote(think) + `}`)
 		})
 		if assistant.Usage != nil {
 			totalUsage.PromptTokens += assistant.Usage.PromptTokens

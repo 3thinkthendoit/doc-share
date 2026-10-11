@@ -91,7 +91,7 @@
 .chat-chip:hover{border-color:var(--chat-accent);background:rgba(99,102,241,.06);transform:translateY(-1px);box-shadow:0 4px 12px rgba(99,102,241,.14)}
 /* 消息区 */
 .chat-msgs{max-width:860px;margin:0 auto;padding:8px 8px 16px;display:flex;flex-direction:column;gap:22px}
-.chat-m{display:flex;gap:12px;align-items:flex-start;animation:chat-rise .22s ease}
+.chat-m{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;animation:chat-rise .22s ease}
 .chat-m .chat-avatar{flex:none;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-size:14px;font-weight:600;overflow:hidden;white-space:nowrap}
 .chat-m.assistant .chat-avatar{color:#fff;background:linear-gradient(135deg,var(--chat-accent),var(--chat-accent2));box-shadow:0 3px 10px rgba(99,102,241,.3)}
 .chat-m.user{flex-direction:row-reverse}
@@ -109,7 +109,16 @@
 .chat-m.assistant .chat-bubble img{max-width:100%}
 .chat-m.assistant .chat-bubble td,.chat-m.assistant .chat-bubble th{border:1px solid var(--border);padding:5px 10px}
 .chat-m-error{color:#e5484d;font-size:13.5px;margin-top:6px}
-.chat-m-meta{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-top:6px;padding:3px 10px;border:1px solid var(--border);border-radius:999px;background:var(--bg);font-variant-numeric:tabular-nums}
+.chat-m-meta{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-top:6px;padding:3px 10px;border:1px solid var(--border);border-radius:999px;background:var(--bg);font-variant-numeric:tabular-nums;flex-basis:100%;margin-left:44px}
+/* 用户消息 hover 操作行：时间 + 编辑 + 复制（参考主流 AI 对话） */
+.chat-u-acts{flex-basis:100%;display:flex;align-items:center;justify-content:flex-end;gap:2px;margin-right:44px;margin-top:2px;font-size:11.5px;color:var(--muted);opacity:0;transition:opacity .15s;user-select:none}
+.chat-m.user:hover .chat-u-acts,.chat-m.user:focus-within .chat-u-acts{opacity:1}
+.chat-u-acts button{border:none;background:none;color:var(--muted);cursor:pointer;padding:3px;border-radius:6px;display:inline-flex;align-items:center;transition:color .12s,background .12s}
+.chat-u-acts button:hover{color:var(--text);background:var(--bg-soft)}
+/* 思考过程面板：置于气泡下方，正文开始后折叠 */
+.chat-think{flex-basis:100%;margin-left:44px;margin-top:6px;border:1px dashed var(--border);border-radius:10px;background:var(--bg-soft);font-size:12.5px;color:var(--muted);max-width:78%}
+.chat-think summary{cursor:pointer;padding:6px 10px;user-select:none}
+.chat-think-body{padding:2px 10px 8px;max-height:200px;overflow-y:auto;white-space:pre-wrap;line-height:1.6}
 .chat-resend{display:inline-block;margin-top:8px;padding:4px 12px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--chat-accent);font-size:13px;cursor:pointer}
 .chat-resend:hover{border-color:var(--chat-accent)}
 .chat-tool-status{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);padding:4px 2px}
@@ -275,7 +284,42 @@
     }
     var bubble = document.createElement('div');
     bubble.className = 'chat-bubble';
-    if (role === 'user') { bubble.textContent = text; }
+    if (role === 'user') {
+      bubble.textContent = text;
+      wrap._raw = text;
+      // hover 操作行：时间 + 编辑（填回输入框）+ 复制
+      var acts = document.createElement('div');
+      acts.className = 'chat-u-acts';
+      var d = new Date();
+      var ts = document.createElement('span');
+      ts.textContent = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+      var editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.title = UI.t('chat.edit');
+      editBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>';
+      editBtn.addEventListener('click', function () {
+        inputEl.value = wrap._raw || '';
+        autoGrow();
+        inputEl.focus();
+      });
+      var copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.title = UI.t('chat.copy');
+      copyBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+      copyBtn.addEventListener('click', function () {
+        var t = wrap._raw || '';
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(t).then(function () { copyBtn.style.color = 'var(--chat-accent)'; setTimeout(function () { copyBtn.style.color = ''; }, 800); });
+        } else {
+          var ta = document.createElement('textarea');
+          ta.value = t; document.body.appendChild(ta); ta.select();
+          try { document.execCommand('copy'); copyBtn.style.color = 'var(--chat-accent)'; setTimeout(function () { copyBtn.style.color = ''; }, 800); } catch (e) {}
+          ta.remove();
+        }
+      });
+      acts.appendChild(ts); acts.appendChild(editBtn); acts.appendChild(copyBtn);
+      wrap.appendChild(acts);
+    }
     else if (streaming) { bubble.innerHTML = workingHtml(); wrap._raw = text || ''; }
     else setBubbleContent(bubble, text);
     wrap.appendChild(av); wrap.appendChild(bubble);
@@ -292,6 +336,25 @@
   function appendDelta(target, delta) {
     target.wrap._raw = (target.wrap._raw || '') + delta;
     setBubbleContent(target.bubble, target.wrap._raw);
+    scrollBottom(false);
+  }
+
+  // 思考过程面板：推理模型（reasoning_content）实时流入，正文开始后自动折叠
+  function showThink(ai, s) {
+    if (!ai.think) {
+      ai.think = document.createElement('details');
+      ai.think.className = 'chat-think';
+      ai.think.open = true;
+      var sum = document.createElement('summary');
+      sum.textContent = UI.t('chat.thinking');
+      ai.thinkPre = document.createElement('div');
+      ai.thinkPre.className = 'chat-think-body';
+      ai.think.appendChild(sum); ai.think.appendChild(ai.thinkPre);
+      ai.wrap.appendChild(ai.think);
+    }
+    if (!ai.think.open) ai.think.open = true;
+    ai.thinkPre.textContent += s;
+    ai.thinkPre.scrollTop = ai.thinkPre.scrollHeight;
     scrollBottom(false);
   }
 
@@ -421,7 +484,8 @@
           if (payload.reset) { ai.bubble.textContent = ''; if (ai.status) { stopStatusAnim(ai); ai.status.remove(); ai.status = null; } }
           if (payload.tool) { showToolStatus(ai, payload.tool); }
           if (payload.approval) { showApproval(ai, payload.approval); }
-          if (payload.delta) { if (ai.status) { stopStatusAnim(ai); ai.status.remove(); ai.status = null; } ai.bubble.textContent = ''; ai.gotDelta = true; appendDelta(ai, payload.delta); }
+          if (payload.think) { showThink(ai, payload.think); }
+          if (payload.delta) { if (ai.status) { stopStatusAnim(ai); ai.status.remove(); ai.status = null; } if (ai.think) { ai.think.open = false; } ai.bubble.textContent = ''; ai.gotDelta = true; appendDelta(ai, payload.delta); }
           if (payload.usage) {
             // 多轮思考时实时更新：耗时 + 输入/输出 token 累计
             if (!ai.meta) {
@@ -469,6 +533,9 @@
     } finally {
       sending = false;
       abortCtrl = null;
+      // 停止/失败后必须清理 working 状态条，否则它会永远转圈，
+      // 看起来像"停止没生效"
+      if (ai.status) { stopStatusAnim(ai); ai.status.remove(); ai.status = null; }
       setSendBtnBusy(false);
       loadSessions();
       scrollBottom(false);

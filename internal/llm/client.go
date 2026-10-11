@@ -113,6 +113,7 @@ type streamChunk struct {
 	Choices []struct {
 		Delta struct {
 			Content   string     `json:"content"`
+			Reasoning string     `json:"reasoning_content"` // 思考内容（deepseek-r1 系等推理模型），单独回调不混入正文
 			ToolCalls []ToolCall `json:"tool_calls"`
 		} `json:"delta"`
 		FinishReason *string `json:"finish_reason"`
@@ -184,12 +185,13 @@ func (c Config) Ping(ctx context.Context) error {
 // streamTimeout 单次对话整体超时（长回答给足时间）
 const streamTimeout = 5 * time.Minute
 
-// StreamChat 流式对话：增量文本通过 onDelta 回调返回（保证按序、在返回前回调）。
+// StreamChat 流式对话：增量文本通过 onDelta 回调返回（保证按序、在返回前回调）；
+// onThink 可为 nil，非 nil 时接收推理模型的思考内容增量（reasoning_content）。
 // tools 非空时启用 function calling：模型请求工具时不返回错误，而是把累计出的
 // assistant 消息（含 ToolCalls）返回给调用方执行后再次进入本方法。
 // 上游对带 tools 的请求返回 400/422 时（模型不支持 function calling 或格式分歧），
 // 自动去工具降级重试一次，保证对话不中断；完整错误体记入服务日志便于排查。
-func (c Config) StreamChat(ctx context.Context, messages []Message, tools []Tool, onDelta func(string)) (Message, error) {
+func (c Config) StreamChat(ctx context.Context, messages []Message, tools []Tool, onDelta func(string), onThink ...func(string)) (Message, error) {
 	ctx, cancel := context.WithTimeout(ctx, streamTimeout)
 	defer cancel()
 	log.Printf("[llm] 请求 model=%s msgs=%d tools=%d url=%s", c.Model, len(messages), len(tools), c.endpoint())
@@ -208,7 +210,11 @@ func (c Config) StreamChat(ctx context.Context, messages []Message, tools []Tool
 		seq.WriteString(fmt.Sprintf("\n  [%d] %s len=%d%s %q", i, m.Role, len(m.Content), tc, head))
 	}
 	log.Printf("[llm] 消息序列:%s", seq.String())
-	msg, err := c.streamOnce(ctx, messages, tools, onDelta)
+	var thinkFn func(string)
+	if len(onThink) > 0 {
+		thinkFn = onThink[0]
+	}
+	msg, err := c.streamOnce(ctx, messages, tools, onDelta, thinkFn)
 	if err == nil {
 		log.Printf("[llm] 完成 model=%s tools=%d content_len=%d tool_calls=%d", c.Model, len(tools), len(msg.Content), len(msg.ToolCalls))
 		return msg, nil
@@ -216,13 +222,13 @@ func (c Config) StreamChat(ctx context.Context, messages []Message, tools []Tool
 	if tools != nil && (strings.Contains(err.Error(), "服务返回 400") || strings.Contains(err.Error(), "服务返回 422")) {
 		// 降级是丢上下文的重灾区：原错误体必须完整留档，便于定位上游为何拒绝
 		log.Printf("[llm] 带 tools 请求被上游拒绝（%v），自动降级为纯对话重试（模型将看不到工具定义）", err)
-		return c.streamOnce(ctx, messages, nil, onDelta)
+		return c.streamOnce(ctx, messages, nil, onDelta, thinkFn)
 	}
 	return msg, err
 }
 
 // streamOnce 执行一次流式请求（不降级）
-func (c Config) streamOnce(ctx context.Context, messages []Message, tools []Tool, onDelta func(string)) (Message, error) {
+func (c Config) streamOnce(ctx context.Context, messages []Message, tools []Tool, onDelta func(string), onThink func(string)) (Message, error) {
 	req, err := c.newRequest(ctx, completionsRequest{
 		Model:       c.Model,
 		Messages:    messages,
@@ -284,6 +290,9 @@ func (c Config) streamOnce(ctx context.Context, messages []Message, tools []Tool
 		}
 		if chunk.Usage != nil { lastUsage = chunk.Usage }
 		delta := chunk.Choices[0].Delta
+		if delta.Reasoning != "" && onThink != nil {
+			onThink(delta.Reasoning)
+		}
 		if delta.Content != "" {
 			content.WriteString(delta.Content)
 			if onDelta != nil {
