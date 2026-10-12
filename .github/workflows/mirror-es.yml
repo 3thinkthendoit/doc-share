@@ -23,9 +23,9 @@ on:
   workflow_dispatch:
     inputs:
       es_version:
-        description: 'Elasticsearch 版本（如 8.15.0，自动兼容 v 前缀）'
+        description: 'Elasticsearch 版本（如 8.15.0、latest，自动兼容 v 前缀）'
         required: true
-        default: '8.15.0'
+        default: 'latest'
   schedule:
     - cron: '0 4 * * 1' # 每周一 04:00 UTC
 
@@ -56,7 +56,7 @@ jobs:
             echo "tag_latest=false" >> "$GITHUB_OUTPUT"
           fi
           echo "version=${VER}" >> "$GITHUB_OUTPUT"
-          echo "目标 ES 版本：${VER}（额外打 latest: ${{ steps.resolve.outputs.tag_latest }}）"
+          echo "目标 ES 版本：${VER}"
 
   build-and-push-acr:
     needs: resolve
