@@ -18,7 +18,7 @@ EXPOSE 8080
 # 替换 http.port（支持 9200 / [9200, 9299] 两种格式）
 # 单节点模式也顺带写进去
 RUN sed -i \
-    -e 's|^http.port:.*|http.port: [8080]|' \
+    -e 's|^http.port:.*|http.port: 8080|' \
     config/elasticsearch.yml \
  && echo "discovery.type: single-node" >> config/elasticsearch.yml
 
