@@ -16,8 +16,8 @@ name: mirror-es
 #      gh run download 后 docker load 即可，完全不依赖 Registry 权限。
 #
 # 部署提示：ES 8.x 默认开启安全认证（HTTPS + 密码）；
-#   内网测试可关闭：-e "xpack.security.enabled=false"
-#   单节点模式必加：-e "discovery.type=single-node"
+#   内网测试可关闭安全认证：-e "xpack.security.enabled=false"
+#   单节点模式在 Dockerfile.es 中已内置（discovery.type=single-node），启动时无需额外设置
 
 on:
   workflow_dispatch:
