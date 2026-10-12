@@ -99,8 +99,9 @@
 
       <section id="sec-storage" class="set-sec">
       <div class="settings-section">{{$.T "set.storageTitle"}}</div>
-      <label class="check"><input type="radio" name="storage_driver" value="local" {{if ne .set.StorageDriver "rustfs"}}checked{{end}}> {{$.T "set.storageLocal"}}</label>
+      <label class="check"><input type="radio" name="storage_driver" value="local" {{if ne .set.StorageDriver "rustfs"}}{{if ne .set.StorageDriver "cos"}}checked{{end}}{{end}}> {{$.T "set.storageLocal"}}</label>
       <label class="check"><input type="radio" name="storage_driver" value="rustfs" {{if eq .set.StorageDriver "rustfs"}}checked{{end}}> {{$.T "set.storageRustFS"}}</label>
+      <label class="check"><input type="radio" name="storage_driver" value="cos" {{if eq .set.StorageDriver "cos"}}checked{{end}}> {{$.T "set.storageCOS"}}</label>
       <p class="muted" style="font-size:12.5px;margin:4px 0 10px">{{$.T "set.storageTip"}}</p>
       <div id="rustfsFields" class="rustfs-fields" {{if ne .set.StorageDriver "rustfs"}}hidden{{end}}>
         <div class="smtp-grid">
@@ -125,6 +126,32 @@
           </label>
           <div style="display:flex;align-items:flex-end;padding-bottom:2px">
             <button type="button" class="btn btn-sm" id="testRustFSBtn">{{$.T "set.testRustFS"}}</button>
+          </div>
+        </div>
+      </div>
+      <div id="cosFields" class="cos-fields" {{if ne .set.StorageDriver "cos"}}hidden{{end}}>
+        <div class="smtp-grid">
+          <label>{{$.T "set.cosEndpoint"}}
+            <input type="text" name="cos_endpoint" value="{{.set.COSEndpoint}}" placeholder="https://cos.ap-guangzhou.myqcloud.com" autocomplete="off">
+          </label>
+          <label>{{$.T "set.cosRegion"}}
+            <input type="text" name="cos_region" value="{{.set.COSRegion}}" placeholder="ap-guangzhou" autocomplete="off">
+          </label>
+        </div>
+        <div class="smtp-grid">
+          <label>{{$.T "set.cosSecretID"}}
+            <input type="text" name="cos_secret_id" value="{{.set.COSSecretID}}" autocomplete="off">
+          </label>
+          <label>{{$.T "set.cosSecretKey"}}
+            <input type="password" name="cos_secret_key" value="" placeholder="{{$.T "set.cosSecretKeep"}}" autocomplete="new-password">
+          </label>
+        </div>
+        <div class="smtp-grid">
+          <label>{{$.T "set.cosBucket"}}
+            <input type="text" name="cos_bucket" value="{{.set.COSBucket}}" autocomplete="off">
+          </label>
+          <div style="display:flex;align-items:flex-end;padding-bottom:2px">
+            <button type="button" class="btn btn-sm" id="testCOSBtn">{{$.T "set.testCOS"}}</button>
           </div>
         </div>
       </div>
@@ -253,15 +280,18 @@
     }
   });
 
-  function syncRustFSFields() {
+  function syncStorageFields() {
     var rust = form.querySelector('input[name=storage_driver][value=rustfs]');
-    var box = document.getElementById('rustfsFields');
-    if (box) box.hidden = !(rust && rust.checked);
+    var cos = form.querySelector('input[name=storage_driver][value=cos]');
+    var rustBox = document.getElementById('rustfsFields');
+    var cosBox = document.getElementById('cosFields');
+    if (rustBox) rustBox.hidden = !(rust && rust.checked);
+    if (cosBox) cosBox.hidden = !(cos && cos.checked);
   }
   form.querySelectorAll('input[name=storage_driver]').forEach(function (el) {
-    el.addEventListener('change', syncRustFSFields);
+    el.addEventListener('change', syncStorageFields);
   });
-  syncRustFSFields();
+  syncStorageFields();
 
   // 左侧菜单：Tab 式切换，点击只显示对应分组（所有字段仍在同一表单内，保存不受影响）
   var menuLinks = Array.prototype.slice.call(document.querySelectorAll('.doc-side a[href^="#sec-"]'));
@@ -297,6 +327,31 @@
       UI.toast(UI.t('set.testRustFSOk'), 'success');
     } catch (e) {
       UI.alert(UI.t('set.testRustFSFail'));
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('testCOSBtn').addEventListener('click', async function () {
+    var btn = this;
+    btn.disabled = true;
+    try {
+      var res = await fetch('/console/api/settings/test-cos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({
+          cos_endpoint: form.cos_endpoint.value.trim(),
+          cos_region: form.cos_region.value.trim(),
+          cos_secret_id: form.cos_secret_id.value.trim(),
+          cos_secret_key: form.cos_secret_key.value,
+          cos_bucket: form.cos_bucket.value.trim()
+        })
+      });
+      var data = await res.json();
+      if (!res.ok) { UI.alert((data && data.error) || UI.t('set.testCOSFail')); return; }
+      UI.toast(UI.t('set.testCOSOk'), 'success');
+    } catch (e) {
+      UI.alert(UI.t('set.testCOSFail'));
     } finally {
       btn.disabled = false;
     }
@@ -348,6 +403,11 @@
       rustfs_access_key: form.rustfs_access_key.value.trim(),
       rustfs_secret_key: form.rustfs_secret_key.value,
       rustfs_bucket: form.rustfs_bucket.value.trim(),
+      cos_endpoint: form.cos_endpoint.value.trim(),
+      cos_region: form.cos_region.value.trim(),
+      cos_secret_id: form.cos_secret_id.value.trim(),
+      cos_secret_key: form.cos_secret_key.value,
+      cos_bucket: form.cos_bucket.value.trim(),
       allow_share_apply: form.allow_share_apply.checked,
       llm_base_url: form.llm_base_url.value.trim(),
       llm_api_key: form.llm_api_key.value,

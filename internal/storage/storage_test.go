@@ -83,22 +83,22 @@ func TestValidEmbedUploadKey(t *testing.T) {
 }
 
 func TestObjectKeyFromURL(t *testing.T) {
-	if got := ObjectKeyFromURL("/uploads/202609/abcdefghijklmnop.png", nil); got != "202609/abcdefghijklmnop.png" {
+	if got := ObjectKeyFromURL("/uploads/202609/abcdefghijklmnop.png", nil, nil); got != "202609/abcdefghijklmnop.png" {
 		t.Fatalf("local relative: got %q", got)
 	}
-	if got := ObjectKeyFromURL("/uploads/embed/202609/abcdefghijklmnop.png", nil); got != "embed/202609/abcdefghijklmnop.png" {
+	if got := ObjectKeyFromURL("/uploads/embed/202609/abcdefghijklmnop.png", nil, nil); got != "embed/202609/abcdefghijklmnop.png" {
 		t.Fatalf("embed relative: got %q", got)
 	}
-	if got := ObjectKeyFromURL("/uploads/202609/abcdefghijklmnop.png?v=1", nil); got != "202609/abcdefghijklmnop.png" {
+	if got := ObjectKeyFromURL("/uploads/202609/abcdefghijklmnop.png?v=1", nil, nil); got != "202609/abcdefghijklmnop.png" {
 		t.Fatalf("local query: got %q", got)
 	}
-	if got := ObjectKeyFromURL("https://example.com/uploads/202609/abcdefghijklmnop.png", nil); got != "202609/abcdefghijklmnop.png" {
+	if got := ObjectKeyFromURL("https://example.com/uploads/202609/abcdefghijklmnop.png", nil, nil); got != "202609/abcdefghijklmnop.png" {
 		t.Fatalf("local absolute: got %q", got)
 	}
-	if got := ObjectKeyFromURL("/uploads/../../../etc/passwd", nil); got != "" {
+	if got := ObjectKeyFromURL("/uploads/../../../etc/passwd", nil, nil); got != "" {
 		t.Fatalf("traversal should fail: %q", got)
 	}
-	if got := ObjectKeyFromURL("javascript:alert(1)", nil); got != "" {
+	if got := ObjectKeyFromURL("javascript:alert(1)", nil, nil); got != "" {
 		t.Fatalf("bad scheme: %q", got)
 	}
 
@@ -109,15 +109,32 @@ func TestObjectKeyFromURL(t *testing.T) {
 		Bucket:    "docs",
 	}
 	u := ObjectURL(rust.Endpoint, rust.Bucket, "202609/abcdefghijklmnop.png")
-	if got := ObjectKeyFromURL(u, rust); got != "202609/abcdefghijklmnop.png" {
+	if got := ObjectKeyFromURL(u, rust, nil); got != "202609/abcdefghijklmnop.png" {
 		t.Fatalf("rustfs url: got %q from %q", got, u)
 	}
 	eu := ObjectURL(rust.Endpoint, rust.Bucket, "embed/202609/abcdefghijklmnop.png")
-	if got := ObjectKeyFromURL(eu, rust); got != "embed/202609/abcdefghijklmnop.png" {
+	if got := ObjectKeyFromURL(eu, rust, nil); got != "embed/202609/abcdefghijklmnop.png" {
 		t.Fatalf("rustfs embed url: got %q from %q", got, eu)
 	}
-	if got := ObjectKeyFromURL(u, nil); got != "" {
+	if got := ObjectKeyFromURL(u, nil, nil); got != "" {
 		t.Fatalf("rustfs without cfg should fail: %q", got)
+	}
+
+	// COS 使用相同 URL 格式
+	cos := &COSConfig{
+		Endpoint:  "https://cos.ap-guangzhou.myqcloud.com",
+		Region:    "ap-guangzhou",
+		SecretID:  "ak",
+		SecretKey: "sk",
+		Bucket:    "docs",
+	}
+	cu := ObjectURL(cos.Endpoint, cos.Bucket, "202609/abcdefghijklmnop.png")
+	if got := ObjectKeyFromURL(cu, nil, cos); got != "202609/abcdefghijklmnop.png" {
+		t.Fatalf("cos url: got %q from %q", got, cu)
+	}
+	ce := ObjectURL(cos.Endpoint, cos.Bucket, "embed/202609/abcdefghijklmnop.png")
+	if got := ObjectKeyFromURL(ce, nil, cos); got != "embed/202609/abcdefghijklmnop.png" {
+		t.Fatalf("cos embed url: got %q from %q", got, ce)
 	}
 }
 

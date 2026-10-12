@@ -65,13 +65,18 @@ type SiteSettings struct {
 	SMTPFromName string // 发件人显示名称（收件箱里显示的名字，空则显示裸地址）
 	SMTPSSL      bool
 
-	// 图片存储：local（默认）/ rustfs（S3 兼容）
+	// 图片存储：local（默认）/ rustfs（S3 兼容）/ cos（腾讯云 COS）
 	StorageDriver    string
 	RustFSEndpoint   string
 	RustFSRegion     string
 	RustFSAccessKey  string
 	RustFSSecretKey  string
 	RustFSBucket     string
+	COSEndpoint      string
+	COSRegion        string
+	COSSecretID      string
+	COSSecretKey     string
+	COSBucket        string
 
 	// 有密码分享是否开放「申请查看」（站点级，默认开）
 	AllowShareApply bool
@@ -100,6 +105,11 @@ const (
 	keyRustFSAccessKey = "rustfs_access_key"
 	keyRustFSSecretKey = "rustfs_secret_key"
 	keyRustFSBucket    = "rustfs_bucket"
+	keyCOSEndpoint     = "cos_endpoint"
+	keyCOSRegion       = "cos_region"
+	keyCOSSecretID     = "cos_secret_id"
+	keyCOSSecretKey    = "cos_secret_key"
+	keyCOSBucket       = "cos_bucket"
 
 	keyAllowShareApply = "allow_share_apply" // 有密码分享是否开放「申请查看」
 
@@ -135,6 +145,7 @@ func (a *App) Settings() SiteSettings {
 		SMTPSSL:         true,
 		StorageDriver:   storage.DriverLocal,
 		RustFSRegion:    "us-east-1",
+		COSRegion:       "ap-guangzhou",
 		AllowShareApply: true, // 默认开放申请查看
 	}
 	var rows []model.SystemSetting
@@ -189,6 +200,18 @@ func (a *App) Settings() SiteSettings {
 			s.RustFSSecretKey = r.Value
 		case keyRustFSBucket:
 			s.RustFSBucket = strings.TrimSpace(r.Value)
+		case keyCOSEndpoint:
+			s.COSEndpoint = strings.TrimSpace(r.Value)
+		case keyCOSRegion:
+			if v := strings.TrimSpace(r.Value); v != "" {
+				s.COSRegion = v
+			}
+		case keyCOSSecretID:
+			s.COSSecretID = strings.TrimSpace(r.Value)
+		case keyCOSSecretKey:
+			s.COSSecretKey = r.Value
+		case keyCOSBucket:
+			s.COSBucket = strings.TrimSpace(r.Value)
 		case keyAllowShareApply:
 			s.AllowShareApply = boolVal(r.Value)
 		case keyLLMBaseURL:
@@ -255,6 +278,11 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		RustFSAccessKey string `json:"rustfs_access_key"`
 		RustFSSecretKey string `json:"rustfs_secret_key"`
 		RustFSBucket    string `json:"rustfs_bucket"`
+		COSEndpoint     string `json:"cos_endpoint"`
+		COSRegion       string `json:"cos_region"`
+		COSSecretID     string `json:"cos_secret_id"`
+		COSSecretKey    string `json:"cos_secret_key"`
+		COSBucket       string `json:"cos_bucket"`
 		AllowShareApply bool   `json:"allow_share_apply"`
 		// LLM
 		LLMBaseURL string `json:"llm_base_url"`
@@ -326,7 +354,7 @@ func (a *App) UpdateSettings(c *gin.Context) {
 	if driver == "" {
 		driver = storage.DriverLocal
 	}
-	if driver != storage.DriverLocal && driver != storage.DriverRustFS {
+	if driver != storage.DriverLocal && driver != storage.DriverRustFS && driver != storage.DriverCOS {
 		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "set.errStorageDriver")})
 		return
 	}
@@ -346,6 +374,27 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		if _, err := (storage.RustFSConfig{
 			Endpoint: endpoint, Region: region, AccessKey: accessKey,
 			SecretKey: secretKey, Bucket: bucket,
+		}).Validate(); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
+	// COS 配置校验
+	cosEndpoint := strings.TrimRight(strings.TrimSpace(req.COSEndpoint), "/")
+	cosRegion := strings.TrimSpace(req.COSRegion)
+	if cosRegion == "" {
+		cosRegion = "ap-guangzhou"
+	}
+	cosSecretID := strings.TrimSpace(req.COSSecretID)
+	cosSecretKey := req.COSSecretKey
+	cosBucket := strings.TrimSpace(req.COSBucket)
+	if strings.TrimSpace(cosSecretKey) == "" {
+		cosSecretKey = a.Settings().COSSecretKey
+	}
+	if driver == storage.DriverCOS {
+		if _, err := (storage.COSConfig{
+			Endpoint: cosEndpoint, Region: cosRegion, SecretID: cosSecretID,
+			SecretKey: cosSecretKey, Bucket: cosBucket,
 		}).Validate(); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -371,6 +420,11 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		keyRustFSAccessKey:      accessKey,
 		keyRustFSSecretKey:      secretKey,
 		keyRustFSBucket:         bucket,
+		keyCOSEndpoint:          cosEndpoint,
+		keyCOSRegion:            cosRegion,
+		keyCOSSecretID:          cosSecretID,
+		keyCOSSecretKey:         cosSecretKey,
+		keyCOSBucket:            cosBucket,
 		keyAllowShareApply:      boolStr(req.AllowShareApply),
 		keyLLMBaseURL:           strings.TrimSpace(req.LLMBaseURL),
 		keyLLMAPIKey:            strings.TrimSpace(req.LLMAPIKey),
@@ -448,6 +502,56 @@ func (a *App) TestRustFS(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// TestCOS 测试腾讯云 COS 连通性（凭证 + Bucket）；可用表单当前值或已保存配置
+func (a *App) TestCOS(c *gin.Context) {
+	var req struct {
+		Endpoint  string `json:"cos_endpoint"`
+		Region    string `json:"cos_region"`
+		SecretID  string `json:"cos_secret_id"`
+		SecretKey string `json:"cos_secret_key"`
+		Bucket    string `json:"cos_bucket"`
+	}
+	if err := c.ShouldBind(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+	saved := a.Settings()
+	secret := req.SecretKey
+	if strings.TrimSpace(secret) == "" {
+		secret = saved.COSSecretKey
+	}
+	endpoint := strings.TrimSpace(req.Endpoint)
+	if endpoint == "" {
+		endpoint = saved.COSEndpoint
+	}
+	region := strings.TrimSpace(req.Region)
+	if region == "" {
+		region = saved.COSRegion
+	}
+	secretID := strings.TrimSpace(req.SecretID)
+	if secretID == "" {
+		secretID = saved.COSSecretID
+	}
+	bucket := strings.TrimSpace(req.Bucket)
+	if bucket == "" {
+		bucket = saved.COSBucket
+	}
+	backend, err := storage.NewCOS(storage.COSConfig{
+		Endpoint: endpoint, Region: region, SecretID: secretID,
+		SecretKey: secret, Bucket: bucket,
+	})
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	ctx := c.Request.Context()
+	if err := backend.Ping(ctx); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 // TestLLM 测试 LLM 连通性（可用表单当前值或已保存配置；API Key 留空沿用已保存值）
 func (a *App) TestLLM(c *gin.Context) {
 	var req struct {
@@ -505,6 +609,14 @@ func (a *App) fileStorage() (storage.Storage, error) {
 			AccessKey: s.RustFSAccessKey,
 			SecretKey: s.RustFSSecretKey,
 			Bucket:    s.RustFSBucket,
+		})
+	case storage.DriverCOS:
+		return storage.NewCOS(storage.COSConfig{
+			Endpoint:  s.COSEndpoint,
+			Region:    s.COSRegion,
+			SecretID:  s.COSSecretID,
+			SecretKey: s.COSSecretKey,
+			Bucket:    s.COSBucket,
 		})
 	default:
 		return &storage.Local{Dir: a.Cfg.Upload.Dir}, nil

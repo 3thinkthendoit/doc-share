@@ -131,6 +131,7 @@ func (a *App) deleteUploadedObjectAsync(rawURL string) {
 	}
 
 	var rustCfg *storage.RustFSConfig
+	var cosCfg *storage.COSConfig
 	s := a.Settings()
 	if s.StorageDriver == storage.DriverRustFS {
 		rustCfg = &storage.RustFSConfig{
@@ -141,8 +142,17 @@ func (a *App) deleteUploadedObjectAsync(rawURL string) {
 			Bucket:    s.RustFSBucket,
 		}
 	}
+	if s.StorageDriver == storage.DriverCOS {
+		cosCfg = &storage.COSConfig{
+			Endpoint:  s.COSEndpoint,
+			Region:    s.COSRegion,
+			SecretID:  s.COSSecretID,
+			SecretKey: s.COSSecretKey,
+			Bucket:    s.COSBucket,
+		}
+	}
 
-	key := storage.ObjectKeyFromURL(rawURL, rustCfg)
+	key := storage.ObjectKeyFromURL(rawURL, rustCfg, cosCfg)
 	if key == "" {
 		log.Printf("[upload] 异步删除跳过（无法解析 URL）: %s", rawURL)
 		return

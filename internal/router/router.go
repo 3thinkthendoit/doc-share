@@ -61,6 +61,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.PUT("/api/settings", middleware.RequireAdmin(), app.UpdateSettings)
 		admin.POST("/api/settings/test-mail", middleware.RequireAdmin(), app.TestMail)
 		admin.POST("/api/settings/test-rustfs", middleware.RequireAdmin(), app.TestRustFS)
+		admin.POST("/api/settings/test-cos", middleware.RequireAdmin(), app.TestCOS)
 		admin.POST("/api/settings/test-llm", middleware.RequireAdmin(), app.TestLLM)
 
 		// 在线体验：AI 对话（登录用户，会话归属个人）

@@ -16,6 +16,7 @@ import (
 const (
 	DriverLocal  = "local"
 	DriverRustFS = "rustfs"
+	DriverCOS    = "cos"
 )
 
 // opTimeout 单次对象存储操作超时（上传 / 连通性检测）
@@ -78,6 +79,45 @@ func (c RustFSConfig) Validate() (RustFSConfig, error) {
 	return out, nil
 }
 
+// COSConfig S3 兼容连接参数（腾讯云 COS）
+type COSConfig struct {
+	Endpoint  string // 如 https://cos.ap-guangzhou.myqcloud.com
+	Region    string // 如 ap-guangzhou
+	SecretID  string
+	SecretKey string
+	Bucket    string
+}
+
+// Validate 校验必填项；返回规范化后的配置副本
+func (c COSConfig) Validate() (COSConfig, error) {
+	out := COSConfig{
+		Endpoint:  strings.TrimRight(strings.TrimSpace(c.Endpoint), "/"),
+		Region:    strings.TrimSpace(c.Region),
+		SecretID:  strings.TrimSpace(c.SecretID),
+		SecretKey: c.SecretKey, // 密钥可能含首尾空格，不去 Trim
+		Bucket:    strings.TrimSpace(c.Bucket),
+	}
+	if out.Endpoint == "" {
+		return out, fmt.Errorf("COS Endpoint 不能为空")
+	}
+	if !strings.HasPrefix(out.Endpoint, "http://") && !strings.HasPrefix(out.Endpoint, "https://") {
+		return out, fmt.Errorf("COS Endpoint 须以 http:// 或 https:// 开头")
+	}
+	if out.Region == "" {
+		return out, fmt.Errorf("COS Region 不能为空")
+	}
+	if out.SecretID == "" {
+		return out, fmt.Errorf("COS SecretID 不能为空")
+	}
+	if out.SecretKey == "" {
+		return out, fmt.Errorf("COS SecretKey 不能为空")
+	}
+	if out.Bucket == "" {
+		return out, fmt.Errorf("COS Bucket 不能为空")
+	}
+	return out, nil
+}
+
 // ObjectURL path-style 直链：{endpoint}/{bucket}/{key}
 func ObjectURL(endpoint, bucket, key string) string {
 	endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
@@ -114,8 +154,8 @@ func ValidEmbedUploadKey(key string) bool {
 }
 
 // ObjectKeyFromURL 从对外 URL 解析存储 key；无法识别返回空字符串。
-// 支持：/uploads/{key}、带站点前缀的 /uploads/{key}、RustFS ObjectURL。
-func ObjectKeyFromURL(rawURL string, rust *RustFSConfig) string {
+// 支持：/uploads/{key}、带站点前缀的 /uploads/{key}、RustFS/COS ObjectURL。
+func ObjectKeyFromURL(rawURL string, rust *RustFSConfig, cos *COSConfig) string {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
 		return ""
@@ -142,15 +182,28 @@ func ObjectKeyFromURL(rawURL string, rust *RustFSConfig) string {
 		}
 		return ""
 	}
-	if rust == nil {
-		return ""
+	// 尝试 RustFS URL 解析
+	if rust != nil {
+		if cfg, err := rust.Validate(); err == nil {
+			if key := matchObjectURL(rawURL, cfg.Endpoint, cfg.Bucket); key != "" {
+				return key
+			}
+		}
 	}
-	cfg, err := rust.Validate()
-	if err != nil {
-		return ""
+	// 尝试 COS URL 解析
+	if cos != nil {
+		if cfg, err := cos.Validate(); err == nil {
+			if key := matchObjectURL(rawURL, cfg.Endpoint, cfg.Bucket); key != "" {
+				return key
+			}
+		}
 	}
-	prefix := ObjectURL(cfg.Endpoint, cfg.Bucket, "")
-	// prefix 形如 http://host/bucket/ ；兼容无尾斜杠比较
+	return ""
+}
+
+// matchObjectURL 尝试匹配 object storage 的 URL 前缀并解析 key
+func matchObjectURL(rawURL, endpoint, bucket string) string {
+	prefix := ObjectURL(endpoint, bucket, "")
 	candidates := []string{rawURL, strings.TrimRight(rawURL, "/")}
 	for _, c := range candidates {
 		if strings.HasPrefix(c, prefix) {

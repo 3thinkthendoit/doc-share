@@ -144,6 +144,20 @@ func (a *App) commentRustFSConfig() *storage.RustFSConfig {
 	}
 }
 
+func (a *App) commentCOSConfig() *storage.COSConfig {
+	s := a.Settings()
+	if s.StorageDriver != storage.DriverCOS {
+		return nil
+	}
+	return &storage.COSConfig{
+		Endpoint:  s.COSEndpoint,
+		Region:    s.COSRegion,
+		SecretID:  s.COSSecretID,
+		SecretKey: s.COSSecretKey,
+		Bucket:    s.COSBucket,
+	}
+}
+
 // sanitizeCommentImages 校验评论附图：仅本站上传 key（不含 embed/），按 key 去重，最多 commentMaxImages 张。
 // strict 为真时非法地址报错；为假时跳过非法项（列表回显用）。
 func (a *App) sanitizeCommentImages(urls []string, strict bool) ([]string, error) {
@@ -154,6 +168,7 @@ func (a *App) sanitizeCommentImages(urls []string, strict bool) ([]string, error
 		return nil, fmt.Errorf("评论最多附 %d 张图", commentMaxImages)
 	}
 	rustCfg := a.commentRustFSConfig()
+	cosCfg := a.commentCOSConfig()
 	out := make([]string, 0, commentMaxImages)
 	seen := map[string]struct{}{}
 	for _, raw := range urls {
@@ -161,7 +176,7 @@ func (a *App) sanitizeCommentImages(urls []string, strict bool) ([]string, error
 		if u == "" {
 			continue
 		}
-		key := storage.ObjectKeyFromURL(u, rustCfg)
+		key := storage.ObjectKeyFromURL(u, rustCfg, cosCfg)
 		if key == "" || strings.HasPrefix(key, "embed/") || !storage.ValidUploadKey(key) {
 			if strict {
 				return nil, fmt.Errorf("评论图片地址无效")
