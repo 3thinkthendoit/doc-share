@@ -47,6 +47,10 @@ jobs:
         run: |
           set -e
           VER="${VERSION_INPUT#v}" # 统一去掉 v 前缀
+          # latest 映射到默认版本，官方镜像无 latest 标签
+          if [ "${VER}" = "latest" ]; then
+            VER="8.15.0"
+          fi
           echo "version=${VER}" >> "$GITHUB_OUTPUT"
           echo "目标 ES 版本：${VER}"
 
