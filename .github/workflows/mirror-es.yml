@@ -15,9 +15,11 @@ name: mirror-es
 #   1) push 到 ACR；2) 同时上传镜像 tar.gz 为 Artifact——服务器上
 #      gh run download 后 docker load 即可，完全不依赖 Registry 权限。
 #
-# 部署提示：ES 8.x 默认开启安全认证（HTTPS + 密码）；
-#   内网测试可关闭安全认证：-e "xpack.security.enabled=false"
-#   单节点模式在 Dockerfile.es 中已内置（discovery.type=single-node），启动时无需额外设置
+# 部署提示：本镜像已在 Dockerfile.es 中内置以下行为（启动时无需额外设置）：
+#   - discovery.type=single-node（单节点）
+#   - xpack.security.enabled=false（内网明文 HTTP，8080 端口，无需 ELASTIC_PASSWORD）
+#   JVM 堆不烤进镜像：启动时用 -e ES_JAVA_OPTS="-Xms2g -Xmx2g" 传（改堆无需重新打包）
+#   注意：镜像默认已关闭安全认证，仅适用于可信内网；若需 TLS，须同时把 HEALTHCHECK 改为 https
 
 on:
   workflow_dispatch:

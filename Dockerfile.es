@@ -1,7 +1,7 @@
 # 自打包 Elasticsearch 镜像，HTTP 对外端口改为 8080
 #
 # 构建：  docker build --build-arg ES_VERSION=8.15.0 -f Dockerfile.es -t my-es .
-# 运行：  docker run -d -p 8080:8080 -e ELASTIC_PASSWORD=xxx my-es
+# 运行：  docker run -d -p 8080:8080 -e ES_JAVA_OPTS="-Xms2g -Xmx2g" my-es   （内网已关安全认证，无需密码）
 #
 # ES 默认 HTTP 端口为 9200，本镜像通过覆盖 http.port 配置将其改为 8080，
 # 适用于需要统一使用非标准端口的场景。
@@ -14,6 +14,9 @@ ARG ES_VERSION=8.15.0
 FROM docker.elastic.co/elasticsearch/elasticsearch:${ES_VERSION}
 
 EXPOSE 8080
+
+# JVM 堆不在镜像里烤死：堆是运行期/环境相关参数，启动时用 -e ES_JAVA_OPTS 传即可，
+# 改堆无需重新打包。例：docker run -e ES_JAVA_OPTS="-Xms2g -Xmx2g" ...（不传则 ES 8.x 自动按容器内存算堆）。
 
 # 替换 http.port（支持 9200 / [9200, 9299] 两种格式）
 # 单节点模式也顺带写进去
