@@ -693,7 +693,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  // 后台窄屏导航抽屉
+  // 后台导航当前页高亮：桌面顶栏 + 窄屏抽屉共用 markActive
   (function bindNavDrawer() {
     var toggle = document.getElementById('navToggle');
     var drawer = document.getElementById('navDrawer');
@@ -710,7 +710,14 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         a.classList.toggle('active', on);
       });
+      // 下拉子项（开放API 组）命中时父按钮同步点亮，避免桌面顶栏丢失焦点
+      root.querySelectorAll('.drop').forEach(function (d) {
+        var btn = d.querySelector('.drop-btn');
+        if (btn) btn.classList.toggle('active', !!d.querySelector('.drop-menu a.active'));
+      });
     }
+    // 桌面顶栏加载即打标：与官网 scroll-spy 同款背景焦点，不止窄屏抽屉有
+    markActive(srcLinks);
     function closeNav() {
       drawer.hidden = true;
       toggle.setAttribute('aria-expanded', 'false');

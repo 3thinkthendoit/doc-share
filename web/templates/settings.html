@@ -203,6 +203,12 @@
 .set-sec{display:none}
 .set-sec.active{display:block}
 .set-sec[hidden]{display:none!important}
+/* 桌面端（≥961px）：隐藏手风琴头部，保留原 showSec() Tab 切换逻辑；
+   移动端（≤960px）由 mobile.css 接管，.set-sec 全部展开为折叠面板 */
+@media (min-width:961px){
+  .set-sec-head{display:none}
+  .set-sec-body{padding:0}
+}
 </style>
 <script>
 (function () {
@@ -427,6 +433,45 @@
     } catch (err) { UI.alert(UI.t('保存失败：网络错误或服务不可用')); }
     finally { saveBtn.disabled = false; }
   });
+
+  /* ---- 移动端折叠面板增强 ----
+     为每个 .set-sec 注入可点击的 .set-sec-head（标题取自 .doc-side 对应菜单项）
+     并把原内容包进 .set-sec-body；桌面端 CSS 隐藏 head，保留 showSec() Tab 切换逻辑不变。 */
+  (function enhanceSettingsAccordion() {
+    var sections = form.querySelectorAll('.set-sec');
+    if (!sections.length) return;
+    Array.prototype.forEach.call(sections, function (sec) {
+      if (sec.querySelector('.set-sec-head')) return; // 已增强，避免重复注入
+      var link = document.querySelector('.doc-side a[href="#' + sec.id + '"]');
+      var fallback = sec.querySelector('.settings-section');
+      var title = (link && (link.textContent || '').trim())
+        || (fallback && (fallback.textContent || '').trim())
+        || sec.id;
+      var head = document.createElement('div');
+      head.className = 'set-sec-head';
+      head.setAttribute('role', 'button');
+      head.setAttribute('tabindex', '0');
+      head.setAttribute('aria-expanded', 'true');
+      var span = document.createElement('span');
+      span.textContent = title;
+      head.appendChild(span);
+      var body = document.createElement('div');
+      body.className = 'set-sec-body';
+      body.id = sec.id + '-body';
+      head.setAttribute('aria-controls', body.id);
+      while (sec.firstChild) body.appendChild(sec.firstChild);
+      sec.appendChild(head);
+      sec.appendChild(body);
+      function toggle() {
+        var collapsed = sec.classList.toggle('collapsed');
+        head.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      }
+      head.addEventListener('click', toggle);
+      head.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+      });
+    });
+  })();
 })();
 </script>
 {{template "adminfoot" .}}

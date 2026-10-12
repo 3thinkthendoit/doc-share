@@ -121,6 +121,9 @@ body.nav-drawer-open{overflow:hidden}
 .nav-links{display:flex;gap:6px;flex:1;justify-content:flex-end}
 .nav-links a{color:var(--muted);font-weight:600;font-size:14px;padding:8px 14px;border-radius:8px;transition:all .15s}
 .nav-links a:hover{color:var(--text);background:var(--bg-soft);text-decoration:none}
+/* 当前页菜单项高亮：与官网 scroll-spy、窄屏抽屉同款背景焦点；类由 ui.js 按 pathname 打（置于 :hover 后保证悬停不被覆盖） */
+.nav-links a.active{color:var(--primary-dark);background:var(--primary-soft);text-decoration:none}
+.nav-links .drop-btn.active{color:var(--primary-dark);background:var(--primary-soft)}
 /* 后台导航右侧工具组：主题 / GitHub / 语言切换，同为 ghost 风格 36px 等高 */
 .nav-right-tools{display:flex;align-items:center;gap:8px}
 .theme-toggle,.nav-gh,.msg-bell{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;padding:0;color:var(--muted);border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;transition:all .15s;cursor:pointer;font:inherit}

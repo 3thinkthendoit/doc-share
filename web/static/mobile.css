@@ -1,0 +1,141 @@
+/* mobile.css — 整站移动端补丁（集中管理，桌面端零影响）
+   所有规则都包裹在 @media 中，按断点从宽到窄排列。
+   断点约定沿用现有 style.css / site-nav.css / landing.css：1200 / 960 / 900 / 700 / 620 / 520 / 400。 */
+
+/* ============================================================
+   ≤1200px：控制台顶栏提前收汉堡
+   style.css 要到 ≤900 才收 .nav-links，901–1200px 死区内 7 个链接 +
+   右侧工具组互挤、链接文字折成两行撑破 72px 栏高；官网 .l-nav 链接少且
+   ≤980 自收，无此问题，故仅提前控制台顶栏的收折断点。
+   ============================================================ */
+@media (max-width: 1200px) {
+  .topnav .nav-links { display: none; }
+  .topnav .nav-toggle { display: inline-flex; }
+}
+
+/* ============================================================
+   ≤960px：settings 折叠面板 + smtp-grid 单栏
+   ============================================================ */
+@media (max-width: 960px) {
+  /* settings.html：分组菜单 .doc-side 被全局隐藏后，用折叠面板替代 Tab 切换。
+     保留 [hidden] 属性优先级（邮件服务未启用时仍隐藏）。 */
+  .set-sec:not([hidden]) { display: block; }
+  .set-sec[hidden] { display: none !important; }
+
+  .set-sec {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm, 6px);
+    margin-bottom: 10px;
+    background: var(--panel);
+    overflow: hidden;
+  }
+  .set-sec-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px;
+    cursor: pointer;
+    user-select: none;
+    font-weight: 600;
+    font-size: 14.5px;
+    color: var(--text);
+    background: var(--bg-soft);
+    border-bottom: 1px solid var(--border);
+  }
+  .set-sec-head::after {
+    content: '▾';
+    font-size: 12px;
+    color: var(--muted);
+    transition: transform .2s;
+    flex: none;
+  }
+  .set-sec.collapsed .set-sec-head { border-bottom-color: transparent; }
+  .set-sec.collapsed .set-sec-head::after { transform: rotate(-90deg); }
+  .set-sec.collapsed .set-sec-body { display: none; }
+  .set-sec-body { padding: 14px; }
+
+  /* accordion head 已显示分组标题，内部 .settings-section 子标题去重 */
+  .set-sec .settings-section { display: none; }
+
+  /* smtp-grid 两列在窄屏挤压，改单栏；
+     用 .share-body 提升特异性，避免被 settings.html 内联 <style> 同特异性覆盖 */
+  .share-body .smtp-grid { grid-template-columns: 1fr; }
+}
+
+/* ============================================================
+   ≤900px：全站通用（iOS 输入缩放、modal、触控目标、json-mount）
+   ============================================================ */
+@media (max-width: 900px) {
+  /* iOS Safari 聚焦 input 时若 font-size < 16px 会触发页面缩放，全站统一提升。
+     chat.html 已显式设 16px，无冲突；桌面端不受影响。
+     注：json_edit .input-ver 等页面内联样式特异性更高，自然抵抗此规则，无需额外例外。 */
+  input, select, textarea { font-size: 16px; }
+
+  .container { padding: 0 14px; }
+
+  /* modal 在窄屏占满可用宽度，避免 .modal-lg{width:720px} + padding:24px 在 320px 屏内容区过窄 */
+  .modal-overlay { padding: 12px; }
+  .modal, .modal-lg, .modal-sm {
+    width: 100% !important;
+    max-width: 100%;
+  }
+
+  /* 触控目标提升到 36px（iOS HIG 建议 44px，但按钮组在窄屏换行过多，折中） */
+  .btn-sm { padding: 8px 14px; min-height: 36px; }
+
+  /* json_edit 挂载容器：移动端头部实际更高（.page-head-edit 纵向 + json-edit-head 换行）；
+     用 main 提升特异性，避免被 json_edit.html 内联 <style> 同特异性覆盖 */
+  main .json-mount { height: calc(100vh - 220px); min-height: 360px; }
+
+  /* 抽屉底部 safe-area（刘海屏手势条） */
+  .nav-drawer-links { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+  .l-nav-drawer-links { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+}
+
+/* ============================================================
+   ≤700px：docs 卡片模式列缺失修复
+   ============================================================ */
+@media (max-width: 700px) {
+  /* style.css 在 ≤1440 隐藏第 7/9/11 列、≤1200 隐藏第 4/5 列，
+     但 .table-cards 卡片模式（ui.js 注入 data-label）需要所有列参与渲染，
+     否则卡片会丢失浏览/权限/更新人/项目/分类信息。 */
+  .docs-main .table.table-cards th:nth-child(4),
+  .docs-main .table.table-cards td:nth-child(4),
+  .docs-main .table.table-cards th:nth-child(5),
+  .docs-main .table.table-cards td:nth-child(5),
+  .docs-main .table.table-cards th:nth-child(7),
+  .docs-main .table.table-cards td:nth-child(7),
+  .docs-main .table.table-cards th:nth-child(9),
+  .docs-main .table.table-cards td:nth-child(9),
+  .docs-main .table.table-cards th:nth-child(11),
+  .docs-main .table.table-cards td:nth-child(11) {
+    display: block;
+  }
+}
+
+/* ============================================================
+   ≤620px：landing 字号进一步缩小
+   ============================================================ */
+@media (max-width: 620px) {
+  .l-h1 { font-size: 32px; }
+  .l-h2 { font-size: 24px; }
+}
+
+/* ============================================================
+   ≤520px：紧凑 padding + json-mount 再降
+   ============================================================ */
+@media (max-width: 520px) {
+  .container { padding: 0 12px; }
+  main .json-mount { height: calc(100vh - 260px); min-height: 320px; }
+}
+
+/* ============================================================
+   ≤400px：topnav / l-nav 挤压兜底（Galaxy Fold 280px、iPhone SE 320px）
+   ============================================================ */
+@media (max-width: 400px) {
+  .topnav { gap: 4px; padding: 0 10px; }
+  .l-nav { gap: 6px; padding: 0 12px; }
+  .l-logo { font-size: 14px; max-width: 30vw; }
+  .nav-brand a { font-size: 14px; gap: 6px; }
+}

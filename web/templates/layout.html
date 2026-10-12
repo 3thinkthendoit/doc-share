@@ -16,6 +16,8 @@
 <link rel="stylesheet" href="/static/style.css">
 {{/* 顶栏下拉等 .l-* 组件样式：官网/控制台共用，控制台页也需加载 */}}
 <link rel="stylesheet" href="/static/site-nav.css">
+{{/* 移动端补丁：集中管理所有 @media 窄屏规则，桌面端零影响；必须最后加载以覆盖前两个文件 */}}
+<link rel="stylesheet" href="/static/mobile.css">
 {{/* “中文原文→译文”映射先于 ui.js 注入：脚本里的文案统一走 UI.t() */}}
 <script>window.__LANG={{.Lang}};window.__L10N={{.Dict}};</script>
 <script src="/static/ui.js"></script>
