@@ -20,6 +20,8 @@ EXPOSE 8080
 RUN sed -i \
     -e 's|^http.port:.*|http.port: 8080|' \
     config/elasticsearch.yml \
+ && grep -q "^http.port:" config/elasticsearch.yml \
+ || echo "http.port: 8080" >> config/elasticsearch.yml \
  && echo "discovery.type: single-node" >> config/elasticsearch.yml
 
 # 健康检查
