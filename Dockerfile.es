@@ -17,12 +17,16 @@ EXPOSE 8080
 
 # 替换 http.port（支持 9200 / [9200, 9299] 两种格式）
 # 单节点模式也顺带写进去
+# 内网使用：关闭 xpack 安全认证，HTTP 端口走明文（否则 ES 8.x 默认 HTTPS，
+# 用 http:// 访问会得到 curl (52) Empty reply，且下方 http 健康检查会失败）
 RUN sed -i \
     -e 's|^http.port:.*|http.port: 8080|' \
     config/elasticsearch.yml \
  && grep -q "^http.port:" config/elasticsearch.yml \
  || echo "http.port: 8080" >> config/elasticsearch.yml \
- && echo "discovery.type: single-node" >> config/elasticsearch.yml
+ && echo "discovery.type: single-node" >> config/elasticsearch.yml \
+ && echo "xpack.security.enabled: false" >> config/elasticsearch.yml \
+ && echo "xpack.security.http.ssl.enabled: false" >> config/elasticsearch.yml
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s \
