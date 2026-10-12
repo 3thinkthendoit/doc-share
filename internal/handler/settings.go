@@ -66,17 +66,17 @@ type SiteSettings struct {
 	SMTPSSL      bool
 
 	// 图片存储：local（默认）/ rustfs（S3 兼容）/ cos（腾讯云 COS）
-	StorageDriver    string
-	RustFSEndpoint   string
-	RustFSRegion     string
-	RustFSAccessKey  string
-	RustFSSecretKey  string
-	RustFSBucket     string
-	COSEndpoint      string
-	COSRegion        string
-	COSSecretID      string
-	COSSecretKey     string
-	COSBucket        string
+	StorageDriver   string
+	RustFSEndpoint  string
+	RustFSRegion    string
+	RustFSAccessKey string
+	RustFSSecretKey string
+	RustFSBucket    string
+	COSEndpoint     string
+	COSRegion       string
+	COSSecretID     string
+	COSSecretKey    string
+	COSBucket       string
 
 	// 有密码分享是否开放「申请查看」（站点级，默认开）
 	AllowShareApply bool
@@ -90,14 +90,14 @@ const defaultSiteName = "DocShare"
 
 // 系统设置键名（注册方式、SMTP、存储）
 const (
-	keyRegMethod = "reg_method"
-	keySMTPHost  = "smtp_host"
-	keySMTPPort    = "smtp_port"
-	keySMTPUser    = "smtp_user"
-	keySMTPPass    = "smtp_pass"
-	keySMTPFrom    = "smtp_from"
+	keyRegMethod    = "reg_method"
+	keySMTPHost     = "smtp_host"
+	keySMTPPort     = "smtp_port"
+	keySMTPUser     = "smtp_user"
+	keySMTPPass     = "smtp_pass"
+	keySMTPFrom     = "smtp_from"
 	keySMTPFromName = "smtp_from_name"
-	keySMTPSSL     = "smtp_ssl"
+	keySMTPSSL      = "smtp_ssl"
 
 	keyStorageDriver   = "storage_driver"
 	keyRustFSEndpoint  = "rustfs_endpoint"
@@ -113,9 +113,9 @@ const (
 
 	keyAllowShareApply = "allow_share_apply" // 有密码分享是否开放「申请查看」
 
-	keyLLMBaseURL = "llm_base_url" // OpenAI 兼容接口地址
-	keyLLMAPIKey  = "llm_api_key"  // API Key
-	keyLLMModel   = "llm_model"    // 模型名
+	keyLLMBaseURL = "llm_base_url"    // OpenAI 兼容接口地址
+	keyLLMAPIKey  = "llm_api_key"     // API Key
+	keyLLMModel   = "llm_model"       // 模型名
 	keyLLMTemp    = "llm_temperature" // 采样温度（0 = 用上游默认）
 )
 
@@ -185,7 +185,7 @@ func (a *App) Settings() SiteSettings {
 		case keySMTPSSL:
 			s.SMTPSSL = boolVal(r.Value)
 		case keyStorageDriver:
-			if d := strings.TrimSpace(r.Value); d == storage.DriverLocal || d == storage.DriverRustFS {
+			if d := strings.TrimSpace(r.Value); d == storage.DriverLocal || d == storage.DriverRustFS || d == storage.DriverCOS {
 				s.StorageDriver = d
 			}
 		case keyRustFSEndpoint:
