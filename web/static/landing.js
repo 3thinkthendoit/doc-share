@@ -60,6 +60,24 @@
     });
   });
 
+  // 导航滚动高亮（scroll-spy）：与 Orbit 同款 rootMargin 窗口，命中区块内的菜单项加 .active
+  var spyLinks = {};
+  document.querySelectorAll('.l-nav-links a[href^="#"], .l-nav-links a[href^="/#"]').forEach(function (a) {
+    var id = a.getAttribute('href').replace(/^\//, '');
+    if (id) spyLinks[id] = a;
+  });
+  var spyTargets = Object.keys(spyLinks).map(function (id) { return document.getElementById(id.slice(1)); }).filter(Boolean);
+  if ('IntersectionObserver' in window && spyTargets.length) {
+    var current = null;
+    var so = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) current = '#' + e.target.id;
+      });
+      for (var id in spyLinks) spyLinks[id].classList.toggle('active', id === current);
+    }, { rootMargin: '-40% 0px -55% 0px' });
+    spyTargets.forEach(function (el) { so.observe(el); });
+  }
+
   // 导航在滚动后加深底色：挂类而非写内联 style，否则切主题时颜色会被旧的写死值盖住
   if (nav) {
     var onScroll = function () {

@@ -181,9 +181,10 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		c.Redirect(http.StatusTemporaryRedirect, target)
 	})
 
-	// 对接文档（公开）：潜在用户未登录也可查看 API / MCP 接入方式
-	r.GET("/console/apidoc", app.APIDocPage)
-	r.GET("/console/mcpdoc", app.MCPDocPage)
+	// 对接文档（公开）：潜在用户未登录也可查看 API / MCP 接入方式；
+	// 可选认证注入登录态，已登录时顶栏菜单与控制台其他页一致，避免跨页「菜单不一样」
+	r.GET("/console/apidoc", middleware.OptionalAuth(app.DB, app.Signer), app.APIDocPage)
+	r.GET("/console/mcpdoc", middleware.OptionalAuth(app.DB, app.Signer), app.MCPDocPage)
 
 	// 认证
 	r.GET("/captcha", app.Captcha)

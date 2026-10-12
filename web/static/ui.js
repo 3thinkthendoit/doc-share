@@ -566,7 +566,7 @@ document.addEventListener('DOMContentLoaded', function () {
       var base = 'https://cdn.jsdelivr.net/npm/highlight.js@11/styles/';
       link.href = base + (theme === 'dark' ? 'github-dark.min.css' : 'github.min.css');
     }
-    var cur = root.getAttribute('data-theme') || 'light';
+    var cur = root.getAttribute('data-theme') || 'dark';
     syncPressed();
     syncHljs(cur);
     btns.forEach(function (btn) {

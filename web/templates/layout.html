@@ -2,21 +2,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script>
-  // 首屏绘制前钉主题，避免闪色；与官网共用 localStorage ds_theme
+  // 首屏绘制前钉主题，避免闪色；与官网共用 localStorage ds_theme；无记忆值时暗黑默认
   try {
     var t = localStorage.getItem('ds_theme');
-    if (t !== 'dark' && t !== 'light') t = 'light';
+    if (t !== 'dark' && t !== 'light') t = 'dark';
     document.documentElement.setAttribute('data-theme', t);
   } catch (e) {
-    document.documentElement.setAttribute('data-theme', 'light');
+    document.documentElement.setAttribute('data-theme', 'dark');
   }
 </script>
 <title>{{if .title}}{{.title}} · {{end}}{{.SiteName}}</title>
 <link rel="icon" type="image/svg+xml" href="/static/logo-mark.svg">
 <link rel="stylesheet" href="/static/style.css">
+{{/* 顶栏下拉等 .l-* 组件样式：官网/控制台共用，控制台页也需加载 */}}
+<link rel="stylesheet" href="/static/site-nav.css">
 {{/* “中文原文→译文”映射先于 ui.js 注入：脚本里的文案统一走 UI.t() */}}
 <script>window.__LANG={{.Lang}};window.__L10N={{.Dict}};</script>
 <script src="/static/ui.js"></script>
+<script src="/static/navdrop.js"></script>
 {{end}}
 
 {{define "themeToggle"}}
@@ -61,12 +64,19 @@
   <a class="l-logo" href="/">{{if .SiteLogo}}<img class="l-logo-img" src="{{.SiteLogo}}" alt="">{{else}}<img class="l-logo-img" src="/static/logo-mark.svg" alt="">{{end}}{{.SiteName}}</a>
   {{if .ShowLandingLinks}}
   <div class="l-nav-links" id="lNavLinks">
-    <a href="#features">{{$.T "产品能力"}}</a>
-    <a href="#workflow">{{$.T "工作流"}}</a>
-    <a href="#openapi">{{$.T "开放平台"}}</a>
+    <a href="#preview">{{$.T "nav.preview"}}</a>
+    <a href="#features">{{$.T "nav.features"}}</a>
+    <a href="#quotes">{{$.T "nav.quotes"}}</a>
     <a href="#faq">{{$.T "常见问题"}}</a>
-    <a href="/console/apidoc">{{$.T "nav.apidoc"}}</a>
-    <a href="/console/mcpdoc">{{$.T "nav.mcpdoc"}}</a>
+    <div class="drop">
+      <button type="button" class="drop-btn" aria-haspopup="true" aria-expanded="false">{{$.T "nav.dev"}}<svg class="drop-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+      <div class="drop-menu" role="menu">
+        {{/* 密钥管理属登录后才能操作的页面：未登录不提供入口 */}}
+        {{if .user}}<a role="menuitem" href="/console/apikeys">{{$.T "key.manage"}}</a>{{end}}
+        <a role="menuitem" href="/console/apidoc">{{$.T "nav.apidoc"}}</a>
+        <a role="menuitem" href="/console/mcpdoc">{{$.T "nav.mcpdoc"}}</a>
+      </div>
+    </div>
   </div>
   {{else}}
   <div class="l-nav-links" id="lNavLinks" hidden></div>
@@ -86,7 +96,7 @@
       </select>
     </form>
     {{if .user}}<a class="l-btn l-btn-primary" href="/console">{{$.T "进入控制台"}}</a>
-    {{else}}<a class="l-btn l-btn-ghost" href="/login">{{$.T "登录"}}</a>{{end}}
+    {{else}}<a class="l-btn l-btn-primary" href="/login">{{$.T "登录"}}</a>{{end}}
   </div>
 </nav>
 {{if .ShowLandingLinks}}
@@ -126,9 +136,15 @@
     <a href="/console/templates">{{$.T "nav.templates"}}</a>
     {{if and .user .user.IsAdmin}}<a href="/console/users">{{$.T "nav.users"}}</a>
     <a href="/console/settings">{{$.T "nav.settings"}}</a>{{end}}
-    <a href="/console/apikeys">{{$.T "nav.apikeys"}}</a>
-    <a href="/console/apidoc">{{$.T "nav.apidoc"}}</a>
-<a href="/console/mcpdoc">{{$.T "nav.mcpdoc"}}</a>
+    <div class="drop">
+      <button type="button" class="drop-btn" aria-haspopup="true" aria-expanded="false">{{$.T "openapi.name"}}<svg class="drop-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+      <div class="drop-menu" role="menu">
+        {{/* 密钥管理属登录后才能操作的页面：未登录不提供入口 */}}
+        {{if .user}}<a role="menuitem" href="/console/apikeys">{{$.T "key.manage"}}</a>{{end}}
+        <a role="menuitem" href="/console/apidoc">{{$.T "nav.apidoc"}}</a>
+        <a role="menuitem" href="/console/mcpdoc">{{$.T "nav.mcpdoc"}}</a>
+      </div>
+    </div>
   </div>
   <div class="nav-right-tools">
     {{template "themeToggle" .}}

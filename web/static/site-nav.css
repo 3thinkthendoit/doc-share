@@ -1,46 +1,51 @@
-/* 官网 / 分享 / 预览共用顶栏（.l-nav）。变量与 landing.css 对齐，独立页面不依赖落地页其余样式。 */
+/* 官网 / 分享 / 预览共用顶栏（.l-nav）。变量与 landing.css 对齐，独立页面不依赖落地页其余样式。Orbit 族：深海军蓝 + 绿强调 */
 :root {
-  --l-border: #1e1e2b;
-  --l-border-2: #2a2a3c;
-  --l-accent: #7c6cf6;
-  --l-accent-line: rgba(124, 108, 246, .32);
-  --l-grad-a: #6f60f2;
-  --l-grad-b: #5a51e0;
-  --l-text: #dcdcea;
+  --l-border: rgba(122, 168, 255, .16);
+  --l-border-2: rgba(122, 168, 255, .28);
+  --l-accent: #3dfaa0;
+  --l-accent-line: rgba(61, 250, 160, .38);
+  --l-accent-soft: rgba(61, 250, 160, .1);
+  --l-grad-a: #3dfaa0;
+  --l-grad-b: #14b8a6;
+  --l-btn-fg: #04130b;
+  --l-text: #e8eefb;
   --l-head: #ffffff;
-  --l-muted: #8b8ba4;
-  --l-panel: #101018;
+  --l-muted: #9fb0cc;
+  --l-panel: #0e1a2e;
   --l-hairline: rgba(255, 255, 255, .04);
-  --l-nav-bg: rgba(8, 8, 14, .82);
-  --l-nav-bg-2: rgba(8, 8, 14, .94);
-  --l-glow: 0 0 24px rgba(124, 108, 246, .28);
-  --l-glow-hover: 0 0 34px rgba(124, 108, 246, .45);
+  --l-nav-bg: rgba(7, 13, 26, .86);
+  --l-nav-bg-2: rgba(7, 13, 26, .94);
+  --l-glow: 0 0 24px rgba(61, 250, 160, .22);
+  --l-glow-hover: 0 0 34px rgba(61, 250, 160, .34);
 }
 
 html[data-theme="light"] {
-  --l-border: #e7e7ef;
-  --l-border-2: #d6d6e2;
-  --l-accent: #6152e8;
-  --l-accent-line: rgba(97, 92, 237, .26);
-  --l-grad-a: #6152e8;
-  --l-grad-b: #4f46e5;
-  --l-text: #2b2b38;
-  --l-head: #14141c;
-  --l-muted: #63637a;
+  --l-border: rgba(23, 64, 148, .12);
+  --l-border-2: rgba(23, 64, 148, .22);
+  --l-accent: #0a8a5f;
+  --l-accent-line: rgba(10, 138, 95, .35);
+  --l-accent-soft: rgba(10, 138, 95, .08);
+  --l-grad-a: #0a9965;
+  --l-grad-b: #0d9488;
+  --l-btn-fg: #ffffff;
+  --l-text: #0d1b2e;
+  --l-head: #081422;
+  --l-muted: #4a5b74;
   --l-panel: #ffffff;
-  --l-hairline: rgba(20, 20, 40, .06);
-  --l-nav-bg: rgba(247, 247, 252, .82);
-  --l-nav-bg-2: rgba(247, 247, 252, .94);
-  --l-glow: 0 6px 18px rgba(97, 92, 237, .26);
-  --l-glow-hover: 0 10px 26px rgba(97, 92, 237, .34);
+  --l-hairline: rgba(13, 27, 46, .05);
+  --l-nav-bg: rgba(246, 248, 252, .86);
+  --l-nav-bg-2: rgba(246, 248, 252, .94);
+  --l-glow: 0 6px 18px rgba(10, 153, 101, .25);
+  --l-glow-hover: 0 10px 26px rgba(10, 153, 101, .32);
 }
 
 .l-nav {
   position: fixed; top: 0; left: 0; right: 0; z-index: 50;
   height: 66px; display: flex; align-items: center; gap: 28px;
-  padding: 0 30px;
+  /* 内容装进与 .l-wrap 同宽的居中栏（1180px + 26px 内边距），logo/CTA 不贴视口边；窄屏回退 26px */
+  padding: 0 max(26px, calc(50vw - 564px));
   background: var(--l-nav-bg);
-  backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--l-border);
   transition: background .2s;
 }
@@ -51,17 +56,20 @@ html[data-theme="light"] {
 }
 a.l-logo, a.l-logo:hover { color: var(--l-head); text-decoration: none; }
 .l-logo b {
-  display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px;
+  display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px;
   background: linear-gradient(135deg, var(--l-grad-a), var(--l-grad-b));
-  color: #fff; font-size: 13px;
+  color: var(--l-btn-fg); font-size: 13px;
 }
-.l-nav-links { display: flex; gap: 4px; flex: 1; }
+/* 链接整体右对齐（Orbit 式：logo 左、链接推右紧贴 CTA），而非紧跟 logo 左排 */
+.l-nav-links { display: flex; gap: 6px; flex: 1; justify-content: flex-end; }
 .l-nav-links[hidden] { display: none !important; }
 .l-nav-links a {
-  font-size: 13px; color: var(--l-muted); padding: 7px 12px; border-radius: 6px;
+  font-size: 14px; font-weight: 600; color: var(--l-muted); padding: 8px 14px; border-radius: 8px;
   transition: color .15s, background .15s; text-decoration: none;
 }
 .l-nav-links a:hover { color: var(--l-text); background: var(--l-hairline); }
+/* scroll-spy 命中当前区块的菜单项高亮（Orbit 同款）；仅顶部链接，不波及下拉子项 */
+.l-nav-links > a.active { color: var(--l-accent); background: var(--l-accent-soft); }
 .l-nav-toggle {
   display: none; align-items: center; justify-content: center; flex-direction: column; gap: 5px;
   width: 38px; height: 38px; padding: 0; border: 1px solid transparent; border-radius: 6px;
@@ -114,37 +122,62 @@ body.l-nav-open { overflow: hidden; }
 
 .l-btn {
   display: inline-flex; align-items: center; gap: 7px;
-  padding: 9px 16px; border-radius: 6px; border: 1px solid var(--l-border-2);
-  background: var(--l-panel); color: var(--l-text);
-  font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer; line-height: 1.2;
-  transition: border-color .15s, transform .15s, box-shadow .15s, color .15s;
+  padding: 9px 18px; border-radius: 10px; border: 1px solid var(--l-border-2);
+  background: transparent; color: var(--l-text);
+  font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer; line-height: 1.2;
+  transition: border-color .18s, transform .18s, box-shadow .18s, color .18s;
   text-decoration: none;
 }
 a.l-btn { color: var(--l-text); text-decoration: none; }
-.l-btn:hover { border-color: var(--l-accent); transform: translateY(-1px); }
+.l-btn:hover { border-color: var(--l-accent); color: var(--l-accent); transform: translateY(-1px); }
 .l-btn-primary {
   background: linear-gradient(135deg, var(--l-grad-a), var(--l-grad-b));
-  border: 1px solid var(--l-accent-line); color: #fff; box-shadow: var(--l-glow);
+  border: 1px solid transparent; color: var(--l-btn-fg); box-shadow: var(--l-glow);
 }
-a.l-btn-primary, a.l-btn-primary:hover { color: #fff; }
-.l-btn-primary:hover { box-shadow: var(--l-glow-hover); border-color: var(--l-accent); }
+a.l-btn-primary, a.l-btn-primary:hover { color: var(--l-btn-fg); }
+.l-btn-primary:hover { box-shadow: var(--l-glow-hover); border-color: transparent; color: var(--l-btn-fg); }
 .l-btn-ghost { background: transparent; }
+
+/* 导航「开放平台」下拉：官网与控制台顶栏共用本文件，配色走 --l-* 令牌（双主题均有定义） */
+.drop { position: relative; display: flex; }
+.drop-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  font: inherit; font-size: 14px; font-weight: 600; color: var(--l-muted);
+  background: none; border: 0; cursor: pointer; padding: 8px 14px; border-radius: 8px;
+  transition: color .15s, background .15s;
+}
+.drop-btn:hover { color: var(--l-text); background: var(--l-hairline); }
+.drop-caret { transition: transform .18s; }
+.drop.open .drop-caret { transform: rotate(180deg); }
+.drop-menu {
+  position: absolute; top: calc(100% + 10px); right: 0; min-width: 172px;
+  display: none; flex-direction: column; gap: 2px; padding: 6px;
+  background: var(--l-panel); border: 1px solid var(--l-border-2); border-radius: 12px;
+  box-shadow: 0 14px 36px rgba(7, 13, 26, .16); z-index: 80;
+}
+.drop.open .drop-menu { display: flex; animation: drop-in .16s ease; }
+.drop-menu a {
+  padding: 9px 12px; border-radius: 8px; font-size: 13.5px; font-weight: 500;
+  color: var(--l-muted); text-decoration: none; transition: background .12s, color .12s;
+}
+.drop-menu a:hover { background: var(--l-hairline); color: var(--l-text); }
+@keyframes drop-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 
 .l-btn.l-theme {
   display: inline-grid; place-items: center; width: var(--ctl-h, 38px); padding: 0;
-  background: var(--l-panel); color: var(--l-muted);
-  border: 1px solid var(--l-border-2); border-radius: 6px;
+  background: transparent; color: var(--l-muted);
+  border: 1px solid var(--l-border-2); border-radius: 10px;
   font-size: 15px; cursor: pointer;
 }
-.l-btn.l-theme:hover { color: var(--l-head); border-color: var(--l-accent); transform: none; }
+.l-btn.l-theme:hover { color: var(--l-accent); border-color: var(--l-accent); transform: none; }
 /* GitHub 图标按钮：与主题切换按钮同尺寸同框 */
 .l-btn.l-gh {
   display: inline-grid; place-items: center; width: var(--ctl-h, 38px); padding: 0;
-  background: var(--l-panel); color: var(--l-muted);
-  border: 1px solid var(--l-border-2); border-radius: 6px;
+  background: transparent; color: var(--l-muted);
+  border: 1px solid var(--l-border-2); border-radius: 10px;
   cursor: pointer;
 }
-.l-btn.l-gh:hover { color: var(--l-head); border-color: var(--l-accent); transform: none; }
+.l-btn.l-gh:hover { color: var(--l-accent); border-color: var(--l-accent); transform: none; }
 .l-btn.l-theme .i-sun { display: none; }
 .l-btn.l-theme .i-moon { display: block; }
 html[data-theme="light"] .l-btn.l-theme .i-sun { display: block; }

@@ -5,25 +5,74 @@
 {{/* 代码块（.api-code）恒为暗色背景，高亮主题固定 github-dark，不随站点明暗切换 */}}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.9.0/styles/github-dark.min.css">
 <style>
-/* 代码块配色：one-dark 风格（暗底 #1e1e2e、紫键名、粉字符串），JSON 自绘与 bash(hljs) 统一 */
-.api-code{color:#abb2bf}
-.api-code.hljs{background:#1e1e2e;color:#abb2bf}
-.api-code .t-key{color:#c678dd}
-.api-code .t-str{color:#98c379}
-.api-code .t-num,.api-code .t-lit{color:#d19a66}
-.api-code .hljs-attr,.api-code .hljs-attribute{color:#c678dd}
-.api-code .hljs-string{color:#98c379}
-.api-code .hljs-number,.api-code .hljs-literal{color:#d19a66}
-.api-code .hljs-comment{color:#5c6370;font-style:italic}
+/* 代码块配色：Orbit 族暗底（#0b1424、靖青键名、绿字符串），JSON 自绘与 bash(hljs) 统一 */
+.api-code{color:#c9d6ec}
+.api-code.hljs{background:#0b1424;color:#c9d6ec}
+.api-code .t-key{color:#a5b4fc}
+.api-code .t-str{color:#4ade80}
+.api-code .t-num,.api-code .t-lit{color:#22d3ee}
+.api-code .hljs-attr,.api-code .hljs-attribute{color:#a5b4fc}
+.api-code .hljs-string{color:#4ade80}
+.api-code .hljs-number,.api-code .hljs-literal{color:#22d3ee}
+.api-code .hljs-comment{color:#6d80a3;font-style:italic}
 /* 快速开始：多语言示例标签栏 */
 .code-tabs{display:flex;gap:4px;margin:12px 0 0}
 .code-tab{border:1px solid var(--border);background:var(--bg-soft);color:var(--muted);border-radius:8px 8px 0 0;padding:6px 16px;font-size:12.5px;font-family:inherit;cursor:pointer;transition:all .15s}
-.code-tab.active{background:#1e1e2e;border-color:#2c2c40;color:#d6d3f0;font-weight:600}
+.code-tab.active{background:#0b1424;border-color:rgba(122,168,255,.28);color:#e8eefb;font-weight:600}
+/* ===== 本页排版优化（作用域限定 .apidoc-page，避免影响 MCP/settings 等共用 .doc-* 的页面） ===== */
+/* 收窄容器：文档阅读页不宜过宽，行长更舒适 */
+.apidoc-page.doc-wrap{max-width:min(1180px,calc(100vw - 48px))}
+.apidoc-page .page-head{margin-bottom:28px}
+.apidoc-page .doc-layout{gap:34px}
+/* 左侧目录：清晰三级层次（章节 → 分组 → 接口） */
+.apidoc-page .doc-side{width:240px;top:88px;max-height:calc(100vh - 112px);padding:8px 6px;gap:1px}
+.apidoc-page .doc-side a{padding:6px 12px;font-size:13px;font-weight:500;border-radius:7px}
+.apidoc-page .doc-side a.side-parent{margin-top:14px;font-size:13.5px;font-weight:650;color:var(--text)}
+.apidoc-page .doc-side a.side-parent:first-child{margin-top:0}
+/* 二级（分类/项目/文档/模板）：降级为小号大写分组标签，不再与章节抢焦点 */
+.apidoc-page .doc-side a.side-lv1{margin-top:10px;padding:4px 12px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+.apidoc-page .doc-side a.side-lv1:hover,.apidoc-page .doc-side a.side-lv1.active{background:transparent;color:var(--muted)}
+/* 三级（具体接口）：统一浅缩进 + 更小圆点 */
+.apidoc-page .doc-side a.side-lv2{padding:5px 12px 5px 20px;font-size:12.5px;color:var(--muted)}
+.apidoc-page .doc-side a.side-lv2.active{color:var(--primary-dark);background:var(--primary-soft);font-weight:600}
+.apidoc-page .m-dot{width:6px;height:6px;margin-right:8px}
+/* 分区面板与标题层级 */
+.apidoc-page .doc-sec{padding:28px 32px;margin-bottom:22px}
+.apidoc-page .doc-sec h2{margin:0 0 18px;padding-bottom:14px;font-size:22px;font-weight:800;letter-spacing:-.02em}
+.apidoc-page .doc-sec p{margin:12px 0;font-size:15px;line-height:1.75}
+.apidoc-page .doc-sec p.muted{font-size:14px;line-height:1.7}
+/* Base URL 提示条 & 步骤列表 */
+.apidoc-page .doc-callout{margin:16px 0 6px;padding:12px 18px;font-size:14px;line-height:1.7}
+.apidoc-page .doc-steps li{margin:14px 0;padding-left:38px;font-size:15px;line-height:1.7}
+.apidoc-page .doc-steps li::before{width:24px;height:24px;font-size:12.5px}
+/* 表格：允许说明列换行，去掉横向滚动 */
+.apidoc-page .table{min-width:0;width:100%}
+.apidoc-page .doc-sec .table th,.apidoc-page .doc-sec .table td{white-space:normal;vertical-align:top;padding:11px 16px;font-size:14px;line-height:1.65}
+.apidoc-page .doc-sec .table th{font-size:11.5px}
+.apidoc-page .hdr-badge{font-size:12.5px;padding:3px 10px}
+/* 接口分组：主色竖条 + 更大间距 */
+.apidoc-page .ep-group{display:flex;align-items:center;gap:9px;margin:30px 0 14px;padding-top:4px;font-size:17px;font-weight:650}
+.apidoc-page .ep-group::before{content:"";width:4px;height:17px;border-radius:2px;background:var(--grad)}
+/* 接口卡片 */
+.apidoc-page .ep{margin:12px 0;padding:16px 20px;border-radius:12px}
+.apidoc-page .ep-head{gap:12px}
+.apidoc-page .ep-method{min-width:66px;padding:4px 0;font-size:12px;border-radius:7px}
+.apidoc-page .ep-path{font-size:13px;padding:3px 10px}
+.apidoc-page .ep-desc{font-size:13.5px}
+.apidoc-page .doc-sec .ep-params th,.apidoc-page .doc-sec .ep-params td{padding:9px 12px;font-size:13.5px}
+.apidoc-page .doc-sec .ep-params td:first-child{white-space:nowrap}
+.apidoc-page .ep-ex-label{font-size:12.5px;margin:14px 0 7px}
+.apidoc-page .err-table td.err-msg{font-size:12.5px;line-height:1.6}
+/* 代码块：字号与行高提升可读性 */
+.apidoc-page .api-code{padding:16px 18px;font-size:13px;line-height:1.7}
+.apidoc-page .ep-ex .api-code{padding:13px 16px;font-size:12.5px}
+.apidoc-page .code-bar{padding:8px 16px}
+.apidoc-page .code-wrap{margin:16px 0 4px}
 </style>
 </head>
 <body>
 {{template "nav" .}}
-<main class="container doc-wrap">
+<main class="container doc-wrap apidoc-page">
   <div class="page-head">
     <h1>{{$.T "apidoc.title"}}</h1>
     <a class="btn" href="/console/apikeys">{{$.T "key.manage"}}</a>

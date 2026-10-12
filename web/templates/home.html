@@ -9,13 +9,13 @@
   <link rel="stylesheet" href="/static/site-nav.css">
   <link rel="stylesheet" href="/static/landing.css">
   <script>
-    // 首屏绘制前就把主题钉下来，避免闪色；没有历史偏好时默认浅色，用户手动切过则尊重其选择
+    // 首屏绘制前就把主题钉下来，避免闪色；没有历史偏好时默认暗黑，用户手动切过则尊重其选择
     try {
       var t = localStorage.getItem('ds_theme');
-      if (t !== 'dark' && t !== 'light') t = 'light';
+      if (t !== 'dark' && t !== 'light') t = 'dark';
       document.documentElement.setAttribute('data-theme', t);
     } catch (e) {
-      document.documentElement.setAttribute('data-theme', 'light');
+      document.documentElement.setAttribute('data-theme', 'dark');
     }
   </script>
 </head>
@@ -24,333 +24,228 @@
 
 {{template "siteNav" .}}
 
-<header class="l-hero">
-  <div class="l-wrap l-hero-grid">
-    <div data-reveal>
-      <div class="l-eyebrow">01 // DOCSHARE</div>
-      <h1 class="l-h1">{{$.T "把文档与画布"}}<br><em>{{$.T "变成能分享的文档站"}}</em></h1>
-      <p class="l-hero-sub">{{$.T "Markdown 写作、思维导图、白板与 drawio 流程图；发布、权限、开放 API 一站搞定。模板、静态资源与多语言词典内嵌进单个二进制，一条命令跑在内网。"}}</p>
-      <div class="l-hero-btns">
+{{/* ---------- HERO：居中式 Orbit 版式，文字在上、统计在下，界面 mock 移到产品预览 ---------- */}}
+<header class="l-hero l-hero-center">
+  <div class="l-wrap">
+    <div class="l-hero-copy" data-reveal>
+      <div class="l-hero-badge"><i></i>{{$.T "site.167"}}</div>
+      <h1 class="l-h1">{{$.T "site.168"}}<br><em>{{$.T "site.169"}}</em></h1>
+      <p class="l-hero-sub">{{$.T "site.170"}}</p>
+      <div class="l-hero-btns l-hero-btns-center">
         {{if .user}}<a class="l-btn l-btn-primary l-btn-lg" href="/console">{{$.T "进入控制台"}} →</a>{{else}}
-        <a class="l-btn l-btn-primary l-btn-lg" href="/register">{{$.T "立即开始"}} →</a>
+        <a class="l-btn l-btn-primary l-btn-lg" href="/register">{{$.T "免费注册"}} →</a>
         <a class="l-btn l-btn-lg" href="/login">{{$.T "登录控制台"}}</a>{{end}}
+        <a class="l-btn l-btn-lg" href="#preview">{{$.T "site.122"}}</a>
       </div>
-      <div class="l-hero-meta">
-        <span>{{$.T "无需外部运行时"}}</span>
-        <span>{{$.T "可视化画布"}}</span>
-        <span>{{$.T "私有化部署"}}</span>
-      </div>
-      <div class="l-anchors">
-        <a href="#features">{{$.T "产品能力"}}</a>
-        <a href="#workflow">{{$.T "工作流"}}</a>
-        <a href="#openapi">{{$.T "开放平台"}}</a>
-        <a href="#faq">{{$.T "常见问题"}}</a>
-      </div>
-    </div>
-
-    <div class="l-mock" data-reveal>
-      <div class="l-mock-bar">
-        <i class="l-dot"></i><i class="l-dot"></i><i class="l-dot"></i>
-        <span class="l-mock-title">doc-share — release-notes.md</span>
-        <span class="l-live"><i></i>LIVE</span>
-      </div>
-      <div class="l-mock-body">
-        <div class="l-pane">
-          <div class="l-pane-h">EDITOR</div>
-          <div><span class="l-tok-h"># </span>{{$.T "发布说明 v2.5"}}</div>
-          <div><span class="l-tok-h">## </span>{{$.T "新增"}}</div>
-          <div><span class="l-tok-mut">-</span> {{$.T "文档模板：可复用初始内容，项目内共用"}}</div>
-          <div><span class="l-tok-mut">-</span> {{$.T "支持 项目 / 分类 双维度归档"}}</div>
-          <div><span class="l-tok-mut">-</span> {{$.T "AI 客户端经 MCP 直接读写"}}</div>
-          <div><span class="l-tok-mut">-</span> {{$.T "PDF / Word 一键导入转 Markdown"}}</div>
-          <div><span class="l-caret"><span class="l-tok-mut">-</span> {{$.T "思维导图 / 画板 / drawio 画布"}}</div>
-        </div>
-        <div class="l-pane">
-          <div class="l-pane-h">PREVIEW</div>
-          <div class="l-tok-3" style="font-size:17px;font-weight:600;color:var(--l-head)">{{$.T "发布说明 v2.5"}}</div>
-          <div style="margin-top:10px">{{$.T "新增"}}</div>
-          <ul style="margin:6px 0 0;padding-left:18px;color:var(--l-muted);font-size:12px">
-            <li>{{$.T "文档模板：可复用初始内容，项目内共用"}}</li>
-            <li>{{$.T "支持 项目 / 分类 双维度归档"}}</li>
-            <li>{{$.T "AI 客户端经 MCP 直接读写"}}</li>
-            <li>{{$.T "PDF / Word 一键导入转 Markdown"}}</li>
-            <li>{{$.T "思维导图 / 画板 / drawio 画布"}}</li>
-          </ul>
-          <span class="l-chip">👥 {{$.T "成员协作已开启 · 3 位成员"}}</span>
-        </div>
-      </div>
-      <div class="l-term">
-        <div><span class="p">$</span> ./doc-share.exe -config config.yaml</div>
-        <div class="ok">{{$.T "DocShare 服务已启动: http://localhost:9000"}}</div>
-      </div>
+      <dl class="l-hero-stats">
+        <div><dt>{{$.T "site.123"}}</dt><dd>5</dd></div>
+        <div><dt>{{$.T "site.53"}}</dt><dd>22</dd></div>
+        <div><dt>{{$.T "site.124"}}</dt><dd>21</dd></div>
+      </dl>
     </div>
   </div>
 </header>
 
-<section class="l-section" id="features">
+{{/* ---------- 01 产品预览：AI 智能体对话窗口 mock（一句话指令→工具调用→敏感操作确认） ---------- */}}
+<section class="l-section" id="preview">
   <div class="l-wrap">
-    <div class="l-head-row" data-reveal>
-      <div>
-        <div class="l-eyebrow">02 // FEATURES</div>
-        <h2 class="l-h2">{{$.T "一个二进制，覆盖文档协作全链路"}}</h2>
+    <div class="l-section-head" data-reveal>
+      <div class="l-eyebrow">01 // AI AGENT</div>
+      <h2 class="l-h2">{{$.T "site.125"}}</h2>
+      <p class="l-lead l-lead-center">{{$.T "site.126"}}</p>
+    </div>
+
+    <div class="l-appwin" data-reveal role="img" aria-label="{{$.T "site.141"}}">
+      <div class="l-appwin-bar">
+        <i class="l-dot"></i><i class="l-dot"></i><i class="l-dot"></i>
+        <span class="l-mock-title">{{$.T "site.171"}}</span>
+        <span class="l-live"><i></i>{{$.T "site.172"}}</span>
       </div>
-      <p class="l-lead" style="margin:0">{{$.T "从本地写作到对外分享，再到程序化批量维护，不需要额外中间件与服务。"}}</p>
+      <div class="l-agent-grid">
+        <div class="l-agent-chat">
+          {{/* 用户一句话指令 */}}
+          <div class="l-agent-row l-agent-user">
+            <span class="l-agent-av" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+            <div class="l-agent-bubble">{{$.T "site.173"}}</div>
+          </div>
+          {{/* 智能体回合：工具调用轨迹 + 回复 + 结果卡 + 审批 */}}
+          <div class="l-agent-row l-agent-ai">
+            <span class="l-agent-av l-agent-av-ai" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4L12 3z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15z"/></svg></span>
+            <div class="l-agent-body">
+              <div class="l-agent-tools">
+                <span class="l-agent-tool done"><i>✓</i>search_documents</span>
+                <span class="l-agent-tool done"><i>✓</i>read_document</span>
+                <span class="l-agent-tool done"><i>✓</i>create_document</span>
+                <span class="l-agent-tool run"><i class="l-agent-spin"></i>set_share</span>
+              </div>
+              <div class="l-agent-bubble">{{$.T "site.174"}}</div>
+              <div class="l-agent-doc"><i class="l-dmark l-dmark-md">MD</i><span>{{$.T "site.175"}}</span><em>{{$.T "site.133"}}</em></div>
+              <div class="l-agent-approve">
+                <div class="l-agent-approve-h">⚠ {{$.T "site.176"}}</div>
+                <code>set_share(id=18, enabled=true, password=•••, expire_days=7)</code>
+                <div class="l-agent-approve-btns"><span class="ok">{{$.T "site.186"}}</span><span class="no">{{$.T "site.187"}}</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="l-agent-composer"><span>{{$.T "site.177"}}</span><span class="l-agent-send" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></span></div>
+        </div>
+        <aside class="l-agent-side">
+          <div class="l-pane-h">{{$.T "site.178"}}</div>
+          <ul class="l-agent-tlist">
+            <li><b>{{$.T "site.181"}}</b><span>search_documents · read_document · list_projects · list_documents</span></li>
+            <li><b>{{$.T "site.182"}}</b><span>create_document · update_document · replace_section</span></li>
+            <li><b>{{$.T "site.188"}}</b><span>list_templates · apply_template</span></li>
+            <li><b>{{$.T "site.183"}}</b><span>get_share_link · set_share</span></li>
+            <li><b>{{$.T "site.184"}}</b><span>revisions_history · restore_revision</span></li>
+            <li><b>{{$.T "site.185"}}</b><span>delete_document · list_trash · restore_document</span></li>
+          </ul>
+          <div class="l-agent-note"><b>{{$.T "site.179"}}</b>{{$.T "site.180"}}</div>
+        </aside>
+      </div>
+    </div>
+  </div>
+</section>
+
+{{/* ---------- 02 核心功能：眉标 + H2 + 3 张大卡（Orbit 节奏） ---------- */}}
+<section class="l-section l-section-alt" id="features">
+  <div class="l-wrap">
+    <div class="l-section-head" data-reveal>
+      <div class="l-eyebrow">02 // FEATURES</div>
+      <h2 class="l-h2">{{$.T "site.145"}}</h2>
+      <p class="l-lead l-lead-center">{{$.T "site.145b"}}</p>
     </div>
     <div class="l-grid l-grid-3">
-      <div class="l-card" data-reveal>
-        <div class="l-card-no">01<span class="l-card-tag">  --markdown</span></div>
-        <h3>{{$.T "Markdown 实时预览"}}</h3>
-        <p>{{$.T "CommonMark 与 GFM 表格、任务列表、代码高亮，编辑即所见。"}}</p>
-        <ul><li>{{$.T "工具栏插入链接 / 图片 / 表格"}}</li><li>{{$.T "渲染结果服务端净化，防 XSS"}}</li></ul>
+      <div class="l-card l-card-ai" data-reveal>
+        <div class="l-card-no">01</div>
+        <h3>{{$.T "site.146"}}</h3>
+        <p>{{$.T "site.147"}}</p>
+        <ul><li>{{$.T "site.148"}}</li><li>{{$.T "site.151"}}</li></ul>
       </div>
       <div class="l-card" data-reveal>
-        <div class="l-card-no">02<span class="l-card-tag">  --share</span></div>
-        <h3>{{$.T "一键分享链接"}}</h3>
-        <p>{{$.T "为任意文档生成独立链接；可设密码，也可让访客申请查看。"}}</p>
-        <ul><li>{{$.T "可设置访问密码与有效期"}}</li><li>{{$.T "访客申请查看，属主审批后免密阅读"}}</li><li>{{$.T "分享页评论；可选允许登录用户编辑"}}</li></ul>
+        <div class="l-card-no">02</div>
+        <h3>{{$.T "site.149"}}</h3>
+        <p>{{$.T "site.150"}}</p>
+        <ul><li>{{$.T "site.152"}}</li><li>{{$.T "site.153"}}</li></ul>
       </div>
       <div class="l-card" data-reveal>
-        <div class="l-card-no">03<span class="l-card-tag">  --project</span></div>
-        <h3>{{$.T "项目与分类归档"}}</h3>
-        <p>{{$.T "文档按项目、分类双维度组织，支持关键词检索与分页。"}}</p>
-        <ul><li>{{$.T "个人归属，互不干扰"}}</li><li>{{$.T "普通用户可维护自己的空间"}}</li></ul>
-      </div>
-      <div class="l-card" data-reveal>
-        <div class="l-card-no">04<span class="l-card-tag">  --upload</span></div>
-        <h3>{{$.T "图片拖拽上传"}}</h3>
-        <p>{{$.T "编辑器里直接贴图，文件名随机化，扩展名与大小服务端校验。"}}</p>
-        <ul><li>{{$.T "大小上限可在配置中调整"}}</li><li>{{$.T "本地磁盘或 RustFS（S3 兼容）存储"}}</li></ul>
-      </div>
-      <div class="l-card" data-reveal>
-        <div class="l-card-no">05<span class="l-card-tag">  --openapi</span></div>
-        <h3>{{$.T "开放平台 API"}}</h3>
-        <p>{{$.T "用密钥签名以程序方式维护项目、分类、文档与模板，共 22 个接口。"}}</p>
-        <ul><li>{{$.T "HMAC-SHA256 + 时间戳 + nonce 防重放"}}</li><li>{{$.T "以密钥属主身份执行，权限天然隔离"}}</li></ul>
-      </div>
-      <div class="l-card" data-reveal>
-        <div class="l-card-no">06<span class="l-card-tag">  --mcp</span></div>
-        <h3>{{$.T "AI 客户端一键接入"}}</h3>
-        <p>{{$.T "内置零依赖 MCP 服务器，CodeBuddy、Claude、Cursor 等 AI 客户端直接读写文档、项目、分类与模板。"}}</p>
-        <ul><li>{{$.T "21 个工具覆盖文档 / 项目 / 分类 / 模板"}}</li><li>{{$.T "stdio 传输，一段 JSON 配置即用"}}</li><li>{{$.T "复用开放平台密钥与权限模型"}}</li></ul>
-      </div>
-      <div class="l-card" data-reveal>
-        <div class="l-card-no">07<span class="l-card-tag">  --import</span></div>
-        <h3>{{$.T "PDF / Word 一键导入"}}</h3>
-        <p>{{$.T "PDF、doc、docx 纯内存转换为 Markdown，转换结果直接进入编辑器继续写作。"}}</p>
-        <ul><li>{{$.T "全程内存转换，不落盘"}}</li><li>{{$.T "docx 保留标题、列表、表格与链接"}}</li></ul>
-      </div>
-      <div class="l-card" data-reveal>
-        <div class="l-card-no">08<span class="l-card-tag">  --members</span></div>
-        <h3>{{$.T "项目成员与角色"}}</h3>
-        <p>{{$.T "把项目共享给团队成员，按角色控制查看与编辑。"}}</p>
-        <ul><li>{{$.T "成员仅能看到所在项目的文档"}}</li><li>{{$.T "成员管理仅属主可用，防止越权"}}</li></ul>
-      </div>
-      <div class="l-card" data-reveal>
-        <div class="l-card-no">09<span class="l-card-tag">  --drawio</span></div>
-        <h3>{{$.T "可视化画布"}}</h3>
-        <p>{{$.T "思维导图、自由画板与 drawio 流程图，独立编辑页实时渲染。"}}</p>
-        <ul><li>{{$.T "内嵌 drawio 编辑器，独立部署一步接入"}}</li><li>{{$.T "画布分享页可编辑，乐观锁防并发覆盖"}}</li></ul>
+        <div class="l-card-no">03</div>
+        <h3>{{$.T "site.154"}}</h3>
+        <p>{{$.T "site.155"}}</p>
+        <ul><li>{{$.T "site.156"}}</li><li>{{$.T "工具栏插入链接 / 图片 / 表格"}}</li></ul>
       </div>
     </div>
   </div>
 </section>
 
-<section class="l-section" id="workflow">
+{{/* ---------- 03 客户评价 ---------- */}}
+<section class="l-section" id="quotes">
   <div class="l-wrap">
-    <div class="l-eyebrow" data-reveal>03 // WORKFLOW</div>
-    <h2 class="l-h2" data-reveal style="margin-bottom:34px">{{$.T "三步把文档发出去"}}</h2>
-
-    <div class="l-step" data-reveal>
-      <div class="l-step-no">01</div>
-      <div>
-        <h3>{{$.T "写"}}</h3>
-        <p>{{$.T "新建文档，选项目与分类，左侧 Markdown 右侧实时预览。"}}</p>
-      </div>
-      <div class="l-mock l-shot">
-        <div class="l-mock-bar"><i class="l-dot"></i><i class="l-dot"></i><i class="l-dot"></i><span class="l-mock-title">doc-share — {{$.T "发布说明 v2.5"}}</span><span class="l-live"><i></i>LIVE</span></div>
-        <div class="l-mock-body">
-          <div class="l-pane">
-            <div class="l-pane-h">MARKDOWN</div>
-            <div><span class="l-tok-h">## </span>{{$.T "新增"}}</div>
-            <div><span class="l-tok-mut">-</span> {{$.T "支持 项目 / 分类 双维度归档"}}</div>
-            <div><span class="l-tok-mut">-</span> {{$.T "思维导图 / 画板 / drawio 画布"}}</div>
-            <div class="l-caret"><span class="l-tok-mut">-</span> {{$.T "AI 客户端经 MCP 直接读写"}}</div>
-          </div>
-          <div class="l-pane">
-            <div class="l-pane-h">PREVIEW</div>
-            <div class="l-tok-3" style="font-size:15px;font-weight:600;color:var(--l-head)">{{$.T "新增"}}</div>
-            <ul style="margin:8px 0 0;padding-left:16px;color:var(--l-muted);font-size:11.5px">
-              <li>{{$.T "支持 项目 / 分类 双维度归档"}}</li>
-              <li>{{$.T "思维导图 / 画板 / drawio 画布"}}</li>
-            </ul>
-            <span class="l-chip">👥 {{$.T "成员协作已开启 · 3 位成员"}}</span>
-          </div>
-        </div>
-      </div>
+    <div class="l-section-head" data-reveal>
+      <div class="l-eyebrow">03 // VOICES</div>
+      <h2 class="l-h2">{{$.T "site.157"}}</h2>
     </div>
-
-    <div class="l-step" data-reveal>
-      <div class="l-step-no">02</div>
-      <div>
-        <h3>{{$.T "发"}}</h3>
-        <p>{{$.T "勾选分享得到公开链接；可叠加密码、有效期，或开放访客申请查看。"}}</p>
-      </div>
-      <div class="l-mock l-shot">
-        <div class="l-mock-bar"><i class="l-dot"></i><i class="l-dot"></i><i class="l-dot"></i><span class="l-mock-title">{{$.T "发"}} — SHARE</span></div>
-        <div class="l-pane">
-          <div class="l-set-row"><span class="l-toggle"></span><b>{{$.T "分享已开启"}}</b><span class="l-badge">PUBLIC</span></div>
-          <div class="l-set-row"><span class="l-tok-mut">🔗</span><span class="l-keyval">doc-share.dev/s/8fj2KdQ1</span><span class="l-badge">COPY</span></div>
-          <div class="l-set-row"><span class="l-tok-mut">🔑</span><span class="l-keyval">••••••</span><span class="l-badge">30d</span></div>
-          <div class="l-set-row"><span class="l-tok-mut">🙋</span><span style="color:var(--l-muted)">{{$.T "申请查看"}}</span><span class="l-badge" style="color:var(--l-accent);border-color:var(--l-accent-line)">✓ {{$.T "已通过"}}</span></div>
-        </div>
-        <div class="l-term"><div><span class="p">$</span> GET /s/8fj2KdQ1 <span class="ok">→ 200 OK · {{$.T "读者访问，无需登录"}}</span></div></div>
-      </div>
-    </div>
-
-    <div class="l-step" data-reveal>
-      <div class="l-step-no">03</div>
-      <div>
-        <h3>{{$.T "连"}}</h3>
-        <p>{{$.T "把文档纳入 CI 或内部系统：申请 API 密钥，签名调用开放平台。"}}</p>
-      </div>
-      <div class="l-mock l-shot">
-        <div class="l-mock-bar"><i class="l-dot"></i><i class="l-dot"></i><i class="l-dot"></i><span class="l-mock-title">OPEN API — HMAC</span><span class="l-live"><i></i>SIGN</span></div>
-        <div class="l-pane">
-          <div class="l-flow">
-            <div class="l-node"><b>AppKey + Secret</b><span>ak_9f2c… / sk_••••</span></div>
-            <div class="l-arrow">→</div>
-            <div class="l-node l-node-hot"><b>HMAC-SHA256</b><span>sign(…, sha256(body))</span></div>
-            <div class="l-arrow">→</div>
-            <div class="l-node"><b>X-Sign</b><span>a3f9c2e8d14b…</span></div>
-          </div>
-          <div class="l-term"><div><span class="p">$</span> GET /openapi/v1/docs?project_id=1 <span class="ok">→ 200 OK · 42 docs</span></div></div>
-        </div>
-      </div>
+    <div class="l-grid l-grid-3">
+      <figure class="l-quote" data-reveal>
+        <blockquote>{{$.T "site.158"}}</blockquote>
+        <figcaption><span class="l-qavatar">{{avatar ($.T "site.159")}}</span><b>{{$.T "site.159"}}</b><span>{{$.T "site.160"}}</span></figcaption>
+      </figure>
+      <figure class="l-quote" data-reveal>
+        <blockquote>{{$.T "site.161"}}</blockquote>
+        <figcaption><span class="l-qavatar">{{avatar ($.T "site.162")}}</span><b>{{$.T "site.162"}}</b><span>{{$.T "site.163"}}</span></figcaption>
+      </figure>
+      <figure class="l-quote" data-reveal>
+        <blockquote>{{$.T "site.164"}}</blockquote>
+        <figcaption><span class="l-qavatar">{{avatar ($.T "site.165")}}</span><b>{{$.T "site.165"}}</b><span>{{$.T "site.159b"}}</span></figcaption>
+      </figure>
     </div>
   </div>
 </section>
 
-<section class="l-section" id="openapi">
-  <div class="l-wrap">
-    <div class="l-head-row" data-reveal>
-      <div>
-        <div class="l-eyebrow">04 // OPEN API</div>
-        <h2 class="l-h2">{{$.T "签名规则一眼看完"}}</h2>
-      </div>
-      <p class="l-lead" style="margin:0">{{$.T "与控制台同一套权限模型：密钥属于谁，就以谁的身份读写。"}}</p>
-    </div>
-    <div class="l-grid l-grid-sign">
-      <pre class="l-code" data-reveal><span class="c">{{$.T "# 待签串以 LF 连接，body 为空时对空串取摘要"}}</span>
-base = AppKey + LF + METHOD + LF + path + LF
-     + timestamp + LF + nonce + LF + sha256hex(body)
-
-<span class="c">{{$.T "# 签名即 HMAC-SHA256 的十六进制小写"}}</span>
-sign = <span class="l-tok-h">HMAC-SHA256</span>(Secret, base)
-
-<span class="c">{{$.T "# 校验顺序：时间戳窗口 → nonce 去重 → 签名比对"}}</span></pre>
-      <div class="l-card" data-reveal>
-        <div class="l-card-tag">--endpoints</div>
-        <h3>{{$.T "接口清单"}}</h3>
-        <ul>
-          <li>GET/POST /openapi/v1/categories</li>
-          <li>PUT/DELETE /openapi/v1/categories/:id</li>
-          <li>GET/POST /openapi/v1/projects</li>
-          <li>PUT/DELETE /openapi/v1/projects/:id</li>
-          <li>GET /openapi/v1/docs</li>
-          <li>GET /openapi/v1/docs/:id</li>
-          <li>POST/PUT/DELETE /openapi/v1/docs/:id</li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="l-stats" style="margin-top:44px">
-      <div class="l-stat" data-reveal><b data-count="5">0</b><span>{{$.T "界面语言"}}</span></div>
-      <div class="l-stat" data-reveal><b data-count="22">0</b><span>{{$.T "开放接口"}}</span></div>
-      <div class="l-stat" data-reveal><b data-count="1">0</b><span>{{$.T "单文件二进制"}}</span></div>
-      <div class="l-stat" data-reveal><b data-count="942">0</b><span>{{$.T "条词典文案"}}</span></div>
-    </div>
-  </div>
-</section>
-
-<section class="l-section" id="faq">
+{{/* ---------- 04 常见问题 ---------- */}}
+<section class="l-section l-section-alt" id="faq">
   <div class="l-wrap" style="max-width:840px">
-    <div class="l-eyebrow" data-reveal>05 // FAQ</div>
-    <h2 class="l-h2" data-reveal style="margin-bottom:26px">{{$.T "部署前你可能会问"}}</h2>
+    <div class="l-section-head" data-reveal>
+      <div class="l-eyebrow">04 // FAQ</div>
+      <h2 class="l-h2">{{$.T "site.56"}}</h2>
+    </div>
     <div class="l-faq" data-reveal>
       <details open>
-        <summary>{{$.T "需要哪些依赖？"}}</summary>
-        <div class="l-faq-a">{{$.T "只需要一个 MySQL 实例。模板、静态资源与语言词典都已内嵌进二进制；图片可存本地或 RustFS。"}}</div>
+        <summary>{{$.T "site.57"}}</summary>
+        <div class="l-faq-a">{{$.T "site.58"}}</div>
       </details>
       <details>
-        <summary>{{$.T "可以完全内网私有化部署吗？"}}</summary>
-        <div class="l-faq-a">{{$.T "可以。服务不请求任何外部地址，前端脚本与字体均使用系统栈，断网环境照常工作。"}}</div>
+        <summary>{{$.T "site.59"}}</summary>
+        <div class="l-faq-a">{{$.T "site.60"}}</div>
       </details>
       <details>
-        <summary>{{$.T "普通用户能建项目和分类吗？"}}</summary>
-        <div class="l-faq-a">{{$.T "能。项目、分类与 API 密钥都是个人归属，普通用户只能维护自己的空间；用户管理与全量统计仅管理员可见。"}}</div>
+        <summary>{{$.T "site.61"}}</summary>
+        <div class="l-faq-a">{{$.T "site.62"}}</div>
       </details>
       <details>
-        <summary>{{$.T "分享出去的页面能被搜索引擎抓到吗？"}}</summary>
-        <div class="l-faq-a">{{$.T "分享页只渲染单篇文档；可加密码，也可开放「申请查看」。需要更严格的可见性时不启用分享即可，链接随时可撤销。"}}</div>
+        <summary>{{$.T "site.63"}}</summary>
+        <div class="l-faq-a">{{$.T "site.64"}}</div>
       </details>
       <details>
-        <summary>{{$.T "界面语言是怎么确定的？"}}</summary>
-        <div class="l-faq-a">{{$.T "优先级为：手动切换的语言标记、浏览器 Accept-Language、简体中文。切换后一年有效，接口返回的提示文案也会同步翻译。"}}</div>
+        <summary>{{$.T "site.65"}}</summary>
+        <div class="l-faq-a">{{$.T "site.66"}}</div>
       </details>
     </div>
   </div>
 </section>
 
+{{/* ---------- CTA band ---------- */}}
 <section class="l-section" style="padding-top:20px">
   <div class="l-wrap">
     <div class="l-cta" data-reveal>
       <pre>┌─ START WITH DOCSHARE ─</pre>
-      <h2>{{$.T "三分钟，把团队文档站跑起来"}}</h2>
-      <p class="l-lead" style="margin:14px auto 0;text-align:center">{{$.T "填好数据库配置，启动，注册第一个账号。"}}</p>
+      <h2>{{$.T "site.67"}}</h2>
+      <p class="l-lead" style="margin:14px auto 0;text-align:center">{{$.T "site.68"}}</p>
       <div class="l-cta-btns">
         {{if .user}}<a class="l-btn l-btn-primary l-btn-lg" href="/console">{{$.T "进入控制台"}} →</a>{{else}}
         <a class="l-btn l-btn-primary l-btn-lg" href="/register">{{$.T "免费注册"}} →</a>
-        <a class="l-btn l-btn-lg" href="/login">{{$.T "已有账号，登录"}}</a>{{end}}
+        <a class="l-btn l-btn-lg" href="/login">{{$.T "site.70"}}</a>{{end}}
       </div>
     </div>
   </div>
 </section>
 
+{{/* ---------- 页脚 ---------- */}}
 <footer class="l-foot">
   <div class="l-wrap">
     <div class="l-foot-grid">
       <div>
         <a class="l-logo" href="/">{{if .SiteLogo}}<img class="l-logo-img" src="{{.SiteLogo}}" alt="">{{else}}<img class="l-logo-img" src="/static/logo-mark.svg" alt="">{{end}}{{.SiteName}}</a>
-        <p class="l-foot-desc">{{$.T "轻量 Markdown 文档分享系统，Go 单二进制，内网可私有化部署。"}}</p>
+        <p class="l-foot-desc">{{$.T "site.71"}}</p>
       </div>
       <div>
-        <h4># {{$.T "产品"}}</h4>
+        <h4># {{$.T "site.72"}}</h4>
         <a href="/register">{{$.T "注册"}}</a>
         <a href="/login">{{$.T "登录"}}</a>
-        <a href="/console">{{$.T "控制台"}}</a>
+        <a href="/console">{{$.T "site.73"}}</a>
       </div>
       <div>
-        <h4># {{$.T "能力"}}</h4>
-        <a href="#features">{{$.T "产品能力"}}</a>
-        <a href="#workflow">{{$.T "工作流"}}</a>
-        <a href="#openapi">{{$.T "开放平台"}}</a>
+        <h4># {{$.T "site.74"}}</h4>
+        <a href="#preview">{{$.T "nav.preview"}}</a>
+        <a href="#features">{{$.T "nav.features"}}</a>
+        <a href="#quotes">{{$.T "nav.quotes"}}</a>
       </div>
       <div>
-        <h4># {{$.T "支持"}}</h4>
+        <h4># {{$.T "site.75"}}</h4>
         <a href="#faq">{{$.T "常见问题"}}</a>
         <a href="/console/apidoc">{{$.T "nav.apidoc"}}</a>
         <a href="/console/mcpdoc">{{$.T "nav.mcpdoc"}}</a>
         <a href="/console/apikeys">{{$.T "nav.apikeys"}}</a>
-        <a href="/console/docs">{{$.T "文档列表"}}</a>
-        <a href="https://github.com/3thinkthendoit/doc-share" target="_blank" rel="noopener">{{$.T "GitHub 仓库"}}</a>
+        <a href="/console/docs">{{$.T "site.76"}}</a>
+        <a href="https://github.com/3thinkthendoit/doc-share" target="_blank" rel="noopener">{{$.T "site.111"}}</a>
       </div>
     </div>
     <div class="l-copy">
-      <span>© 2026 DocShare · {{$.T "保留所有权利"}}</span>
+      <span>© 2026 DocShare · {{$.T "site.77"}}</span>
     </div>
   </div>
 </footer>
 
+<script src="/static/navdrop.js"></script>
 <script src="/static/landing.js"></script>
 </body>
 </html>{{end}}
