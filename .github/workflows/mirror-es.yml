@@ -1,0 +1,142 @@
+name: mirror-es
+
+# 拉取官方 Elasticsearch 基础镜像，打包为自定义镜像（HTTP 端口 8080），
+# 转存到阿里云 ACR，供国内服务器/CI 快速拉取。
+#
+# 前置（GitHub 仓库 Settings → Secrets and variables → Actions 配置）：
+#   ACR_REGISTRY  —— ACR 域名，如 registry.cn-beijing.aliyuncs.com（无 https:// 前缀）
+#   ACR_NAMESPACE —— ACR 命名空间（小写字母/数字/中划线，不要带域名或斜杠）
+#   ACR_USERNAME  —— ACR 用户名
+#   ACR_PASSWORD  —— ACR 密码（固定密码或临时 Token）
+# 注意：ACR 个人版不会在 push 时自动建仓，请先在控制台创建名为 elasticsearch 的仓库，
+#       且地域/命名空间与上述 Secret 完全一致。
+#
+# 双通道输出（ACR 推送失败不影响镜像获取）：
+#   1) push 到 ACR；2) 同时上传镜像 tar.gz 为 Artifact——服务器上
+#      gh run download 后 docker load 即可，完全不依赖 Registry 权限。
+#
+# 部署提示：ES 8.x 默认开启安全认证（HTTPS + 密码）；
+#   内网测试可关闭：-e "xpack.security.enabled=false"
+#   单节点模式必加：-e "discovery.type=single-node"
+
+on:
+  workflow_dispatch:
+    inputs:
+      es_version:
+        description: 'Elasticsearch 版本（如 8.15.0，自动兼容 v 前缀）'
+        required: true
+        default: '8.15.0'
+  schedule:
+    - cron: '0 4 * * 1' # 每周一 04:00 UTC
+
+# 命名空间写死，与 mirror-drawio.yml / docker-publish.yml 保持一致
+env:
+  ACR_NAMESPACE: 3thinkthendoit
+  ES_REPO: elasticsearch
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - name: Resolve version
+        id: resolve
+        env:
+          VERSION_INPUT: ${{ github.event.inputs.es_version || '8.15.0' }}
+        run: |
+          set -e
+          VER="${VERSION_INPUT#v}" # 统一去掉 v 前缀
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "目标 ES 版本：${VER}"
+
+  build-and-push-acr:
+    needs: resolve
+    runs-on: ubuntu-latest
+    env:
+      ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+      ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+      ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+    steps:
+      - name: Validate secrets
+        run: |
+          set -e
+          missing=0
+          for var in ACR_REGISTRY ACR_USERNAME ACR_PASSWORD; do
+            if [ -z "${!var}" ]; then
+              echo "::error::Secret ${var} 未配置：GitHub 仓库 → Settings → Secrets and variables → Actions → New repository secret"
+              missing=1
+            fi
+          done
+          if [ "${missing}" = "1" ]; then exit 1; fi
+
+      - name: Checkout Dockerfile
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker
+
+      - name: Build ES image (port 8080)
+        env:
+          ES_VER: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -e
+          TARGET="${ACR_REGISTRY}/${ACR_NAMESPACE}/${ES_REPO}:${ES_VER}"
+          echo ">>> 构建 elasticsearch:${ES_VER} -> ${TARGET} (HTTP 端口 8080)"
+          docker build \
+            --build-arg ES_VERSION="${ES_VER}" \
+            -f Dockerfile.es \
+            -t "${TARGET}" \
+            .
+
+      - name: Login to Aliyun ACR & Push
+        env:
+          ES_VER: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -e
+          TARGET="${ACR_REGISTRY}/${ACR_NAMESPACE}/${ES_REPO}:${ES_VER}"
+          echo "${ACR_PASSWORD}" | docker login "${ACR_REGISTRY}" -u "${ACR_USERNAME}" --password-stdin
+          docker push "${TARGET}"
+          echo "完成：${TARGET}"
+
+  save-artifact:
+    needs: resolve
+    # ACR 推送失败也照常产出镜像包，保证服务器始终有路可取
+    if: always() && needs.resolve.result == 'success'
+    runs-on: ubuntu-latest
+    env:
+      ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+      ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+      ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+    steps:
+      - name: Checkout Dockerfile
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker
+
+      - name: Build & save image to tar.gz
+        env:
+          ES_VER: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -e
+          TAG="elasticsearch-${ES_VER}-port8080"
+          docker build \
+            --build-arg ES_VERSION="${ES_VER}" \
+            -f Dockerfile.es \
+            -t "${TAG}" \
+            .
+          docker save "${TAG}" | gzip > "${TAG}.tar.gz"
+          ls -lh "${TAG}.tar.gz"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: es-image
+          path: elasticsearch-*-port8080.tar.gz
+          retention-days: 7
+          compression-level: 0
