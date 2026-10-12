@@ -39,6 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.resolve.outputs.version }}
+      tag_latest: ${{ steps.resolve.outputs.tag_latest }}
     steps:
       - name: Resolve version
         id: resolve
@@ -50,9 +51,12 @@ jobs:
           # latest 映射到默认版本，官方镜像无 latest 标签
           if [ "${VER}" = "latest" ]; then
             VER="8.15.0"
+            echo "tag_latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag_latest=false" >> "$GITHUB_OUTPUT"
           fi
           echo "version=${VER}" >> "$GITHUB_OUTPUT"
-          echo "目标 ES 版本：${VER}"
+          echo "目标 ES 版本：${VER}（额外打 latest: ${{ steps.resolve.outputs.tag_latest }}）"
 
   build-and-push-acr:
     needs: resolve
@@ -98,12 +102,19 @@ jobs:
       - name: Login to Aliyun ACR & Push
         env:
           ES_VER: ${{ needs.resolve.outputs.version }}
+          TAG_LATEST: ${{ needs.resolve.outputs.tag_latest }}
         run: |
           set -e
-          TARGET="${ACR_REGISTRY}/${ACR_NAMESPACE}/${ES_REPO}:${ES_VER}"
           echo "${ACR_PASSWORD}" | docker login "${ACR_REGISTRY}" -u "${ACR_USERNAME}" --password-stdin
-          docker push "${TARGET}"
-          echo "完成：${TARGET}"
+          VERSION_TARGET="${ACR_REGISTRY}/${ACR_NAMESPACE}/${ES_REPO}:${ES_VER}"
+          docker push "${VERSION_TARGET}"
+          echo "已推送：${VERSION_TARGET}"
+          if [ "${TAG_LATEST}" = "true" ]; then
+            LATEST_TARGET="${ACR_REGISTRY}/${ACR_NAMESPACE}/${ES_REPO}:latest"
+            docker tag "${VERSION_TARGET}" "${LATEST_TARGET}"
+            docker push "${LATEST_TARGET}"
+            echo "已推送：${LATEST_TARGET}"
+          fi
 
   save-artifact:
     needs: resolve
