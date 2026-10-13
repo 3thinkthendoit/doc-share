@@ -83,6 +83,7 @@ func main() {
 	app := handler.NewApp(cfg, db, signer, tmpl, bundle)
 	app.TmplRoot = tmplRoot // dev 热载用：render 时据此重新解析模板
 	app.StartTrashSweeper() // 回收站 30 天到期清扫（启动即扫一次，之后每小时）
+	app.StartSearchSync()   // 文档搜索 ES 同步（配置了 ES 时：启动全量一次，之后定时增量；未配置则 no-op）
 
 	gin.SetMode(gin.ReleaseMode)
 	engine := router.New(app, staticRoot)

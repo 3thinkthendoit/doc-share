@@ -9,6 +9,7 @@ import (
 
 	"doc-share/internal/llm"
 	"doc-share/internal/model"
+	"doc-share/internal/search"
 	"doc-share/internal/util"
 
 	"golang.org/x/crypto/bcrypt"
@@ -20,11 +21,11 @@ import (
 // 工具结果不落库，仅作为当轮上下文注入。
 
 const (
-	aiToolMaxResult   = 8000        // 单次工具结果字符上限（防止撑爆上下文）
-	aiToolMaxDocs     = 10          // search_documents 返回条数上限
-	aiMaxContentBytes = 200 << 10   // AI 写入文档正文的大小上限（200KB）
-	aiMaxCreatesPerReq  = 3         // 单次对话内 create_document 次数上限
-	aiMaxCreatesPerDay  = 50        // 单用户单日 AI 创建文档数上限
+	aiToolMaxResult    = 8000      // 单次工具结果字符上限（防止撑爆上下文）
+	aiToolMaxDocs      = 10        // search_documents 返回条数上限
+	aiMaxContentBytes  = 200 << 10 // AI 写入文档正文的大小上限（200KB）
+	aiMaxCreatesPerReq = 3         // 单次对话内 create_document 次数上限
+	aiMaxCreatesPerDay = 50        // 单用户单日 AI 创建文档数上限
 )
 
 // aiApprovalTools 执行前必须经用户在会话中确认的敏感工具
@@ -106,9 +107,9 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"id"     : map[string]any{"type": "integer", "description": "search_documents 返回的文档 ID"},
-					"offset" : map[string]any{"type": "integer", "description": "起始字符偏移（按字符计，默认 0）"},
-					"length" : map[string]any{"type": "integer", "description": "本次读取字符数（默认/上限 8000）"},
+					"id":     map[string]any{"type": "integer", "description": "search_documents 返回的文档 ID"},
+					"offset": map[string]any{"type": "integer", "description": "起始字符偏移（按字符计，默认 0）"},
+					"length": map[string]any{"type": "integer", "description": "本次读取字符数（默认/上限 8000）"},
 				},
 				"required": []string{"id"},
 			},
@@ -125,7 +126,7 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 				"type": "object",
 				"properties": map[string]any{
 					"project_id": map[string]any{"type": "integer", "description": "只列该项目下的文档（可选）"},
-					"limit"       : map[string]any{"type": "integer", "description": "返回条数上限，默认 20，最大 50"},
+					"limit":      map[string]any{"type": "integer", "description": "返回条数上限，默认 20，最大 50"},
 				},
 			},
 		}},
@@ -146,12 +147,12 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"id"               : map[string]any{"type": "integer", "description": "文档 ID"},
-					"enabled"          : map[string]any{"type": "boolean", "description": "true 开启分享，false 关闭"},
-					"can_edit"         : map[string]any{"type": "boolean", "description": "登录用户通过分享链接是否可编辑（可选，不传保留原设置）"},
-					"password"         : map[string]any{"type": "string", "description": "访问密码（可选，明文传入后服务端 bcrypt 存储）"},
-					"remove_password"  : map[string]any{"type": "boolean", "description": "true 表示清除已设密码（可选）"},
-					"expire_days"      : map[string]any{"type": "integer", "description": "有效期天数（可选，不传或 0 = 永不过期）"},
+					"id":              map[string]any{"type": "integer", "description": "文档 ID"},
+					"enabled":         map[string]any{"type": "boolean", "description": "true 开启分享，false 关闭"},
+					"can_edit":        map[string]any{"type": "boolean", "description": "登录用户通过分享链接是否可编辑（可选，不传保留原设置）"},
+					"password":        map[string]any{"type": "string", "description": "访问密码（可选，明文传入后服务端 bcrypt 存储）"},
+					"remove_password": map[string]any{"type": "boolean", "description": "true 表示清除已设密码（可选）"},
+					"expire_days":     map[string]any{"type": "integer", "description": "有效期天数（可选，不传或 0 = 永不过期）"},
 				},
 				"required": []string{"id", "enabled"},
 			},
@@ -173,8 +174,8 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"id"          : map[string]any{"type": "integer", "description": "文档 ID"},
-					"revision_id" : map[string]any{"type": "integer", "description": "revisions_history 返回的修订 ID"},
+					"id":          map[string]any{"type": "integer", "description": "文档 ID"},
+					"revision_id": map[string]any{"type": "integer", "description": "revisions_history 返回的修订 ID"},
 				},
 				"required": []string{"id", "revision_id"},
 			},
@@ -217,9 +218,9 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"template_id" : map[string]any{"type": "integer", "description": "list_templates 返回的模板 ID"},
-					"title"       : map[string]any{"type": "string", "description": "新文档标题（可选，默认用模板名）"},
-					"project_id"  : map[string]any{"type": "integer", "description": "归属项目 ID（可选，默认归属模板原项目或个人）"},
+					"template_id": map[string]any{"type": "integer", "description": "list_templates 返回的模板 ID"},
+					"title":       map[string]any{"type": "string", "description": "新文档标题（可选，默认用模板名）"},
+					"project_id":  map[string]any{"type": "integer", "description": "归属项目 ID（可选，默认归属模板原项目或个人）"},
 				},
 				"required": []string{"template_id"},
 			},
@@ -230,10 +231,10 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"id"           : map[string]any{"type": "integer", "description": "文档 ID"},
-					"title"        : map[string]any{"type": "string", "description": "新标题（可选）"},
-					"content"      : map[string]any{"type": "string", "description": "新的完整 Markdown 正文（可选；必须给出完整内容，不是增量）"},
-					"base_version" : map[string]any{"type": "integer", "description": "修改正文时必填：read_document 返回的 content_version，防止凭记忆覆盖丢失内容"},
+					"id":           map[string]any{"type": "integer", "description": "文档 ID"},
+					"title":        map[string]any{"type": "string", "description": "新标题（可选）"},
+					"content":      map[string]any{"type": "string", "description": "新的完整 Markdown 正文（可选；必须给出完整内容，不是增量）"},
+					"base_version": map[string]any{"type": "integer", "description": "修改正文时必填：read_document 返回的 content_version，防止凭记忆覆盖丢失内容"},
 				},
 				"required": []string{"id"},
 			},
@@ -244,9 +245,9 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"id"       : map[string]any{"type": "integer", "description": "文档 ID"},
-					"old_text" : map[string]any{"type": "string", "description": "要被替换的原文片段，必须与正文逐字一致且唯一；命中多处时请扩写上下文或用 occurrence 指定第几处"},
-					"new_text" : map[string]any{"type": "string", "description": "替换后的新内容；删除内容时传空字符串"},
+					"id":         map[string]any{"type": "integer", "description": "文档 ID"},
+					"old_text":   map[string]any{"type": "string", "description": "要被替换的原文片段，必须与正文逐字一致且唯一；命中多处时请扩写上下文或用 occurrence 指定第几处"},
+					"new_text":   map[string]any{"type": "string", "description": "替换后的新内容；删除内容时传空字符串"},
 					"occurrence": map[string]any{"type": "integer", "description": "替换第几处匹配（1 起，可选；不传时要求 old_text 唯一匹配）"},
 				},
 				"required": []string{"id", "old_text", "new_text"},
@@ -258,9 +259,9 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"title"      : map[string]any{"type": "string", "description": "文档标题"},
-					"content"    : map[string]any{"type": "string", "description": "Markdown 正文"},
-					"project_id" : map[string]any{"type": "integer", "description": "归属项目 ID（可选，必须是自己的项目）"},
+					"title":      map[string]any{"type": "string", "description": "文档标题"},
+					"content":    map[string]any{"type": "string", "description": "Markdown 正文"},
+					"project_id": map[string]any{"type": "integer", "description": "归属项目 ID（可选，必须是自己的项目）"},
 				},
 				"required": []string{"title"},
 			},
@@ -300,13 +301,33 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			if limit > aiToolMaxDocs {
 				limit = aiToolMaxDocs
 			}
-			like := "%" + q + "%"
-			var docs []model.Document
-			if err := scope().
-				Select("id, title, slug, version, type, project_id, updated_at").
-				Where("title LIKE ? OR slug LIKE ? OR (type <> ? AND content LIKE ?)", like, like, model.DocTypeHTML, like).
-				Order("updated_at desc").Limit(int(limit)).Find(&docs).Error; err != nil {
+			// 走统一搜索底层（ES 优先、未配置/报错降级 MySQL），与 Web 文档列表同一套逻辑
+			p := search.DefaultParams()
+			p.Query = q
+			p.UserID = user.ID
+			p.IsAdmin = user.IsAdmin()
+			p.MemberPids = memberPids
+			p.Offset = 0
+			p.Size = int(limit)
+			ids, err := a.searchSvc().Page(p)
+			if err != nil {
 				return "", fmt.Errorf("搜索失败: %v", err)
+			}
+			var docs []model.Document
+			if len(ids) > 0 {
+				// 回表兼底：再套一层权限范围，并按搜索返回的 ID 顺序重排
+				a.searchSvc().ScopeQuery(p).Where("id IN ?", ids).
+					Select("id, title, slug, version, type, project_id, updated_at").Find(&docs)
+				byID := make(map[uint]model.Document, len(docs))
+				for _, d := range docs {
+					byID[d.ID] = d
+				}
+				docs = docs[:0]
+				for _, id := range ids {
+					if d, ok := byID[id]; ok {
+						docs = append(docs, d)
+					}
+				}
 			}
 			if len(docs) == 0 {
 				return "没有找到匹配的文档。", nil
@@ -506,6 +527,7 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			a.DB.Where("document_id = ?", doc.ID).Delete(&model.Share{})
 			a.DB.Where("document_id = ?", doc.ID).Delete(&model.ShareAccessRequest{})
 			a.DB.Model(&model.Document{}).Where("id = ?", doc.ID).Update("is_shared", false)
+			a.reindexDocAsync(doc.ID) // 软删后重索（带 deleted 标记）
 			return fmt.Sprintf("《%s》（id=%d）已移入回收站，可在回收站恢复。", doc.Title, doc.ID), nil
 
 		case "list_trash":
@@ -547,6 +569,7 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			if err := a.DB.Unscoped().Model(&model.Document{}).Where("id = ?", doc.ID).Update("deleted_at", nil).Error; err != nil {
 				return "", fmt.Errorf("恢复失败: %v", err)
 			}
+			a.reindexDocAsync(doc.ID) // 恢复后重索（清除 deleted 标记）
 			return clip(fmt.Sprintf("已从回收站恢复《%s》（id=%d）。预览：{{doc:%d}}", doc.Title, doc.ID, doc.ID)), nil
 
 		case "list_templates":
@@ -627,6 +650,7 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			if err := a.DB.Create(&doc).Error; err != nil {
 				return "", fmt.Errorf("创建失败: %v", err)
 			}
+			a.reindexDocAsync(doc.ID)
 			return clip(fmt.Sprintf("已按模板《%s》创建文档：{{doc:%d}}（id=%d）", tpl.Name, doc.ID, doc.ID)), nil
 
 		case "set_share":
@@ -654,6 +678,7 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 					a.DB.Where("document_id = ?", doc.ID).Delete(&model.ShareAccessRequest{})
 				}
 				a.DB.Model(&doc).Update("is_shared", false)
+				a.reindexDocAsync(doc.ID)
 				return "分享已关闭。", nil
 			}
 			if !found {
@@ -679,6 +704,7 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 				return "", fmt.Errorf("分享设置失败: %v", err)
 			}
 			a.DB.Model(&doc).Update("is_shared", true)
+			a.reindexDocAsync(doc.ID)
 			note := ""
 			if share.Password != "" {
 				note += "（已设密码）"
@@ -851,6 +877,7 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			if err := a.DB.Create(&doc).Error; err != nil {
 				return "", fmt.Errorf("创建失败: %v", err)
 			}
+			a.reindexDocAsync(doc.ID)
 			return fmt.Sprintf("文档已创建：{{doc:%d}}（id=%d）", doc.ID, doc.ID), nil
 		}
 		return "", fmt.Errorf("未知工具: %s", name)
@@ -908,5 +935,8 @@ func (a *App) aiApplyDocUpdate(user *model.User, doc *model.Document, oldTitle, 
 		}
 		return nil
 	})
+	if err == nil {
+		a.reindexDocAsync(doc.ID) // AI 通道内容/标题变更后写时双写
+	}
 	return changed, err
 }

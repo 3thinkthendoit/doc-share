@@ -498,6 +498,7 @@ func (a *App) createHTMLDocFromFiles(c *gin.Context, files []siteFile, title str
 		return nil, fmt.Errorf("保存站点清单失败")
 	}
 	doc.Content = content
+	a.reindexDocAsync(doc.ID) // 写时双写（html 整站仅标题/路径参与搜索，ES 中 content 置空）
 	return &doc, nil
 }
 
@@ -650,6 +651,7 @@ func (a *App) ReplaceHTMLDoc(c *gin.Context) {
 	if old != nil {
 		a.deleteSiteFilesAsync(htmlSiteKeys(old))
 	}
+	a.reindexDocAsync(doc.ID) // 整站替换后重索
 	c.JSON(http.StatusOK, gin.H{"data": m})
 }
 

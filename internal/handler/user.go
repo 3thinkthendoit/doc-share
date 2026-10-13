@@ -180,10 +180,16 @@ func (a *App) DeleteUser(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
 		return
 	}
+	var deletedDocIDs []uint
 	err := a.DB.Transaction(func(tx *gorm.DB) error {
 		// 子查询为原始 SQL，不受 GORM 软删作用域影响，返回该用户名下全部文档 id（含回收站），分享一次性清干净
 		if err := tx.Where("document_id IN (SELECT id FROM documents WHERE owner_id = ?)", id).
 			Delete(&model.Share{}).Error; err != nil {
+			return err
+		}
+		// 物理删除前先取出该用户全部文档 id（含回收站），事务成功后从 ES 移除，杜绝孤儿
+		if err := tx.Unscoped().Model(&model.Document{}).Where("owner_id = ?", id).
+			Pluck("id", &deletedDocIDs).Error; err != nil {
 			return err
 		}
 		// 销户级联为管理性清除，需 Unscoped 物理删除（否则仅软删，站内残留无主幽灵文档）
@@ -198,6 +204,10 @@ func (a *App) DeleteUser(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除失败"})
 		return
+	}
+	// 文档已物理删除，从 ES 移除（否则 ES 永久残留孤儿，total 虚高、末尾整页空白）
+	for _, docID := range deletedDocIDs {
+		a.deindexDocAsync(docID)
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }

@@ -11,6 +11,7 @@ import (
 
 	"doc-share/internal/middleware"
 	"doc-share/internal/model"
+	"doc-share/internal/search"
 	"doc-share/internal/util"
 
 	"github.com/gin-gonic/gin"
@@ -33,70 +34,65 @@ func (a *App) DocsPage(c *gin.Context) {
 		a.DB.Model(&model.ProjectMember{}).Where("user_id = ?", user.ID).Pluck("project_id", &memberPids)
 	}
 
-	tx := a.DB.Model(&model.Document{})
-	if trash {
-		tx = tx.Unscoped().Where("deleted_at IS NOT NULL")
+	// 组装统一搜索参数（Web 文档列表 / AI search_documents / MCP-OpenAPI 共用 search.Service）
+	params := search.DefaultParams()
+	params.Query = q
+	params.Origin = origin
+	params.Trash = trash
+	params.MemberPids = memberPids
+	if user != nil {
+		params.UserID = user.ID
+		params.IsAdmin = user.IsAdmin()
 	}
-	if user != nil && !user.IsAdmin() {
-		switch origin {
-		case "mine":
-			tx = tx.Where("owner_id = ?", user.ID)
-		case "shared":
-			if len(memberPids) == 0 {
-				tx = tx.Where("1 = 0") // 未参与任何项目，直接返回空列表
-			} else {
-				tx = tx.Where("owner_id <> ? AND project_id IN ?", user.ID, memberPids)
-			}
-		default:
-			if len(memberPids) > 0 {
-				tx = tx.Where("owner_id = ? OR project_id IN ?", user.ID, memberPids)
-			} else {
-				tx = tx.Where("owner_id = ?", user.ID)
-			}
-		}
-	} else if origin == "mine" && user != nil {
-		tx = tx.Where("owner_id = ?", user.ID)
-	}
-	// 项目/分类筛选
+	// 项目/分类筛选："0" 表示未分组/未分类，Atoi 后即为 0，与 ScopeQuery 语义一致
 	if p := c.Query("project"); p != "" {
-		if p == "0" {
-			tx = tx.Where("project_id = 0")
-		} else if pid, err := strconv.Atoi(p); err == nil {
-			tx = tx.Where("project_id = ?", pid)
+		if pid, err := strconv.Atoi(p); err == nil {
+			params.ProjectID = pid
+		}
+	}
+	if ct := c.Query("category"); ct != "" {
+		if cid, err := strconv.Atoi(ct); err == nil {
+			params.CategoryID = cid
 		}
 	}
 	// 分享状态筛选：1=已分享 0=未分享
 	if sh := c.Query("shared"); sh == "1" {
-		tx = tx.Where("is_shared = 1")
+		params.Shared = 1
 	} else if sh == "0" {
-		tx = tx.Where("is_shared = 0")
+		params.Shared = 0
 	}
-	if ct := c.Query("category"); ct != "" {
-		if ct == "0" {
-			tx = tx.Where("category_id = 0")
-		} else if cid, err := strconv.Atoi(ct); err == nil {
-			tx = tx.Where("category_id = ?", cid)
+
+	// 先统计总数以校正分页（页码越界时 withTotal 会钳到最后一页），再取当前页 ID
+	total, cerr := a.searchSvc().Count(params)
+	if cerr != nil {
+		log.Printf("[docs] 搜索统计失败: %v", cerr)
+	}
+	pg = pg.withTotal(total)
+	params.Offset = pg.Offset
+	params.Size = pg.Size
+	ids, perr := a.searchSvc().Page(params)
+	if perr != nil {
+		log.Printf("[docs] 搜索失败: %v", perr)
+	}
+
+	// 回表 hydration：用 ScopeQuery 再套一次权限/过滤兜底（即使 ES 权限副本过期也绝不越权），
+	// 列表不拉 Content（longtext）；按搜索返回的 ID 顺序重排，保持 ES/MySQL 一致的排序。
+	var docs []model.Document
+	if len(ids) > 0 {
+		a.searchSvc().ScopeQuery(params).Where("id IN ?", ids).
+			Omit("Content").Preload("Owner").Preload("Share").Preload("Project").Preload("Category").Preload("UpdatedBy").
+			Find(&docs)
+		byID := make(map[uint]model.Document, len(docs))
+		for _, d := range docs {
+			byID[d.ID] = d
+		}
+		docs = docs[:0]
+		for _, id := range ids {
+			if d, ok := byID[id]; ok {
+				docs = append(docs, d)
+			}
 		}
 	}
-	if q != "" {
-		like := "%" + q + "%"
-		// 正文搜索：html 整站文档的 Content 只是 manifest（正文在对象存储），
-		// 须按类型显式排除，否则搜 "index" 会误命中所有整站文档的文件名清单
-		tx = tx.Where("title LIKE ? OR slug LIKE ? OR (type <> ? AND content LIKE ?)",
-			like, like, model.DocTypeHTML, like)
-	}
-	var total int64
-	tx.Count(&total)
-	pg = pg.withTotal(total)
-
-	var docs []model.Document
-	// 列表不拉 Content（longtext）；嵌入标签另用 LIKE 只取 id
-	orderCol := "updated_at desc"
-	if trash {
-		orderCol = "deleted_at desc" // 回收站按删除时间倒序
-	}
-	tx.Omit("Content").Preload("Owner").Preload("Share").Preload("Project").Preload("Category").Preload("UpdatedBy").
-		Order(orderCol).Offset(pg.Offset).Limit(pg.Size).Find(&docs)
 
 	embedTags := detectEmbedTags(a.DB, docs)
 
@@ -587,6 +583,7 @@ func (a *App) CreateDoc(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建失败"})
 		return
 	}
+	a.reindexDocAsync(doc.ID) // 写时双写到 ES（best-effort）
 	c.JSON(http.StatusOK, gin.H{"data": doc})
 }
 
@@ -730,6 +727,7 @@ func (a *App) UpdateDoc(c *gin.Context) {
 	if actor != nil && (doc.Title != oldTitle || doc.Content != oldContent) {
 		a.notifyDocUpdated(doc, actor.DisplayName(), actor.ID)
 	}
+	a.reindexDocAsync(doc.ID) // 写时双写到 ES（标题/正文/归属变更）
 	c.JSON(http.StatusOK, gin.H{"data": doc})
 }
 
@@ -747,6 +745,7 @@ func (a *App) DeleteDoc(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
 		return
 	}
+	a.reindexDocAsync(doc.ID) // 软删后重索：带上 deleted 标记，供回收站视图搜索
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
@@ -781,6 +780,7 @@ func (a *App) RestoreDoc(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
 		return
 	}
+	a.reindexDocAsync(doc.ID) // 恢复后重索：清除 deleted 标记，重新进入普通搜索
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
@@ -805,7 +805,7 @@ func (a *App) PurgeDoc(c *gin.Context) {
 // 站点文件 → 分享配置/分享申请/修订/访客/评论 → 文档行本身
 func (a *App) purgeDoc(doc *model.Document) error {
 	a.cleanupHTMLDoc(doc)
-	return a.DB.Transaction(func(tx *gorm.DB) error {
+	err := a.DB.Transaction(func(tx *gorm.DB) error {
 		for _, m := range []any{
 			&model.Share{}, &model.ShareAccessRequest{}, &model.DocumentRevision{},
 			&model.DocumentVisitor{}, &model.Comment{},
@@ -816,6 +816,10 @@ func (a *App) purgeDoc(doc *model.Document) error {
 		}
 		return tx.Unscoped().Delete(&model.Document{}, doc.ID).Error
 	})
+	if err == nil {
+		a.deindexDocAsync(doc.ID) // 硬删除：从 ES 移除，避免孤儿
+	}
+	return err
 }
 
 // StartTrashSweeper 回收站 30 天到期清扫：启动即扫一次，之后每小时一轮
@@ -996,6 +1000,7 @@ func (a *App) UpsertShare(c *gin.Context) {
 		}
 		doc.IsShared = false
 		a.DB.Save(doc)
+		a.reindexDocAsync(doc.ID) // is_shared 变更写时双写（与开启分享分支对称）
 		c.JSON(http.StatusOK, gin.H{"ok": true, "enabled": false})
 		return
 	}
@@ -1027,6 +1032,7 @@ func (a *App) UpsertShare(c *gin.Context) {
 	}
 	doc.IsShared = true
 	a.DB.Save(doc)
+	a.reindexDocAsync(doc.ID) // is_shared 变更写时双写
 
 	c.JSON(http.StatusOK, gin.H{
 		"ok":          true,
@@ -1108,6 +1114,7 @@ func (a *App) DuplicateDoc(c *gin.Context) {
 			return
 		}
 	}
+	a.reindexDocAsync(newDoc.ID) // 写时双写新副本
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"id": newDoc.ID, "title": newDoc.Title}})
 }
 
@@ -1124,6 +1131,7 @@ func (a *App) DeleteShare(c *gin.Context) {
 	a.DB.Where("document_id = ?", doc.ID).Delete(&model.ShareAccessRequest{})
 	doc.IsShared = false
 	a.DB.Save(doc)
+	a.reindexDocAsync(doc.ID) // is_shared 变更写时双写
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 

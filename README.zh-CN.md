@@ -100,6 +100,15 @@ CREATE DATABASE doc_share DEFAULT CHARSET utf8mb4;
 | `DOC_SHARE_DEV` | 否 | `true` = 模板/静态资源直读磁盘，前端热载 |
 | `DOC_SHARE_DB_LOG` | 否 | `true` = 开启 GORM SQL 日志 |
 | `DOC_SHARE_DRAWIO_URL` | 否 | drawio 编辑器兜底地址（推荐登录后在后台「系统设置」配置，保存即生效） |
+| `DOC_SHARE_ES_URL` | 否 | Elasticsearch 基础地址（如 `http://127.0.0.1:8080`），用于全文检索。**留空 = 不启用 ES**，搜索回退 MySQL `LIKE`。 |
+| `DOC_SHARE_ES_INDEX` | 否 | ES 索引名（默认 `docshare_docs`） |
+| `DOC_SHARE_ES_API_KEY` | 否 | ES API Key（`Authorization: ApiKey <key>`），非空时优先于用户名/密码 |
+| `DOC_SHARE_ES_USERNAME` | 否 | ES HTTP Basic 用户名（`DOC_SHARE_ES_API_KEY` 为空时生效） |
+| `DOC_SHARE_ES_PASSWORD` | 否 | ES HTTP Basic 密码 |
+| `DOC_SHARE_ES_TIMEOUT_MS` | 否 | 单次 ES 查询超时毫秒（默认 `2000`），超时/报错即回退 MySQL |
+| `DOC_SHARE_ES_SYNC_MINUTES` | 否 | 后台增量索引同步间隔分钟（默认 `5`） |
+
+> **搜索后端**：设置 `DOC_SHARE_ES_URL` 后，应用会把全部文档索引进 ES（编辑时双写 + 启动全量重建 + 定时增量同步）并由 ES 提供检索；若 ES 未配置/不可达/报错，则透明回退 MySQL。MySQL 始终是权限真相源（ES 结果回表时会再按 MySQL 权限过滤一次）。随附的 `Dockerfile.es` 预装了 [analysis-ik](https://github.com/infinilabs/analysis-ik) 中文分词插件，应用会自动探测（未装则回退标准分析器）。
 
 > 仅限本地调试：设置 `DOC_SHARE_ALLOW_INSECURE_DEFAULTS=true` 可临时放行空的 session secret。
 

@@ -33,6 +33,20 @@ type Config struct {
 	Auth     AuthConfig     `yaml:"auth"`
 	Upload   UploadConfig   `yaml:"upload"`
 	Drawio   DrawioConfig   `yaml:"drawio"`
+	Search   SearchConfig   `yaml:"search"`
+}
+
+// SearchConfig 文档搜索后端配置。
+// 配置 ESURL 后启用 Elasticsearch 全文检索；未配置（留空）、连接失败、
+// 超时或查询报错时自动降级为 MySQL LIKE 搜索，业务无感知。
+type SearchConfig struct {
+	ESURL       string `yaml:"es_url"`        // ES 基础 URL，如 http://es:8080；留空则禁用 ES，仅用 MySQL
+	ESIndex     string `yaml:"es_index"`      // 索引名
+	ESUsername  string `yaml:"es_username"`   // 可选：HTTP Basic 用户名（与 es_api_key 二选一）
+	ESPassword  string `yaml:"es_password"`   // 可选：HTTP Basic 密码
+	ESApiKey    string `yaml:"es_api_key"`    // 可选：ES API Key（密钥认证，非空时优先于用户名/密码）
+	ESTimeoutMS int    `yaml:"es_timeout_ms"` // 单次 ES 请求超时（毫秒），超时即降级 MySQL
+	SyncMinutes int    `yaml:"sync_minutes"`  // 后台增量同步间隔（分钟），<=0 时用默认值
 }
 
 type ServerConfig struct {
@@ -55,10 +69,10 @@ type AuthConfig struct {
 
 // UploadConfig 图片上传存储配置
 type UploadConfig struct {
-	Dir          string `yaml:"dir"`             // 本地存储根目录
-	MaxSizeMB    int    `yaml:"max_size_mb"`     // 单张图片大小上限（MB）
-	HTMLMaxSizeMB int   `yaml:"html_max_size_mb"` // HTML 整站解包后总大小上限（MB）
-	HTMLMaxFiles int    `yaml:"html_max_files"`  // HTML 整站文件数上限
+	Dir           string `yaml:"dir"`              // 本地存储根目录
+	MaxSizeMB     int    `yaml:"max_size_mb"`      // 单张图片大小上限（MB）
+	HTMLMaxSizeMB int    `yaml:"html_max_size_mb"` // HTML 整站解包后总大小上限（MB）
+	HTMLMaxFiles  int    `yaml:"html_max_files"`   // HTML 整站文件数上限
 }
 
 // DrawioConfig drawio 自托管编辑器（jgraph/drawio webapp，Apache 2.0）接入配置。
@@ -233,5 +247,14 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Upload.HTMLMaxFiles <= 0 {
 		c.Upload.HTMLMaxFiles = 2000
+	}
+	if c.Search.ESIndex == "" {
+		c.Search.ESIndex = "docshare_docs"
+	}
+	if c.Search.ESTimeoutMS <= 0 {
+		c.Search.ESTimeoutMS = 2000
+	}
+	if c.Search.SyncMinutes <= 0 {
+		c.Search.SyncMinutes = 5
 	}
 }

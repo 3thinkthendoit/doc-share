@@ -269,10 +269,17 @@ func (a *App) DeleteProject(c *gin.Context) {
 	if project == nil {
 		return
 	}
+	var affectedDocIDs []uint
 	err := a.DB.Transaction(func(tx *gorm.DB) error {
-		// Unscoped：回收站内文档也需脱离本项目，否则还原后残留指向已删项目的悬挂 project_id
+		// 先取出受影响的文档 id（含回收站），事务成功后批量 reindex，避免 ES 副本残留旧 project_id
 		if err := tx.Unscoped().Model(&model.Document{}).Where("project_id = ?", project.ID).
-			UpdateColumn("project_id", 0).Error; err != nil {
+			Pluck("id", &affectedDocIDs).Error; err != nil {
+			return err
+		}
+		// Unscoped：回收站内文档也需脱离本项目，否则还原后残留指向已删项目的悬挂 project_id。
+		// 用 Update（而非 UpdateColumn）：同步刷新 updated_at，让 ES 增量同步水位能捕获这批变更
+		if err := tx.Unscoped().Model(&model.Document{}).Where("project_id = ?", project.ID).
+			Update("project_id", 0).Error; err != nil {
 			return err
 		}
 		if err := tx.Where("project_id = ?", project.ID).Delete(&model.ProjectMember{}).Error; err != nil {
@@ -292,6 +299,10 @@ func (a *App) DeleteProject(c *gin.Context) {
 		log.Printf("[project] 删除项目失败 project=%d: %v", project.ID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
 		return
+	}
+	// project_id 已改，写时双写同步进 ES（否则 ES 副本仍指向已删项目，「未分组」筛选会搜不到）
+	for _, id := range affectedDocIDs {
+		a.reindexDocAsync(id)
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }

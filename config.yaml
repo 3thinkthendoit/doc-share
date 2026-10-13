@@ -42,3 +42,23 @@ drawio:
   # 推荐直接在管理员后台「系统设置 → drawio 编辑器地址」配置（无需重启）
   # 此处留空且后台也未配置时，drawio 文档类型不可用（编辑/新建入口提示未配置）
   editor_url: "${DOC_SHARE_DRAWIO_URL:-}"
+
+search:
+  # 文档搜索后端。配置 es_url 后启用 Elasticsearch 全文检索（Web 文档列表、AI 智能体
+  # search_documents、MCP/OpenAPI 文档搜索共用同一套底层逻辑）；
+  # es_url 留空 / 连接失败 / 超时 / 查询报错时自动降级为 MySQL LIKE 搜索。
+  # 例：DOC_SHARE_ES_URL=https://your-es:8080（Dockerfile.es 镜像默认已开启密码认证，
+  #     须同时配 DOC_SHARE_ES_USERNAME=elastic + DOC_SHARE_ES_PASSWORD=<ELASTIC_PASSWORD>）
+  es_url: "${DOC_SHARE_ES_URL:-}"
+  es_index: "${DOC_SHARE_ES_INDEX:-docshare_docs}"
+  # ES 开启安全认证时的凭据，两种方案二选一（es_api_key 非空时优先）：
+  #   1) API Key（推荐）：DOC_SHARE_ES_API_KEY 填 ES 生成的密钥（id:api_key 的 base64 编码串）
+  #   2) HTTP Basic：DOC_SHARE_ES_USERNAME / DOC_SHARE_ES_PASSWORD
+  # 两者均留空 = 不带认证（适用于内网关闭安全认证的自建 ES）
+  es_api_key: "${DOC_SHARE_ES_API_KEY:-}"
+  es_username: "${DOC_SHARE_ES_USERNAME:-}"
+  es_password: "${DOC_SHARE_ES_PASSWORD:-}"
+  # 单次 ES 请求超时（毫秒），超时即降级 MySQL
+  es_timeout_ms: ${DOC_SHARE_ES_TIMEOUT_MS:-2000}
+  # 后台增量同步间隔（分钟）：启动先全量同步一次，之后按此间隔增量兜底写时双写的漏网
+  sync_minutes: ${DOC_SHARE_ES_SYNC_MINUTES:-5}

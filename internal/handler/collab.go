@@ -525,6 +525,7 @@ func (a *App) RollbackRevision(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "内容已被其他人修改", "current_version": a.currentContentVersion(doc.ID)})
 		return
 	}
+	a.reindexDocAsync(doc.ID) // 回滚修订后写时双写
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
@@ -693,6 +694,7 @@ func (a *App) saveShareContentBody(c *gin.Context, doc *model.Document, user *mo
 		return
 	}
 	a.notifyShareEdited(doc, user.DisplayName(), user.ID)
+	a.reindexDocAsync(doc.ID) // 分享页编辑正文后写时双写
 	c.JSON(http.StatusOK, gin.H{"ok": true, "content_version": newVersion})
 }
 

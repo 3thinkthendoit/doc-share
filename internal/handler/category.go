@@ -160,10 +160,17 @@ func (a *App) DeleteCategory(c *gin.Context) {
 	if category == nil {
 		return
 	}
+	var affectedDocIDs []uint
 	err := a.DB.Transaction(func(tx *gorm.DB) error {
-		// Unscoped：回收站内文档也需脱离本分类，否则还原后残留悬挂 category_id
+		// 先取出受影响的文档 id（含回收站），事务成功后批量 reindex，避免 ES 副本残留旧 category_id
 		if err := tx.Unscoped().Model(&model.Document{}).Where("category_id = ?", category.ID).
-			UpdateColumn("category_id", 0).Error; err != nil {
+			Pluck("id", &affectedDocIDs).Error; err != nil {
+			return err
+		}
+		// Unscoped：回收站内文档也需脱离本分类，否则还原后残留悬挂 category_id。
+		// 用 Update（而非 UpdateColumn）：同步刷新 updated_at，让 ES 增量同步水位能捕获这批变更
+		if err := tx.Unscoped().Model(&model.Document{}).Where("category_id = ?", category.ID).
+			Update("category_id", 0).Error; err != nil {
 			return err
 		}
 		return tx.Delete(&model.Category{}, category.ID).Error
@@ -171,6 +178,10 @@ func (a *App) DeleteCategory(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
 		return
+	}
+	// category_id 已改，写时双写同步进 ES
+	for _, id := range affectedDocIDs {
+		a.reindexDocAsync(id)
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }

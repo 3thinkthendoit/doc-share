@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,6 +15,7 @@ import (
 
 	"doc-share/internal/middleware"
 	"doc-share/internal/model"
+	"doc-share/internal/search"
 
 	"github.com/gin-gonic/gin"
 )
@@ -275,30 +277,61 @@ func (a *App) OpenGetShare(c *gin.Context) {
 	}})
 }
 
-// OpenListDocs 文档分页列表；可按 project_id / category_id 过滤；不返回正文
+// OpenListDocs 文档分页列表；可按 project_id / category_id 过滤，支持 q 关键词搜索；不返回正文。
+// 搜索走与 Web 文档列表 / AI 智能体同一套底层（ES 优先、未配置/报错降级 MySQL）。
 func (a *App) OpenListDocs(c *gin.Context) {
 	user := middleware.CurrentUser(c)
 	pg := parseOpenPage(c)
-	tx := a.DB.Model(&model.Document{})
-	if !user.IsAdmin() {
-		tx = tx.Where("owner_id = ?", user.ID)
-	}
+	// OpenAPI 以密钥属主身份操作，可见范围仅自己的文档（admin 全部）；
+	// MemberPids 留 nil 时非管理员默认分支即 owner_id = 自己，与原语义一致。
+	params := search.DefaultParams()
+	params.Query = c.Query("q")
+	params.UserID = user.ID
+	params.IsAdmin = user.IsAdmin()
 	if p := c.Query("project_id"); p != "" {
 		if pid, err := strconv.Atoi(p); err == nil {
-			tx = tx.Where("project_id = ?", pid)
+			params.ProjectID = pid
 		}
 	}
 	if ct := c.Query("category_id"); ct != "" {
 		if cid, err := strconv.Atoi(ct); err == nil {
-			tx = tx.Where("category_id = ?", cid)
+			params.CategoryID = cid
 		}
 	}
-	var total int64
-	tx.Count(&total)
+	// Count/Page 内部已做 ES→MySQL 降级；返回 err 意味着两个后端都失败（通常 DB 异常），
+	// 此时不能静默返回 200+空列表（调用方无法区分「确实没文档」与「后端故障」），记日志并返 5xx。
+	total, err := a.searchSvc().Count(params)
+	if err != nil {
+		log.Printf("[openapi] list_docs 统计失败 user=%d: %v", user.ID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "搜索失败"})
+		return
+	}
 	pg = pg.withTotal(total)
+	params.Offset = pg.Offset
+	params.Size = pg.Size
+	ids, err := a.searchSvc().Page(params)
+	if err != nil {
+		log.Printf("[openapi] list_docs 搜索失败 user=%d: %v", user.ID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "搜索失败"})
+		return
+	}
 	var docs []model.Document
-	tx.Select("id, title, version, slug, type, owner_id, project_id, category_id, is_shared, view_count, created_at, updated_at").
-		Order("updated_at desc").Offset(pg.Offset).Limit(pg.Size).Find(&docs)
+	if len(ids) > 0 {
+		// 回表兼底：再套一层权限范围，并按搜索返回的 ID 顺序重排
+		a.searchSvc().ScopeQuery(params).Where("id IN ?", ids).
+			Select("id, title, version, slug, type, owner_id, project_id, category_id, is_shared, view_count, created_at, updated_at").
+			Find(&docs)
+		byID := make(map[uint]model.Document, len(docs))
+		for _, d := range docs {
+			byID[d.ID] = d
+		}
+		docs = docs[:0]
+		for _, id := range ids {
+			if d, ok := byID[id]; ok {
+				docs = append(docs, d)
+			}
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{"data": docs, "total": pg.Total, "page": pg.Page, "size": pg.Size})
 }
 

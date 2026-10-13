@@ -144,12 +144,13 @@ docSchema.properties.content.description += CANVAS_DOC;
 const TOOLS = [
   {
     name: 'docshare_list_docs',
-    description: '列出 DocShare 文档（分页，不含正文），含 type 字段（markdown/mindmap/board/drawio/html），可按项目/分类过滤',
+    description: '列出/搜索 DocShare 文档（分页，不含正文），含 type 字段（markdown/mindmap/board/drawio/html），可按关键词全文搜索并按项目/分类过滤',
     schema: {
       type: 'object',
       properties: {
         page: { type: 'number', description: '页码，从 1 开始，默认 1' },
         size: { type: 'number', description: '每页条数，1~100，默认 15' },
+        q: { type: 'string', description: '关键词，匹配标题/路径/正文（与 Web 文档列表、AI 智能体搜索同一套底层；配置 ES 时走全文检索，否则 MySQL LIKE）' },
         project_id: { type: 'number', description: '按项目 ID 过滤' },
         category_id: { type: 'number', description: '按分类 ID 过滤' },
       },

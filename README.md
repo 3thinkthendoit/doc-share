@@ -100,6 +100,15 @@ All settings live in `config.yaml` and can be overridden via environment variabl
 | `DOC_SHARE_DEV` | No | `true` = serve templates/statics from disk for hot reload |
 | `DOC_SHARE_DB_LOG` | No | `true` = enable GORM SQL logging |
 | `DOC_SHARE_DRAWIO_URL` | No | Fallback drawio editor URL (recommended: configure it in admin **System Settings**, effective immediately) |
+| `DOC_SHARE_ES_URL` | No | Elasticsearch base URL for full-text search (e.g. `http://127.0.0.1:8080`). **Empty = ES disabled**, search falls back to MySQL `LIKE`. |
+| `DOC_SHARE_ES_INDEX` | No | ES index name (default `docshare_docs`) |
+| `DOC_SHARE_ES_API_KEY` | No | ES API key (`Authorization: ApiKey <key>`); takes precedence over username/password |
+| `DOC_SHARE_ES_USERNAME` | No | ES HTTP Basic username (used when `DOC_SHARE_ES_API_KEY` is empty) |
+| `DOC_SHARE_ES_PASSWORD` | No | ES HTTP Basic password |
+| `DOC_SHARE_ES_TIMEOUT_MS` | No | Per-query ES timeout in ms (default `2000`); on timeout/error search falls back to MySQL |
+| `DOC_SHARE_ES_SYNC_MINUTES` | No | Background incremental index sync interval in minutes (default `5`) |
+
+> **Search backend**: with `DOC_SHARE_ES_URL` set, the app indexes all documents into ES (dual-write on edit + full rebuild on startup + periodic incremental sync) and serves search from ES; if ES is unset, unreachable, or errors, it transparently falls back to MySQL. MySQL always remains the access-control source of truth (ES results are re-filtered against MySQL on read). The bundled `Dockerfile.es` pre-installs the [analysis-ik](https://github.com/infinilabs/analysis-ik) Chinese analyzer, which is auto-detected (falls back to the standard analyzer if absent).
 
 > For local debugging only, `DOC_SHARE_ALLOW_INSECURE_DEFAULTS=true` temporarily bypasses the mandatory session secret.
 

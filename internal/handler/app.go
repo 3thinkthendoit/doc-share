@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"io/fs"
+	"log"
 	"path"
 	"strings"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"doc-share/internal/config"
 	"doc-share/internal/i18n"
 	"doc-share/internal/middleware"
+	"doc-share/internal/search"
 	"doc-share/internal/session"
 
 	"github.com/gin-gonic/gin"
@@ -29,9 +31,12 @@ type App struct {
 	I18N       *i18n.Bundle
 	Limiter    *middleware.ShareLimiter
 	CaptchaMgr *base64Captcha.Captcha
+	Search     *search.Service // 文档搜索唯一底层实现（ES + MySQL 降级），Web/AI/MCP 共用
 
-	setMu    sync.RWMutex   // 站点设置缓存锁
-	setCache *SiteSettings  // nil 表示未加载
+	setMu    sync.RWMutex  // 站点设置缓存锁
+	setCache *SiteSettings // nil 表示未加载
+
+	searchOnce sync.Once // 保障 Search 惰性初始化（仅测试/手动构造 App 时生效）
 
 	approvals sync.Map // AI 敏感操作待审批表：approvalID -> chatApproval
 }
@@ -57,7 +62,58 @@ func NewApp(cfg *config.Config, db *gorm.DB, signer *session.Signer, tmpl *templ
 		I18N:       bundle,
 		Limiter:    middleware.NewShareLimiter(5, 10*time.Minute),
 		CaptchaMgr: base64Captcha.NewCaptcha(driver, base64Captcha.DefaultMemStore),
+		Search:     search.New(cfg.Search, db),
 	}
+}
+
+// searchSvc 返回文档搜索服务。生产经 NewApp 已注入；若 App 被手动/测试构造而
+// Search 为 nil，则惰性初始化为「仅 MySQL」服务（ESURL 空），保证任何搜索调用不会 nil panic。
+func (a *App) searchSvc() *search.Service {
+	a.searchOnce.Do(func() {
+		if a.Search == nil {
+			a.Search = search.New(config.SearchConfig{}, a.DB)
+		}
+	})
+	return a.Search
+}
+
+// reindexDocAsync 写时双写：文档变更后异步把最新状态同步进 ES（含软删标记）。
+// best-effort，绝不阻塞或影响主流程；goroutine 内 recover 防止内部 panic 带走整个进程；
+// 漏网由后台定时增量同步兜底。
+func (a *App) reindexDocAsync(id uint) {
+	s := a.searchSvc()
+	if !s.ESEnabled() {
+		return
+	}
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[search] 异步 reindex 文档 %d panic（已忽略）: %v", id, r)
+			}
+		}()
+		s.Reindex(id)
+	}()
+}
+
+// deindexDocAsync 硬删除/彻底销毁后异步从 ES 移除文档。best-effort，同样带 recover。
+func (a *App) deindexDocAsync(id uint) {
+	s := a.searchSvc()
+	if !s.ESEnabled() {
+		return
+	}
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[search] 异步 deindex 文档 %d panic（已忽略）: %v", id, r)
+			}
+		}()
+		s.Deindex(id)
+	}()
+}
+
+// StartSearchSync 启动 ES 全量+定时增量同步（未配置 ES 时为 no-op）。
+func (a *App) StartSearchSync() {
+	a.searchSvc().StartSync()
 }
 
 // View 页面模板数据。仍是 map（模板里 {{.user}} / {{range .docs}} 等按键取值不变），
@@ -110,9 +166,9 @@ func (a *App) i18nText(lang, text string) string {
 // funcMap 供模板使用的辅助函数
 func funcMap() template.FuncMap {
 	return template.FuncMap{
-		"now": time.Now,
-		"add": func(a, b int) int { return a + b },
-		"sub": func(a, b int) int { return a - b },
+		"now":      time.Now,
+		"add":      func(a, b int) int { return a + b },
+		"sub":      func(a, b int) int { return a - b },
 		"pageNums": pageNums,
 		"eqInt":    func(a, b int) bool { return a == b },
 		// avatar 返回首个非空字符串的首字符（按 rune 切，中文安全），全空时返回 "U"
