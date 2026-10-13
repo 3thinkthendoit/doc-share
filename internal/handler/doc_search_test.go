@@ -99,3 +99,28 @@ func TestDocsContentSearch(t *testing.T) {
 		}
 	})
 }
+
+// TestHighlightTitleEscapes 标题标黄必须先转义（防 XSS）再包 <mark>；无命中词时原样转义
+func TestHighlightTitleEscapes(t *testing.T) {
+	hl := titleHighlighter("互助")
+	if hl == nil {
+		t.Fatal("有查询词时应返回高亮闭包")
+	}
+	got := string(hl("A <b>互助</b> 平台"))
+	if !strings.Contains(got, "<mark>互助</mark>") {
+		t.Fatalf("应标黄命中词: %s", got)
+	}
+	if strings.Contains(got, "<b>") {
+		t.Fatalf("标题原有 HTML 必须被转义: %s", got)
+	}
+	if !strings.Contains(got, "&lt;b&gt;") {
+		t.Fatalf("应保留转义文本: %s", got)
+	}
+	if titleHighlighter("") != nil || titleHighlighter("   ") != nil {
+		t.Fatalf("无查询词时不应标黄")
+	}
+	// 查询词落在转义实体内部时不得切开实体（否则标题被改写）
+	if got := string(titleHighlighter("amp")("Tom & Jerry")); got != "Tom &amp; Jerry" {
+		t.Fatalf("不应切中 &amp; 实体内部: %s", got)
+	}
+}

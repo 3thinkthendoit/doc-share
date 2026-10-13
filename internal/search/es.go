@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -352,8 +354,15 @@ func (c *ESClient) buildQuery(p Params) (map[string]any, bool) {
 	return map[string]any{"bool": boolQ}, false
 }
 
+// 高亮占位标记：ES highlight 的 pre/post_tags 用控制字符（正常正文不会出现），
+// 渲染时先 HTML 转义再替换为 <mark>，兼顾「标黄」与 XSS 安全（见 RenderHighlight）。
+const (
+	hlPre  = "\x00"
+	hlPost = "\x01"
+)
+
 // searchBody 组装 _search 请求体：只取 _id（_source=false），按 orderCol 倒序，from/size 分页。
-func (c *ESClient) searchBody(p Params, withHits bool) (map[string]any, bool) {
+func (c *ESClient) searchBody(p Params, withHits, withHL bool) (map[string]any, bool) {
 	query, matchNone := c.buildQuery(p)
 	if matchNone {
 		return nil, true
@@ -370,6 +379,17 @@ func (c *ESClient) searchBody(p Params, withHits bool) (map[string]any, bool) {
 	if withHits {
 		body["from"] = p.Offset
 		body["size"] = p.size()
+		// 仅 Web 搜索页需要高亮（AI/MCP 走 Search，不付这份开销）：
+		// content 取 1 个 ~120 字符片段，占位标记渲染时替换为 <mark>。
+		if withHL && strings.TrimSpace(p.Query) != "" {
+			body["highlight"] = map[string]any{
+				"pre_tags":  []string{hlPre},
+				"post_tags": []string{hlPost},
+				"fields": map[string]any{
+					"content": map[string]any{"fragment_size": 120, "number_of_fragments": 1},
+				},
+			}
+		}
 	} else {
 		body["size"] = 0 // 仅统计总数
 	}
@@ -382,35 +402,69 @@ type esSearchResp struct {
 			Value int64 `json:"value"`
 		} `json:"total"`
 		Hits []struct {
-			ID string `json:"_id"`
+			ID        string              `json:"_id"`
+			Highlight map[string][]string `json:"highlight"`
 		} `json:"hits"`
 	} `json:"hits"`
 }
 
-// Search 返回当前页命中的有序文档 ID。
+// Search 返回当前页命中的有序文档 ID（不请求高亮，供 AI/MCP 等不需要摘要的入口）。
 func (c *ESClient) Search(p Params) ([]uint, error) {
+	ids, _, err := c.search(p, false)
+	return ids, err
+}
+
+// SearchWithHighlight 返回有序文档 ID + 每篇的正文高亮片段（原始片段含占位标记，
+// 调用方用 RenderHighlight 转安全 HTML）。无正文片段（仅标题/slug 命中、HTML 文档）时该 ID 不在 map 中。
+func (c *ESClient) SearchWithHighlight(p Params) ([]uint, map[uint]string, error) {
+	return c.search(p, true)
+}
+
+func (c *ESClient) search(p Params, withHL bool) ([]uint, map[uint]string, error) {
 	if err := c.ensureIndex(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	body, matchNone := c.searchBody(p, true)
+	body, matchNone := c.searchBody(p, true, withHL)
 	if matchNone {
-		return nil, nil // 权限范围必然为空
+		return nil, nil, nil // 权限范围必然为空
 	}
 	data, err := c.do(http.MethodPost, "/"+c.index+"/_search", body)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var resp esSearchResp
 	if err := json.Unmarshal(data, &resp); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	ids := make([]uint, 0, len(resp.Hits.Hits))
+	snippets := make(map[uint]string, len(resp.Hits.Hits))
 	for _, h := range resp.Hits.Hits {
-		if id, err := strconv.ParseUint(h.ID, 10, 64); err == nil {
-			ids = append(ids, uint(id))
+		id, err := strconv.ParseUint(h.ID, 10, 64)
+		if err != nil {
+			continue
+		}
+		ids = append(ids, uint(id))
+		if frags, ok := h.Highlight["content"]; ok && len(frags) > 0 {
+			snippets[uint(id)] = frags[0]
 		}
 	}
-	return ids, nil
+	return ids, snippets, nil
+}
+
+// MarkMatches 在**原文**（未转义）上给 re 的每个命中包上内部占位标记，
+// 调用方随后用 RenderHighlight 完成「转义 + 占位→<mark>」。
+// 在原文上打标记可避免查询词切中 &amp; 等转义实体内部导致文本被改写。
+func MarkMatches(raw string, re *regexp.Regexp) string {
+	return re.ReplaceAllString(raw, hlPre+"$1"+hlPost)
+}
+
+// RenderHighlight 把 ES 高亮片段转成可安全内嵌的 HTML：先整体转义（正文为用户内容，防 XSS），
+// 再把控制字符占位标记替换为 <mark>/</mark>。
+func RenderHighlight(frag string) string {
+	s := html.EscapeString(frag)
+	s = strings.ReplaceAll(s, hlPre, "<mark>")
+	s = strings.ReplaceAll(s, hlPost, "</mark>")
+	return s
 }
 
 // Count 返回命中总数（size=0，只读 total）。
@@ -418,7 +472,7 @@ func (c *ESClient) Count(p Params) (int64, error) {
 	if err := c.ensureIndex(); err != nil {
 		return 0, err
 	}
-	body, matchNone := c.searchBody(p, false)
+	body, matchNone := c.searchBody(p, false, false)
 	if matchNone {
 		return 0, nil
 	}

@@ -1,9 +1,12 @@
 package handler
 
 import (
+	"html"
+	"html/template"
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,7 +25,7 @@ import (
 // DocsPage 文档列表页（搜索 + 分页 + 来源筛选）
 // 可见范围：自己的文档 ∪ 所参与项目内的他人文档（未挂项目的他人文档不可见）
 func (a *App) DocsPage(c *gin.Context) {
-	q := c.Query("q")
+	q := strings.TrimSpace(c.Query("q"))
 	origin := c.Query("origin")      // ""=全部 mine=我创建的 shared=项目共享
 	trash := c.Query("trash") == "1" // 回收站视图：仅软删文档，30 天内可还原
 	pg := parseWebPage(c)
@@ -70,7 +73,7 @@ func (a *App) DocsPage(c *gin.Context) {
 	pg = pg.withTotal(total)
 	params.Offset = pg.Offset
 	params.Size = pg.Size
-	ids, perr := a.searchSvc().Page(params)
+	ids, hlFrags, perr := a.searchSvc().PageWithHighlight(params)
 	if perr != nil {
 		log.Printf("[docs] 搜索失败: %v", perr)
 	}
@@ -91,6 +94,21 @@ func (a *App) DocsPage(c *gin.Context) {
 			if d, ok := byID[id]; ok {
 				docs = append(docs, d)
 			}
+		}
+	}
+
+	// 搜索高亮：标题标黄（两后端都做，纯展示）+ 正文摘要片段（ES 用 ES 高亮，降级本地切窗；无命中则空）
+	hlTitle := make(map[uint]template.HTML, len(docs))
+	snippets := make(map[uint]template.HTML, len(docs))
+	markTitle := titleHighlighter(q)
+	for _, d := range docs {
+		if markTitle != nil {
+			hlTitle[d.ID] = markTitle(d.Title)
+		} else {
+			hlTitle[d.ID] = template.HTML(html.EscapeString(d.Title))
+		}
+		if frag, ok := hlFrags[d.ID]; ok && frag != "" {
+			snippets[d.ID] = template.HTML(search.RenderHighlight(frag))
 		}
 	}
 
@@ -174,6 +192,8 @@ func (a *App) DocsPage(c *gin.Context) {
 		"projects":   projects,
 		"categories": categories,
 		"canEdit":    canEdit,
+		"hlTitle":    hlTitle,
+		"snippets":   snippets,
 		"embedTags":  embedTags,
 		"sideQS":     sideQS,
 	}
@@ -181,6 +201,28 @@ func (a *App) DocsPage(c *gin.Context) {
 		data[k] = v
 	}
 	a.render(c, "docs.html", data)
+}
+
+// titleHighlighter 返回一个「给标题打高亮」的闭包：正则只编译一次，逐篇调用仅做替换。
+// 在**原文**上打占位标记再整体转义（search.MarkMatches + RenderHighlight），
+// 避免查询词切中 &amp; 等转义实体内部导致标题被改写；无查询词/编译失败返回 nil（标题仅转义）。
+// 标题标黄不依赖后端高亮（ES/MySQL 降级都能做），保证两路径标题展示一致。
+func titleHighlighter(q string) func(string) template.HTML {
+	toks := strings.Fields(q)
+	if len(toks) == 0 {
+		return nil
+	}
+	pats := make([]string, 0, len(toks))
+	for _, t := range toks {
+		pats = append(pats, regexp.QuoteMeta(t))
+	}
+	re, err := regexp.Compile("(?i)(" + strings.Join(pats, "|") + ")")
+	if err != nil {
+		return nil
+	}
+	return func(title string) template.HTML {
+		return template.HTML(search.RenderHighlight(search.MarkMatches(title, re)))
+	}
 }
 
 // filterOptions 当前用户自己的项目与分类（个人所有，admin 亦然；

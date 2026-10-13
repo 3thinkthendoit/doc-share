@@ -14,7 +14,7 @@ import (
 
 // notifyPayload 一条待投递消息（站内必达登录用户；邮件旁路）
 type notifyPayload struct {
-	UserID  uint   // 站内收件人；0 则只尝试 EmailTo
+	UserID  uint // 站内收件人；0 则只尝试 EmailTo
 	Kind    string
 	Title   string
 	Body    string

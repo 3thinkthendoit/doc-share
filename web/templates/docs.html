@@ -58,6 +58,39 @@
         <a href="/console/docs?size={{.size}}{{if .trash}}&amp;trash=1{{end}}" class="btn">{{$.T "重置"}}</a>
       </form>
 
+      {{if .q}}
+      {{/* 搜索态：不用管理表格，改为「标题高亮 + 正文摘要」的搜索结果列表 */}}
+      <div class="panel search-results">
+        {{range .docs}}
+        <div class="sr-item">
+          <div class="sr-title">
+            {{if $.trash}}<span>{{index $.hlTitle .ID}}</span>
+            {{else}}<a href="/console/docs/{{.ID}}/preview" target="_blank">{{index $.hlTitle .ID}}</a>{{end}}
+            {{if eq .Type "html"}}<span class="tag tag-embed">HTML</span>{{else if eq .Type "mindmap"}}<span class="tag tag-embed">{{$.T "docs.tagMindmap"}}</span>{{else if eq .Type "board"}}<span class="tag tag-embed">{{$.T "docs.tagBoard"}}</span>{{else if eq .Type "drawio"}}<span class="tag tag-embed">{{$.T "docs.tagDrawio"}}</span>{{end}}
+          </div>
+          {{with index $.snippets .ID}}<div class="sr-snippet">{{.}}</div>{{end}}
+          <div class="sr-meta muted">{{if .Project}}{{.Project.Name}} · {{end}}{{if .Category}}{{.Category.Name}} · {{end}}{{if .Version}}{{.Version}} · {{end}}{{if $.trash}}<span data-ts="{{.DeletedAt.Time.Unix}}">{{.DeletedAt.Time.Format "2006-01-02 15:04"}}</span>{{else}}<span data-ts="{{.UpdatedAt.Unix}}">{{.UpdatedAt.Format "2006-01-02 15:04"}}</span>{{end}}</div>
+          {{/* 搜索态保留行操作：回收站可还原/彻底删除，普通视图可分享/编辑/删除（JS 委托在 .ops-item / [data-trash-op]） */}}
+          <div class="sr-ops">
+            {{if $.trash}}
+            <button type="button" class="btn btn-sm" data-trash-op="restore" data-id="{{.ID}}">{{$.T "docs.restore"}}</button>
+            <button type="button" class="btn btn-sm" style="color:#d93025" data-trash-op="purge" data-id="{{.ID}}">{{$.T "docs.purge"}}</button>
+            {{else}}
+            {{if and $.user (or $.user.IsAdmin (eq $.user.ID .OwnerID))}}
+            <button type="button" class="ops-item" data-op="share" data-id="{{.ID}}" data-title="{{.Title}}" data-shared="{{if .IsShared}}1{{else}}0{{end}}" data-canedit="{{if .Share}}{{if .Share.CanEdit}}1{{end}}{{end}}" data-haspwd="{{if .Share}}{{if .Share.HasPassword}}1{{end}}{{end}}" data-token="{{if .Share}}{{.Share.ShareToken}}{{end}}">{{$.T "docs.colShare"}}</button>
+            {{end}}
+            {{if and $.canEdit (index $.canEdit .ID)}}
+            <a class="ops-item" href="/console/docs/{{.ID}}/edit">{{$.T "编辑"}}</a>
+            <button type="button" class="ops-item" style="color:#d93025" data-op="del" data-id="{{.ID}}">{{$.T "删除"}}</button>
+            {{end}}
+            {{end}}
+          </div>
+        </div>
+        {{else}}
+        <div class="empty">{{if $.trash}}{{$.T "docs.trashEmpty"}}{{else}}{{$.T "没有文档"}}{{end}}</div>
+        {{end}}
+      </div>
+      {{else}}
       <div class="panel">
         <table class="table">
           <thead><tr><th>{{$.T "标题"}}</th><th>{{$.T "docs.typeCol"}}</th><th>{{$.T "docs.colVersion"}}</th><th>{{$.T "项目"}}</th><th>{{$.T "分类"}}</th><th>{{$.T "所有者"}}</th><th>{{$.T "浏览"}}</th><th>{{$.T "分享"}}</th><th>{{$.T "docs.permHeader"}}</th><th>{{$.T "common.createdAt"}}</th><th>{{$.T "common.updater"}}</th><th>{{if $.trash}}{{$.T "docs.deletedAt"}}{{else}}{{$.T "更新时间"}}{{end}}</th><th class="col-actions">{{$.T "操作"}}</th></tr></thead>
@@ -66,8 +99,10 @@
             <tr>
               <td class="cell-title">
                 {{/* 点击标题统一进阅读预览页；编辑入口在「操作」菜单；回收站文档不可预览，仅展示标题 */}}
-                {{if $.trash}}<span title="{{.Title}}">{{.Title}}</span>
-                {{else}}<a href="/console/docs/{{.ID}}/preview" target="_blank" title="{{.Title}}">{{.Title}}</a>{{end}}
+                {{if $.trash}}<span title="{{.Title}}">{{index $.hlTitle .ID}}</span>
+                {{else}}<a href="/console/docs/{{.ID}}/preview" target="_blank" title="{{.Title}}">{{index $.hlTitle .ID}}</a>{{end}}
+                {{/* 正文命中摘要（ES 高亮或降级本地切窗；无命中/HTML 文档为空则不渲染） */}}
+                {{with index $.snippets .ID}}<div class="doc-snippet">{{.}}</div>{{end}}
                 {{if $.embedTags}}{{with index $.embedTags .ID}}
                 <div class="doc-embed-tags">
                   {{range .}}<span class="tag tag-embed">{{$.T .}}</span>{{end}}
@@ -126,6 +161,7 @@
           </tbody>
         </table>
       </div>
+      {{end}}
 
       {{template "pager" .}}
     </div>

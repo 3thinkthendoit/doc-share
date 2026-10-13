@@ -169,12 +169,12 @@ func (a *App) TemplateApply(c *gin.Context) {
 // tplEditorData 模板编辑器公共数据（新建/编辑共用；页面复用文档编辑器，无分享）
 func (a *App) tplEditorData(tpl *model.DocTemplate) gin.H {
 	data := gin.H{
-		"title":     "新建模板",
-		"doc":       nil, // 复用 doc_edit/json_edit：doc 为空即无分享/历史版本入口
-		"share":     nil,
+		"title":      "新建模板",
+		"doc":        nil, // 复用 doc_edit/json_edit：doc 为空即无分享/历史版本入口
+		"share":      nil,
 		"canEditDoc": true,
-		"tplMode":   true,
-		"tpl":       tpl,
+		"tplMode":    true,
+		"tpl":        tpl,
 	}
 	if tpl != nil {
 		data["title"] = "编辑模板"

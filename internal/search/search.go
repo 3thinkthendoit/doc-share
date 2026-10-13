@@ -11,7 +11,9 @@ package search
 
 import (
 	"log"
+	"strings"
 	"sync/atomic"
+	"unicode/utf8"
 
 	"doc-share/internal/config"
 	"doc-share/internal/model"
@@ -105,7 +107,7 @@ func (s *Service) Count(p Params) (int64, error) {
 	return total, nil
 }
 
-// Page 返回当前页命中的有序文档 ID：仅当 ES 已就绪时优先 ES，未配置/未就绪/报错时降级 MySQL。
+// Page 返回当前页命中的有序文档 ID（不请求高亮，AI/MCP 用此入口，不承担高亮开销）。
 // 调用方必须用 ScopeQuery().Where("id IN ?", ids) 回表做权限兜底后再渲染。
 func (s *Service) Page(p Params) ([]uint, error) {
 	if s.es != nil && s.ready.Load() {
@@ -116,6 +118,86 @@ func (s *Service) Page(p Params) ([]uint, error) {
 		}
 	}
 	return s.mysqlPage(p)
+}
+
+// PageWithHighlight 与 Page 相同，但额外返回每篇的正文高亮片段（占位标记形式）。
+// ES 路径用 ES 高亮；MySQL 降级在本地从正文切命中窗口，保证展示效果后端无关。
+func (s *Service) PageWithHighlight(p Params) ([]uint, map[uint]string, error) {
+	if s.es != nil && s.ready.Load() {
+		if ids, hl, err := s.es.SearchWithHighlight(p); err == nil {
+			return ids, hl, nil
+		} else {
+			log.Printf("[search] ES 搜索失败，降级 MySQL: %v", err)
+		}
+	}
+	ids, err := s.mysqlPage(p)
+	if err != nil || len(ids) == 0 || strings.TrimSpace(p.Query) == "" {
+		return ids, nil, err
+	}
+	return ids, s.mysqlSnippets(p, ids), nil
+}
+
+// mysqlSnippets 降级路径的本地摘要：按 ID 只拉 id+content，取首个命中词前后窗口并包占位标记，
+// 交给 handler 的 RenderHighlight 转安全 HTML。仅搜索页调用（有 q 且命中非空），浏览态不付这份开销。
+func (s *Service) mysqlSnippets(p Params, ids []uint) map[uint]string {
+	var rows []struct {
+		ID      uint
+		Content string
+	}
+	if err := s.db.Model(&model.Document{}).Select("id", "content").
+		Where("id IN ?", ids).Where("type <> ?", model.DocTypeHTML). // html 整站正文是 manifest，与 ES 口径一致不参与摘要
+		Find(&rows).Error; err != nil {
+		log.Printf("[search] 降级摘要读取正文失败: %v", err)
+		return nil
+	}
+	toks := strings.Fields(p.Query)
+	out := make(map[uint]string, len(rows))
+	for _, r := range rows {
+		if frag, ok := snippetAround(r.Content, toks); ok {
+			out[r.ID] = frag
+		}
+	}
+	return out
+}
+
+// snippetAround 在正文中定位首个命中词（大小写不敏感），返回前后各 ~40/80 rune 的窗口片段，
+// 命中部分包 hlPre/hlPost 占位标记；窗口非整篇时两端加省略号。
+func snippetAround(content string, toks []string) (string, bool) {
+	lower := strings.ToLower(content)
+	best, hitBytes := -1, 0
+	for _, t := range toks {
+		lt := strings.ToLower(t)
+		if i := strings.Index(lower, lt); i >= 0 && (best < 0 || i < best) {
+			best, hitBytes = i, len(lt)
+		}
+	}
+	if best < 0 || best+hitBytes > len(content) {
+		return "", false
+	}
+	rs := []rune(content)
+	startR := utf8.RuneCountInString(content[:best])
+	hitR := utf8.RuneCountInString(content[best : best+hitBytes])
+	start := startR - 40
+	if start < 0 {
+		start = 0
+	}
+	end := startR + hitR + 80
+	if end > len(rs) {
+		end = len(rs)
+	}
+	var b strings.Builder
+	if start > 0 {
+		b.WriteString("…")
+	}
+	b.WriteString(string(rs[start:startR]))
+	b.WriteString(hlPre)
+	b.WriteString(string(rs[startR : startR+hitR]))
+	b.WriteString(hlPost)
+	b.WriteString(string(rs[startR+hitR : end]))
+	if end < len(rs) {
+		b.WriteString("…")
+	}
+	return b.String(), true
 }
 
 func (s *Service) mysqlPage(p Params) ([]uint, error) {

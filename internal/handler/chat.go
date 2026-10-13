@@ -505,9 +505,8 @@ func (a *App) ChatCompletions(c *gin.Context) {
 	forceAnswer := false
 	if id := readIntentID(content); id > 0 {
 		if docText, err := execTool("read_document", fmt.Sprintf(`{"id":%d}`, id)); err == nil {
-			msgs = append(msgs, llm.Message{Role: "user", Content:
-				"[系统自动读取] 用户已明确要求阅读文档 id=" + strconv.FormatInt(id, 10) +
-					"，下面是它的完整正文。请直接基于此正文回答，不要罗列文档清单，不要反问用户要读哪篇：\n\n" + docText})
+			msgs = append(msgs, llm.Message{Role: "user", Content: "[系统自动读取] 用户已明确要求阅读文档 id=" + strconv.FormatInt(id, 10) +
+				"，下面是它的完整正文。请直接基于此正文回答，不要罗列文档清单，不要反问用户要读哪篇：\n\n" + docText})
 			forceAnswer = true
 			log.Printf("[llm] 阅读意图命中，自动注入文档 %d 正文（%d 字符），本轮禁用工具", id, utf8.RuneCountInString(docText))
 		}
@@ -567,11 +566,10 @@ func (a *App) ChatCompletions(c *gin.Context) {
 		len(extractDocIDs(content)) == 0 && readIntentTitle(content) == "" {
 		if id := lastHistoryDocID(history); id > 0 {
 			if docText, err := execTool("read_document", fmt.Sprintf(`{"id":%d}`, id)); err == nil {
-				msgs = append(msgs, llm.Message{Role: "user", Content:
-					"[系统预读] 用户正在延续上文对文档 id=" + strconv.FormatInt(id, 10) +
-						" 的修改要求（本轮是确认/补充，未重复文档名）。下面是它当前的完整正文，请直接执行修改：" +
-						"局部改动调用 replace_section（old_text 必须逐字取自下方正文），整体重写才用 update_document" +
-						" 并带上 content_version。不要罗列文档清单，不要反问，不要输出要点总结：\n\n" + docText})
+				msgs = append(msgs, llm.Message{Role: "user", Content: "[系统预读] 用户正在延续上文对文档 id=" + strconv.FormatInt(id, 10) +
+					" 的修改要求（本轮是确认/补充，未重复文档名）。下面是它当前的完整正文，请直接执行修改：" +
+					"局部改动调用 replace_section（old_text 必须逐字取自下方正文），整体重写才用 update_document" +
+					" 并带上 content_version。不要罗列文档清单，不要反问，不要输出要点总结：\n\n" + docText})
 				log.Printf("[llm] 编辑短句兜底：从历史回溯文档 %d（%d 字符）重新注入", id, utf8.RuneCountInString(docText))
 			}
 		}
@@ -602,9 +600,9 @@ func (a *App) ChatCompletions(c *gin.Context) {
 		return out
 	}
 
-	var final strings.Builder   // 最终轮正文（唯一落库/外显的内容）
-	var anyEmitted bool         // 是否有任何正文流出过（用于错误兜底判断）
-	var totalUsage llm.Usage    // 累计所有轮的 token 用量
+	var final strings.Builder // 最终轮正文（唯一落库/外显的内容）
+	var anyEmitted bool       // 是否有任何正文流出过（用于错误兜底判断）
+	var totalUsage llm.Usage  // 累计所有轮的 token 用量
 	startedAt := time.Now()
 	toolCache := map[string]string{} // 重复的相同调用直接复用结果，防止模型原地打转
 	for round := 0; round < aiToolRounds; round++ {

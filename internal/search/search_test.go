@@ -3,6 +3,7 @@ package search
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -452,5 +453,106 @@ func TestConcurrentPageNoDeadlock(t *testing.T) {
 	close(errCh)
 	for err := range errCh {
 		t.Fatalf("并发 Page 出错: %v", err)
+	}
+}
+
+// TestRenderHighlightEscapesAndMarks 高亮片段必须先整体转义（正文为用户内容，防 XSS），
+// 再把控制字符占位标记替换为 <mark>。
+func TestRenderHighlightEscapesAndMarks(t *testing.T) {
+	frag := hlPre + "紫电" + hlPost + " <script>alert(1)</script>"
+	got := RenderHighlight(frag)
+	if !strings.Contains(got, "<mark>紫电</mark>") {
+		t.Fatalf("占位标记应替换为 <mark>: %s", got)
+	}
+	if strings.Contains(got, "<script>") {
+		t.Fatalf("正文必须转义防 XSS: %s", got)
+	}
+	if !strings.Contains(got, "&lt;script&gt;") {
+		t.Fatalf("应保留转义后的文本: %s", got)
+	}
+}
+
+// TestSearchHighlightOnlyWhenRequested 高亮开销必须隔离：Search（AI/MCP 入口）不请求 highlight，
+// 仅 SearchWithHighlight（Web 搜索页）请求且只针对 content（title 整字段高亮为死负载）。
+func TestSearchHighlightOnlyWhenRequested(t *testing.T) {
+	var bodies []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		b, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(b))
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"hits":{"total":{"value":1},"hits":[{"_id":"7","highlight":{"content":["x\u0000探子\u0001y"]}}]}}`)
+	}))
+	t.Cleanup(srv.Close)
+	c := newESClient(config.SearchConfig{ESURL: srv.URL, ESIndex: "idx", ESTimeoutMS: 2000})
+	p := Params{Query: "探子", IsAdmin: true, ProjectID: -1, CategoryID: -1, Shared: -1, Offset: 0, Size: 10}
+
+	if _, err := c.Search(p); err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	ids, hl, err := c.SearchWithHighlight(p)
+	if err != nil {
+		t.Fatalf("SearchWithHighlight: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != 7 {
+		t.Fatalf("应解析命中 ID: %v", ids)
+	}
+	if !strings.Contains(hl[7], "\x00探子\x01") {
+		t.Fatalf("应保留占位标记片段: %q", hl[7])
+	}
+	if len(bodies) != 2 {
+		t.Fatalf("应恰好两次 _search: %d", len(bodies))
+	}
+	if strings.Contains(bodies[0], `"highlight"`) {
+		t.Fatalf("Search（AI/MCP）不应请求高亮: %s", bodies[0])
+	}
+	if !strings.Contains(bodies[1], `"highlight"`) || !strings.Contains(bodies[1], `"content"`) {
+		t.Fatalf("SearchWithHighlight 应请求 content 高亮: %s", bodies[1])
+	}
+	if strings.Contains(bodies[1], `"number_of_fragments":0`) {
+		t.Fatalf("不应再请求 title 整字段高亮（死负载）: %s", bodies[1])
+	}
+}
+
+// TestMySQLFallbackSnippet 降级路径也出正文摘要（展示后端无关）：片段带占位标记、非整篇两端省略号，
+// 且 html 整站正文（manifest）不参与摘要。
+func TestMySQLFallbackSnippet(t *testing.T) {
+	db := newTestDB(t)
+	svc := New(config.SearchConfig{}, db)
+	now := time.Now()
+	seed := []model.Document{
+		{Title: "正文甲", Slug: "s1", Type: model.DocTypeMarkdown, Content: strings.Repeat("铺垫内容，", 20) + "这里出现探子关键词" + strings.Repeat("，收尾内容", 20), OwnerID: 1, UpdatedAt: now},
+		{Title: "整站乙", Slug: "s2", Type: model.DocTypeHTML, Content: `{"files":["探子.html"]}`, OwnerID: 1, UpdatedAt: now.Add(-time.Hour)},
+	}
+	for i := range seed {
+		if err := db.Create(&seed[i]).Error; err != nil {
+			t.Fatalf("seed %d: %v", i, err)
+		}
+	}
+	p := DefaultParams()
+	p.Query = "探子"
+	p.UserID = 1
+	ids, hl, err := svc.PageWithHighlight(p)
+	if err != nil {
+		t.Fatalf("PageWithHighlight: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != seed[0].ID {
+		t.Fatalf("html 整站 manifest 不应命中，应仅命中 markdown: %v", ids)
+	}
+	frag, ok := hl[seed[0].ID]
+	if !ok {
+		t.Fatal("降级路径应为 markdown 正文提供摘要")
+	}
+	if !strings.Contains(frag, hlPre+"探子"+hlPost) {
+		t.Fatalf("摘要应包占位标记: %q", frag)
+	}
+	if !strings.HasPrefix(frag, "…") || !strings.HasSuffix(frag, "…") {
+		t.Fatalf("非整篇窗口两端应有省略号: %q", frag)
+	}
+	if got := RenderHighlight(frag); !strings.Contains(got, "<mark>探子</mark>") {
+		t.Fatalf("RenderHighlight 应标黄: %s", got)
 	}
 }

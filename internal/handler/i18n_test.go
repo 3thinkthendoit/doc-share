@@ -54,10 +54,10 @@ func TestPagesRender(t *testing.T) {
 		Share: &model.Share{ShareToken: "tok123"}}
 	canvasDoc := model.Document{ID: 2, Title: "Mind Map", Slug: "mind-map", Type: model.DocTypeMindmap,
 		Content: `{"root":{"data":{"text":"中心主题"}},"layout":"mindMap","theme":"classicBlue"}`,
-		Owner: owner, ViewCount: 1, UpdatedAt: now, Share: &model.Share{ShareToken: "tok456"}}
+		Owner:   owner, ViewCount: 1, UpdatedAt: now, Share: &model.Share{ShareToken: "tok456"}}
 	htmlDoc := model.Document{ID: 3, Title: "Site", Slug: "site", Type: model.DocTypeHTML,
 		Content: `{"prefix":"html/3/ab12/","entry":"index.html","files":["index.html"],"size":10,"count":1}`,
-		Owner: owner, UpdatedAt: now, Share: &model.Share{ShareToken: "tok789"}}
+		Owner:   owner, UpdatedAt: now, Share: &model.Share{ShareToken: "tok789"}}
 	pj := model.Project{ID: 1, Name: "Platform", Owner: owner, UpdatedAt: now}
 	ct := model.Category{ID: 1, Name: "Requirements", Owner: owner}
 	key := model.ApiKey{ID: 1, Name: "sync", AppKey: "ak_1", Owner: owner, Status: 1, CreatedAt: now}
@@ -86,6 +86,16 @@ func TestPagesRender(t *testing.T) {
 			v := withPager(base(), "/console/docs")
 			v["docs"], v["q"] = []model.Document{doc}, ""
 			v["project"], v["category"], v["projects"], v["categories"] = "", "", []model.Project{pj}, []model.Category{ct}
+			v["hlTitle"] = map[uint]template.HTML{doc.ID: template.HTML(doc.Title)}
+			v["snippets"] = map[uint]template.HTML{}
+			return v
+		}},
+		{"docs.html", func() View { // 搜索态（结果列表分支）
+			v := withPager(base(), "/console/docs")
+			v["docs"], v["q"] = []model.Document{doc}, "design"
+			v["project"], v["category"], v["projects"], v["categories"] = "", "", []model.Project{pj}, []model.Category{ct}
+			v["hlTitle"] = map[uint]template.HTML{doc.ID: template.HTML("<mark>Design</mark> Doc")}
+			v["snippets"] = map[uint]template.HTML{doc.ID: template.HTML("...the <mark>design</mark> goals...")}
 			return v
 		}},
 		{"doc_edit.html", func() View {
