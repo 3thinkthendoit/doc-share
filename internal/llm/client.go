@@ -31,15 +31,117 @@ func (c Config) Valid() bool {
 	return strings.TrimSpace(c.BaseURL) != "" && strings.TrimSpace(c.Model) != ""
 }
 
+// ContentPart 多模态消息片段（OpenAI vision：text / image_url）。
+type ContentPart struct {
+	Type     string    `json:"type"`
+	Text     string    `json:"text,omitempty"`
+	ImageURL *ImageURL `json:"image_url,omitempty"`
+}
+
+// ImageURL 图片地址（http(s) 或 data:image/...;base64,...）。
+type ImageURL struct {
+	URL string `json:"url"`
+}
+
 // Message 一条对话消息（OpenAI 格式）。
+// Content 为纯文本；Parts 非空时序列化为 content 数组（vision）。
 // Content 在为空且携带 ToolCalls 时整体省略（部分上游拒绝 content:"" + tool_calls 组合）。
 type Message struct {
-	Role       string        `json:"role"`
-	Content    string        `json:"content,omitempty"`
-	ToolCalls  []ToolCallMsg `json:"tool_calls,omitempty"`
-	ToolCallID string        `json:"tool_call_id,omitempty"`
+	Role       string        `json:"-"`
+	Content    string        `json:"-"`
+	Parts      []ContentPart `json:"-"`
+	ToolCalls  []ToolCallMsg `json:"-"`
+	ToolCallID string        `json:"-"`
 	// 单轮对话结束后由上游返回的 token 用量（仅最终轮有效，不外发到上游）
-	Usage *Usage `json:"usage,omitempty"`
+	Usage *Usage `json:"-"`
+}
+
+// MarshalJSON 按 OpenAI 兼容协议输出：纯文本 content 字符串，或多模态 content 数组。
+func (m Message) MarshalJSON() ([]byte, error) {
+	out := map[string]any{"role": m.Role}
+	switch {
+	case len(m.Parts) > 0:
+		out["content"] = m.Parts
+	case m.Content != "":
+		out["content"] = m.Content
+		// 空 Content + ToolCalls：省略 content 字段
+	}
+	if len(m.ToolCalls) > 0 {
+		out["tool_calls"] = m.ToolCalls
+	}
+	if m.ToolCallID != "" {
+		out["tool_call_id"] = m.ToolCallID
+	}
+	return json.Marshal(out)
+}
+
+// TextLen 日志/调试用：文本长度（不含图片二进制）。
+func (m Message) TextLen() int {
+	if len(m.Parts) > 0 {
+		n := 0
+		for _, p := range m.Parts {
+			n += len(p.Text)
+		}
+		return n
+	}
+	return len(m.Content)
+}
+
+// TextHead 日志用开头摘要。
+func (m Message) TextHead(maxRunes int) string {
+	s := m.Content
+	if s == "" {
+		for _, p := range m.Parts {
+			if p.Type == "text" && p.Text != "" {
+				s = p.Text
+				break
+			}
+			if p.Type == "image_url" {
+				s = "[image]"
+				break
+			}
+		}
+	}
+	r := []rune(s)
+	if maxRunes > 0 && len(r) > maxRunes {
+		return string(r[:maxRunes])
+	}
+	return s
+}
+
+// UnmarshalJSON 兼容上游返回的纯文本 content（连通性探测等）。
+func (m *Message) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Role       string          `json:"role"`
+		Content    json.RawMessage `json:"content"`
+		ToolCalls  []ToolCallMsg   `json:"tool_calls"`
+		ToolCallID string          `json:"tool_call_id"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	m.Role = raw.Role
+	m.ToolCalls = raw.ToolCalls
+	m.ToolCallID = raw.ToolCallID
+	m.Content = ""
+	m.Parts = nil
+	if len(raw.Content) == 0 || string(raw.Content) == "null" {
+		return nil
+	}
+	if raw.Content[0] == '"' {
+		var s string
+		if err := json.Unmarshal(raw.Content, &s); err != nil {
+			return err
+		}
+		m.Content = s
+		return nil
+	}
+	var parts []ContentPart
+	if err := json.Unmarshal(raw.Content, &parts); err != nil {
+		return err
+	}
+	m.Parts = parts
+	return nil
 }
 
 // Usage 单次调用的 token 用量（OpenAI 兼容协议字段命名）
@@ -199,15 +301,15 @@ func (c Config) StreamChat(ctx context.Context, messages []Message, tools []Tool
 	// 用于排查"工具结果是否真的发到了上游""哪条消息被截断"
 	var seq strings.Builder
 	for i, m := range messages {
-		head := m.Content
-		if r := []rune(head); len(r) > 30 {
-			head = string(r[:30])
-		}
 		tc := ""
 		if len(m.ToolCalls) > 0 {
 			tc = fmt.Sprintf(" tool_calls=%d", len(m.ToolCalls))
 		}
-		seq.WriteString(fmt.Sprintf("\n  [%d] %s len=%d%s %q", i, m.Role, len(m.Content), tc, head))
+		parts := ""
+		if len(m.Parts) > 0 {
+			parts = fmt.Sprintf(" parts=%d", len(m.Parts))
+		}
+		seq.WriteString(fmt.Sprintf("\n  [%d] %s len=%d%s%s %q", i, m.Role, m.TextLen(), parts, tc, m.TextHead(30)))
 	}
 	log.Printf("[llm] 消息序列:%s", seq.String())
 	var thinkFn func(string)
@@ -216,7 +318,7 @@ func (c Config) StreamChat(ctx context.Context, messages []Message, tools []Tool
 	}
 	msg, err := c.streamOnce(ctx, messages, tools, onDelta, thinkFn)
 	if err == nil {
-		log.Printf("[llm] 完成 model=%s tools=%d content_len=%d tool_calls=%d", c.Model, len(tools), len(msg.Content), len(msg.ToolCalls))
+		log.Printf("[llm] 完成 model=%s tools=%d content_len=%d tool_calls=%d", c.Model, len(tools), msg.TextLen(), len(msg.ToolCalls))
 		return msg, nil
 	}
 	if tools != nil && (strings.Contains(err.Error(), "服务返回 400") || strings.Contains(err.Error(), "服务返回 422")) {

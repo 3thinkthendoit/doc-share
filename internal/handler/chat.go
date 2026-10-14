@@ -217,12 +217,12 @@ var reWaitUser = regexp.MustCompile(`(?i)(?:请(?:你)?(?:回复|说|输入).{0,
 // aiAutoContinueShortRunes 未读完时，助手正文短于此阈值且无实质作答，才视为「卡住」可续跑
 const aiAutoContinueShortRunes = 80
 
-// readDocInject 系统预读：走未暴露给模型的全量/片段读取，避免 8k 分页被标成「完整正文」。
-func readDocInject(exec func(name, argsJSON string) (string, error), id int64, maxChars int, query string) (string, error) {
+// readDocInject 系统预读：走 injectRead（不经模型可调的 exec），避免 8k 分页被标成「完整正文」。
+func readDocInject(injectRead func(id int64, maxChars int, query string) (string, error), id int64, maxChars int, query string) (string, error) {
 	if maxChars <= 0 {
 		maxChars = aiPrereadMaxChars
 	}
-	return exec("__read_document_full", fmt.Sprintf(`{"id":%d,"max_chars":%d,"query":%s}`, id, maxChars, jsonQuote(query)))
+	return injectRead(id, maxChars, query)
 }
 
 // wrapExecSkipReread 对本轮已预读的文档禁止模型再 read_document（浪费轮次/token）。
@@ -628,13 +628,26 @@ func (a *App) ChatCompletions(c *gin.Context) {
 	var req struct {
 		Content string `json:"content"`
 	}
-	if err := c.ShouldBind(&req); err != nil || strings.TrimSpace(req.Content) == "" {
+	if err := c.ShouldBind(&req); err != nil || !chatUserContentOK(req.Content) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请输入内容"})
 		return
 	}
 	content := strings.TrimSpace(req.Content)
+	imgURL, textPart := parseChatImageContent(content)
 	if utf8.RuneCountInString(content) > 8000 {
-		content = string([]rune(content)[:8000])
+		if imgURL != "" {
+			if utf8.RuneCountInString(textPart) > 7800 {
+				textPart = string([]rune(textPart)[:7800])
+			}
+			content = formatChatImageContent(imgURL, textPart)
+		} else {
+			content = string([]rune(content)[:8000])
+		}
+		imgURL, textPart = parseChatImageContent(content)
+	}
+	plain := textPart
+	if imgURL == "" {
+		plain = content
 	}
 
 	cfg := a.Settings().LLM
@@ -650,31 +663,35 @@ func (a *App) ChatCompletions(c *gin.Context) {
 		return
 	}
 	if s.Title == model.ChatDefaultTitle {
-		title := strings.ReplaceAll(content, "\n", " ")
+		title := strings.ReplaceAll(plain, "\n", " ")
+		title = strings.TrimSpace(title)
+		if title == "" {
+			title = "图片"
+		}
 		if utf8.RuneCountInString(title) > 30 {
 			title = string([]rune(title)[:30])
 		}
 		a.DB.Model(&model.ChatSession{}).Where("id = ?", s.ID).Updates(map[string]any{"title": title})
 	}
 
-	// 组装上下文：系统提示 + 最近历史（最多 40 条，且受字符预算约束）
+	// 组装上下文：系统提示 + 最近历史（最多 40 条，且受字符预算约束；贴图展开为 vision）
 	var history []model.ChatMessage
 	a.DB.Where("session_id = ?", s.ID).Order("id desc").Limit(chatHistoryLimit).Find(&history)
 	msgs := make([]llm.Message, 0, len(history)+1)
 	msgs = append(msgs, llm.Message{Role: "system", Content: chatSystemPrompt})
-	msgs = append(msgs, trimHistory(history)...)
+	msgs = append(msgs, a.trimHistoryWithImages(history)...)
 
 	// 数据工具：按当前用户权限检索/读取站内文档
-	tools, execTool := a.chatTools(user)
+	tools, execTool, injectRead := a.chatTools(user)
 	prereadIDs := map[int64]bool{} // 本轮已注入的文档，禁止模型重复 read
 
 	// 确定性兜底：用户消息里提到任何文档 ID 时，服务端把对应正文预读到本轮上下文，
 	// 解决"模型要改文档却手上没有完整原文"导致的反复列清单/瞎猜。
 	// 同时：若命中明确的"阅读"意图（带动词），进一步禁用本轮工具，强制基于正文作答。
 	forceAnswer := false
-	isEdit := reEditVerb.MatchString(content)
-	if id := readIntentID(content); id > 0 {
-		if docText, err := readDocInject(execTool, id, aiPrereadMaxChars, content); err == nil {
+	isEdit := reEditVerb.MatchString(plain)
+	if id := readIntentID(plain); id > 0 {
+		if docText, err := readDocInject(injectRead, id, aiPrereadMaxChars, plain); err == nil {
 			msgs = append(msgs, llm.Message{Role: "user", Content: "[系统自动读取] 用户已明确要求阅读文档 id=" + strconv.FormatInt(id, 10) +
 				"，下面是预读正文（若标注截断/片段可再分页 read_document）。请直接基于此正文回答，不要罗列文档清单，不要反问用户要读哪篇：\n\n" + docText})
 			prereadIDs[id] = true
@@ -683,10 +700,10 @@ func (a *App) ChatCompletions(c *gin.Context) {
 		}
 	}
 	if !forceAnswer {
-		ids := extractDocIDs(content)
+		ids := extractDocIDs(plain)
 		budget := injectBudgetPerDoc(len(ids))
 		for _, id := range ids {
-			if docText, err := readDocInject(execTool, id, budget, content); err == nil {
+			if docText, err := readDocInject(injectRead, id, budget, plain); err == nil {
 				injectMsg := "[系统预读] 用户提到了文档 id=" + strconv.FormatInt(id, 10) +
 					"，下面是预读正文（已加载到本轮上下文；若标注截断/片段才可再分页 read_document）：\n\n" + docText
 				if isEdit {
@@ -705,11 +722,11 @@ func (a *App) ChatCompletions(c *gin.Context) {
 	// 用 search_documents（自带权限范围）定位；唯一命中就直接注入正文并禁用工具。
 	// 多个命中时不强注入（无法替用户做选择），交给模型正常处理。
 	if !forceAnswer {
-		if title := readIntentTitle(content); title != "" {
+		if title := readIntentTitle(plain); title != "" {
 			if res, err := execTool("search_documents", fmt.Sprintf(`{"query":%s}`, jsonQuote(title))); err == nil {
 				ids := extractResultIDs(res)
 				if len(ids) == 1 {
-					if docText, err := readDocInject(execTool, ids[0], aiPrereadMaxChars, content); err == nil {
+					if docText, err := readDocInject(injectRead, ids[0], aiPrereadMaxChars, plain); err == nil {
 						injectMsg := "[系统自动读取] 用户要求阅读的《" + title + "》已定位为文档 id=" + strconv.FormatInt(ids[0], 10) +
 							"，下面是预读正文（若标注截断/片段可再分页 read_document）。请直接基于此正文回答，不要罗列文档清单，不要反问：\n\n" + docText
 						if isEdit {
@@ -735,9 +752,9 @@ func (a *App) ChatCompletions(c *gin.Context) {
 	// 但带修改动词 —— 回溯历史找回最近一次预读/读取过的文档，重新注入正文并下达编辑指令。
 	// 不兜底的话模型手里没正文，极易复读旧清单或反问。
 	if !forceAnswer && isEdit &&
-		len(extractDocIDs(content)) == 0 && readIntentTitle(content) == "" {
+		len(extractDocIDs(plain)) == 0 && readIntentTitle(plain) == "" {
 		if id := lastHistoryDocID(history); id > 0 {
-			if docText, err := readDocInject(execTool, id, aiPrereadMaxChars, content); err == nil {
+			if docText, err := readDocInject(injectRead, id, aiPrereadMaxChars, plain); err == nil {
 				msgs = append(msgs, llm.Message{Role: "user", Content: "[系统预读] 用户正在延续上文对文档 id=" + strconv.FormatInt(id, 10) +
 					" 的修改要求（本轮是确认/补充，未重复文档名）。下面是它当前的预读正文，请直接执行修改：" +
 					"优先 replace_section（old_text 必须逐字取自下方正文），整体重写才用 update_document" +

@@ -52,10 +52,15 @@ func aiNeedsApproval(tc llm.ToolCallMsg) bool {
 	return false
 }
 
-// chatTools 返回当前用户可用的工具定义与执行器（exec 按 OpenAI 传来的 JSON 参数执行）。
+// chatTools 返回当前用户可用的工具定义、执行器，以及仅服务端预读用的 injectRead。
 // 工具结果中一律不出现真实 URL，链接用占位符 {{doc:<id>}} / {{share:<id>}} 表示，
 // 由服务端在流式输出时替换为真实链接（防止模型编造/改写 URL，见 chat.go 的 newLinkResolver）。
-func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, argsJSON string) (string, error)) {
+// injectRead 不暴露给模型；exec 若收到未注册名（含旧内部名 __read_document_full）一律未知工具。
+func (a *App) chatTools(user *model.User) (
+	defs []llm.Tool,
+	exec func(name, argsJSON string) (string, error),
+	injectRead func(id int64, maxChars int, query string) (string, error),
+) {
 	// 用户可见的项目 ID 只查一次，scope 闭包复用
 	var memberPids []uint
 	if !user.IsAdmin() {
@@ -339,8 +344,7 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			}
 			return clip(strings.Join(out, "\n")), nil
 
-		case "read_document", "__read_document_full":
-			// __read_document_full：仅服务端预读注入使用（未注册到模型工具列表），一次返回尽可能完整正文，避免 Flash 分页后停等用户。
+		case "read_document":
 			var doc model.Document
 			id := argInt("id", 0)
 			if id == 0 {
@@ -356,15 +360,6 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			total := len(runes)
 			if total == 0 {
 				return fmt.Sprintf("《%s》（content_version=%d）正文为空。", doc.Title, doc.ContentVersion), nil
-			}
-
-			if name == "__read_document_full" {
-				maxChars := int(argInt("max_chars", aiPrereadMaxChars))
-				if maxChars <= 0 || maxChars > aiPrereadMaxChars {
-					maxChars = aiPrereadMaxChars
-				}
-				query := argStr("query")
-				return buildDocInjectBody(doc.Title, doc.ContentVersion, doc.Content, query, maxChars), nil
 			}
 
 			// 分页读取：offset/length 按字符计，默认从 0 读 aiToolMaxResult；返回 content_version 供 update_document 作 base_version
@@ -897,7 +892,25 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 		}
 		return "", fmt.Errorf("未知工具: %s", name)
 	}
-	return defs, exec
+
+	// 服务端预读专用：一次拼齐全量/相关片段，不进模型工具列表，也不经 exec。
+	injectRead = func(id int64, maxChars int, query string) (string, error) {
+		if id <= 0 {
+			return "", fmt.Errorf("id 不能为空")
+		}
+		if maxChars <= 0 || maxChars > aiPrereadMaxChars {
+			maxChars = aiPrereadMaxChars
+		}
+		var doc model.Document
+		if err := scope().Where("id = ?", id).First(&doc).Error; err != nil {
+			return "", fmt.Errorf("文档不存在或无权访问（id=%d）", id)
+		}
+		if doc.Type == model.DocTypeHTML {
+			return fmt.Sprintf("《%s》是整站文档（正文由多个文件组成，存储于对象存储），请引用链接 {{doc:%d}} 让用户自行查看。", doc.Title, doc.ID), nil
+		}
+		return buildDocInjectBody(doc.Title, doc.ContentVersion, doc.Content, query, maxChars), nil
+	}
+	return defs, exec, injectRead
 }
 
 // aiApplyDocUpdate AI 通道的文档保存：与 UpdateDoc 相同的乐观锁 + 修订快照 + 版本派生，
