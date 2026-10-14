@@ -72,6 +72,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.PATCH("/api/chat/sessions/:id/trust", app.SetChatSessionTrust)
 		admin.GET("/api/chat/sessions/:id/messages", app.ListChatMessages)
 		admin.POST("/api/chat/sessions/:id/completions", app.ChatCompletions)
+		admin.POST("/api/chat/sessions/:id/cancel", app.CancelChatCompletions)
 		admin.POST("/api/chat/approvals/:id", app.ReviewChatApproval)
 
 		// 项目内文档列表（属主/管理员/成员）：项目弹窗用
@@ -83,6 +84,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.PUT("/api/projects/:id", app.UpdateProject)
 		admin.DELETE("/api/projects/:id", app.DeleteProject)
 		admin.GET("/api/projects/:id/members", app.ListProjectMembers)
+		admin.GET("/api/projects/:id/member-options", app.ProjectMemberOptions)
 		admin.POST("/api/projects/:id/members", app.AddProjectMember)
 		admin.PUT("/api/projects/:id/members/:mid", app.UpdateProjectMember)
 		admin.DELETE("/api/projects/:id/members/me", app.LeaveProject)
@@ -132,6 +134,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.POST("/api/docs/:id/editing", app.MarkEditing)
 		admin.POST("/api/docs/:id/share", app.UpsertShare)
 		admin.POST("/api/docs/:id/duplicate", app.DuplicateDoc)
+		admin.POST("/api/docs/:id/transfer", app.TransferDoc)
 		admin.DELETE("/api/docs/:id/share", app.DeleteShare)
 		admin.GET("/api/docs/:id/access-requests", app.ListAccessRequests)
 		admin.POST("/api/docs/:id/access-requests/:rid", app.ReviewAccessRequest)

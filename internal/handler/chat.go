@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -314,6 +315,44 @@ func (a *App) ReviewChatApproval(c *gin.Context) {
 	}
 	a.approvals.Delete(id) // 一次裁决即失效
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// bindChatGen 登记本会话当前生成的取消函数；若已有进行中的生成则先取消（同会话不并行烧两轮）
+func (a *App) bindChatGen(sessionID uint, cancel context.CancelFunc) {
+	if prev, ok := a.chatGens.Swap(sessionID, cancel); ok {
+		if old, ok := prev.(context.CancelFunc); ok && old != nil {
+			old()
+		}
+	}
+}
+
+// unbindChatGen 仅当仍是本次 cancel 时移除，避免误清后来者的登记
+func (a *App) unbindChatGen(sessionID uint, cancel context.CancelFunc) {
+	a.chatGens.CompareAndDelete(sessionID, cancel)
+}
+
+// cancelChatGen 显式停止该会话正在进行的生成（停止按钮）
+func (a *App) cancelChatGen(sessionID uint) bool {
+	v, ok := a.chatGens.LoadAndDelete(sessionID)
+	if !ok {
+		return false
+	}
+	if cancel, ok := v.(context.CancelFunc); ok && cancel != nil {
+		cancel()
+		return true
+	}
+	return false
+}
+
+// CancelChatCompletions 用户点击「停止」：取消后台生成。刷新/关页只断 SSE，不走此接口，生成会继续并落库。
+func (a *App) CancelChatCompletions(c *gin.Context) {
+	user := middleware.CurrentUser(c)
+	s, ok := a.ownSession(c, user.ID, c.Param("id"))
+	if !ok {
+		return
+	}
+	cancelled := a.cancelChatGen(s.ID)
+	c.JSON(http.StatusOK, gin.H{"ok": true, "cancelled": cancelled})
 }
 
 // maskArgs 工具参数脱敏：密码类字段不进日志（粗粒度：检测到 password 字段即隐藏参数串）
@@ -774,13 +813,28 @@ func (a *App) ChatCompletions(c *gin.Context) {
 		execTool = wrapExecSkipReread(execTool, prereadIDs)
 	}
 
+	// 生成上下文与 HTTP 请求解耦：刷新/关页只断 SSE，后台仍跑完并落库；
+	// 只有「停止」接口或同会话新请求会 cancelChatGen。
+	genCtx, genCancel := context.WithCancel(context.Background())
+	a.bindChatGen(s.ID, genCancel)
+	defer func() {
+		genCancel()
+		a.unbindChatGen(s.ID, genCancel)
+	}()
+	clientAlive := func() bool { return c.Request.Context().Err() == nil }
+
 	// SSE 响应头
 	c.Writer.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	flusher, canFlush := c.Writer.(http.Flusher)
 	writeEvent := func(payload string) {
-		fmt.Fprintf(c.Writer, "data: %s\n\n", payload)
+		if !clientAlive() {
+			return
+		}
+		if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", payload); err != nil {
+			return
+		}
 		if canFlush {
 			flusher.Flush()
 		}
@@ -804,17 +858,18 @@ func (a *App) ChatCompletions(c *gin.Context) {
 	var lastToolResults string       // 上一轮工具结果（用于无 tool_call 时的自动续跑判断）
 	autoContinues := 0
 	for round := 0; round < aiToolRounds; round++ {
-		// 客户端已断开（用户点了停止/刷新/关页）：不再继续烧后续轮次的 LLM 与工具调用；
-		// 已有部分回答时继续走落库流程把它保存下来，而不是直接丢弃
-		if err := c.Request.Context().Err(); err != nil {
-			if anyEmitted {
+		// 仅显式停止（genCtx）中断轮次；刷新不断开 genCtx
+		if genCtx.Err() != nil {
+			if anyEmitted || final.Len() > 0 {
 				break
 			}
+			// 一开局就被停止且无产出：保留用户消息
+			log.Printf("[llm] 生成已取消且无内容 session=%d", s.ID)
 			return
 		}
 		var rc strings.Builder
 		roundStart := time.Now()
-		assistant, err := cfg.StreamChat(c.Request.Context(), msgs, tools, func(delta string) {
+		assistant, err := cfg.StreamChat(genCtx, msgs, tools, func(delta string) {
 			rc.WriteString(delta)
 			anyEmitted = true
 			emitDelta(delta)
@@ -828,9 +883,8 @@ func (a *App) ChatCompletions(c *gin.Context) {
 			totalUsage.TotalTokens += assistant.Usage.TotalTokens
 		}
 		if err != nil {
-			if c.Request.Context().Err() != nil {
-				// 流被用户断开打断（停止/刷新/关页）：保留用户消息与已生成的部分
-				// 回答，静默收尾 —— 不能算上游失败，更不能删用户消息
+			if genCtx.Err() != nil {
+				// 用户点了停止：保留已生成片段并落库
 				final.WriteString(rc.String())
 				break
 			}
@@ -944,9 +998,14 @@ func (a *App) ChatCompletions(c *gin.Context) {
 			case <-time.After(chatApprovalTTL):
 				timeoutMsg = "等待用户确认超时，操作未执行。"
 				approvedSensitive = false
+			case <-genCtx.Done():
+				// 用户点停止
+				timeoutMsg = "用户已停止生成，操作未执行。"
+				approvedSensitive = false
 			case <-c.Request.Context().Done():
-				a.approvals.Delete(apprID)
-				return
+				// 刷新/关页：审批 UI 已不可用，拒绝敏感操作但继续让非敏感路径收尾
+				timeoutMsg = "连接已断开，敏感操作未执行。"
+				approvedSensitive = false
 			}
 			a.approvals.Delete(apprID)
 		}
@@ -1008,9 +1067,9 @@ func (a *App) ChatCompletions(c *gin.Context) {
 
 	// 兜底：轮数打满但模型全程未输出正文（如最后一轮仍在调工具）——
 	// 去掉工具强制它根据已收集的工具结果作答一次
-	if strings.TrimSpace(reply) == "" {
+	if strings.TrimSpace(reply) == "" && genCtx.Err() == nil {
 		var fb strings.Builder
-		respMsg, err := cfg.StreamChat(c.Request.Context(), msgs, nil, func(delta string) {
+		respMsg, err := cfg.StreamChat(genCtx, msgs, nil, func(delta string) {
 			fb.WriteString(emitDelta(delta))
 		})
 		if err == nil && strings.TrimSpace(respMsg.Content) != "" {
@@ -1019,12 +1078,12 @@ func (a *App) ChatCompletions(c *gin.Context) {
 			reply = fb.String()
 		}
 	}
-	userGone := c.Request.Context().Err() != nil // 用户主动断开（停止/刷新/关页）
+	stopped := genCtx.Err() != nil
+	userGone := !clientAlive() // 刷新/关页（未必点了停止）
 	if strings.TrimSpace(reply) == "" {
-		if userGone {
-			// 断开且没有产出任何内容：不落 assistant 消息（避免"生成失败"假回复），
-			// 用户消息保留，下次提问模型能看到这个问题
-			log.Printf("[llm] 用户断开且无内容，保留用户消息 session=%d", s.ID)
+		if stopped || userGone {
+			// 停止或断开且无正文：不落假回复；用户消息保留，刷新后可重发或等后台若已有内容
+			log.Printf("[llm] 无正文结束 stopped=%v gone=%v session=%d", stopped, userGone, s.ID)
 			return
 		}
 		reply = a.tr(c, "chat.generateFailed")

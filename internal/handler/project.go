@@ -350,6 +350,59 @@ func (a *App) UserOptions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": out})
 }
 
+// ProjectMemberOptions 项目成员选择器（属主 + 成员）：支持 q 过滤，exclude 排除用户 ID。
+// 可读范围同 ListProjectMembers；供文档转让等场景复用。
+func (a *App) ProjectMemberOptions(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var project model.Project
+	if err := a.DB.First(&project, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "项目不存在"})
+		return
+	}
+	user := middleware.CurrentUser(c)
+	allowed := user != nil && (user.IsAdmin() || project.OwnerID == user.ID)
+	if !allowed && user != nil {
+		var n int64
+		a.DB.Model(&model.ProjectMember{}).Where("project_id = ? AND user_id = ?", project.ID, user.ID).Count(&n)
+		allowed = n > 0
+	}
+	if !allowed {
+		c.JSON(http.StatusForbidden, gin.H{"error": "无权查看该项目"})
+		return
+	}
+
+	q := strings.TrimSpace(c.Query("q"))
+	excludeID, _ := strconv.Atoi(c.Query("exclude"))
+
+	var ms []model.ProjectMember
+	a.DB.Where("project_id = ? AND user_id <> ?", project.ID, project.OwnerID).Find(&ms)
+	ids := make([]uint, 0, len(ms)+1)
+	ids = append(ids, project.OwnerID)
+	for _, m := range ms {
+		ids = append(ids, m.UserID)
+	}
+	if len(ids) == 0 {
+		c.JSON(http.StatusOK, gin.H{"data": []gin.H{}})
+		return
+	}
+
+	tx := a.DB.Where("id IN ? AND status = ?", ids, model.StatusEnabled)
+	if excludeID > 0 {
+		tx = tx.Where("id <> ?", excludeID)
+	}
+	if q != "" {
+		like := "%" + q + "%"
+		tx = tx.Where("username LIKE ? OR nickname LIKE ?", like, like)
+	}
+	var us []model.User
+	tx.Order("username asc").Limit(20).Find(&us)
+	out := make([]gin.H, 0, len(us))
+	for _, u := range us {
+		out = append(out, gin.H{"id": u.ID, "username": u.Username, "nickname": u.DisplayName()})
+	}
+	c.JSON(http.StatusOK, gin.H{"data": out})
+}
+
 // ---- 项目成员 ----
 
 type memberView struct {

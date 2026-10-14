@@ -245,6 +245,21 @@
 .chat-think-body{padding:0 0 4px;max-height:160px;overflow-y:auto;white-space:pre-wrap;line-height:1.55}
 .chat-resend{display:inline-block;margin-top:8px;padding:4px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--chat-accent);font-size:13px;cursor:pointer}
 .chat-resend:hover{border-color:var(--chat-accent)}
+/* 敏感操作：对话内嵌告警卡，替代全屏弹窗 */
+.chat-appr{align-self:stretch;max-width:min(100%,560px);margin:4px 0 2px;padding:14px 16px;border-radius:12px;border:1px solid #f5d4a1;background:#fff8ed;color:#5c3d1e;box-sizing:border-box;animation:chat-rise .2s ease}
+.chat-appr-head{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:#8b572a;margin-bottom:10px}
+.chat-appr-head svg{flex:none}
+.chat-appr-body{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;line-height:1.55;color:#3f3f46;white-space:pre-wrap;word-break:break-word;margin:0 0 12px}
+.chat-appr-tip{font-family:inherit;font-size:12px;color:#a16207;margin:-4px 0 12px;line-height:1.45}
+.chat-appr-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.chat-appr-ok{border:none;border-radius:8px;padding:7px 14px;background:#0f766e;color:#fff;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.chat-appr-ok:hover{filter:brightness(1.06)}
+.chat-appr-ok:disabled,.chat-appr-no:disabled{opacity:.5;cursor:not-allowed}
+.chat-appr-no{border:1px solid var(--border);border-radius:8px;padding:7px 14px;background:var(--bg);color:var(--text);font:inherit;font-size:13px;cursor:pointer}
+.chat-appr-no:hover{background:var(--bg-soft)}
+.chat-appr.done{opacity:.85}
+.chat-appr.done .chat-appr-actions{display:none}
+.chat-appr-result{font-size:12.5px;color:var(--muted);margin-top:2px}
 .chat-tool-status{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
 .chat-tool-dot{width:7px;height:7px;border-radius:50%;background:var(--chat-accent);animation:chat-pulse 1s ease-in-out infinite}
 @keyframes chat-pulse{50%{opacity:.25;transform:scale(.8)}}
@@ -263,9 +278,10 @@
 .chat-input-card textarea::placeholder{color:var(--muted)}
 .chat-input-foot{display:flex;align-items:center;justify-content:space-between;margin-top:8px;gap:8px}
 .chat-hint{font-size:12px;user-select:none}
-.chat-send{width:34px;height:34px;border-radius:10px;border:none;background:var(--chat-accent);color:#fff;display:grid;place-items:center;cursor:pointer;transition:filter .15s,opacity .15s}
+.chat-send{width:34px;height:34px;border-radius:10px;border:none;background:var(--chat-accent);color:#fff;display:grid;place-items:center;cursor:pointer;transition:filter .15s,opacity .15s;flex:none;z-index:2;position:relative}
 .chat-send:hover:not(:disabled){filter:brightness(1.08)}
 .chat-send:disabled{opacity:.35;cursor:not-allowed}
+.chat-send.is-stop{opacity:1;cursor:pointer}
 /* 右侧产物面板 */
 .chat-panel{width:300px;flex:none;display:flex;flex-direction:column;min-height:0;border-left:1px solid var(--border);background:var(--bg)}
 .chat-panel[hidden]{display:none!important}
@@ -310,6 +326,8 @@
   .chat-attach-name{max-width:min(180px,56vw)}
   .chat-img-pop{max-width:min(360px,94vw);padding:6px}
   .chat-img-pop img{max-height:min(280px,50vh)}
+  .chat-appr{padding:12px;max-width:100%}
+  .chat-appr-ok,.chat-appr-no{flex:1 1 auto;text-align:center}
   .chat-s-item .chat-s-del{display:inline-flex}
 }
 /* 触屏：操作条常显；无 hover 时靠点按看图 */
@@ -457,13 +475,15 @@
   function scrollBottom(force) { if (force || nearBottom()) scrollEl.scrollTop = scrollEl.scrollHeight; }
 
   // ===== 会话列表 =====
+  var didAutoOpen = false;
   async function loadSessions() {
     try {
       var res = await fetch('/console/api/chat/sessions', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
       var data = await res.json();
       listEl.innerHTML = '';
       sessionMeta = {};
-      (data.sessions || []).forEach(function (s) {
+      var sessions = data.sessions || [];
+      sessions.forEach(function (s) {
         sessionMeta[s.id] = { trust_sensitive: !!s.trust_sensitive, title: s.title || '' };
         var item = document.createElement('div');
         item.className = 'chat-s-item' + (String(s.id) === String(currentId) ? ' active' : '');
@@ -493,6 +513,11 @@
       if (!listEl.children.length) listEl.innerHTML = '<div class="muted chat-empty">' + UI.t('chat.noSession') + '</div>';
       syncTrustCheckbox();
       setTaskTitle(currentId);
+      // 首次进入/刷新：自动打开最近会话，便于接上后台仍在生成的回答
+      if (!didAutoOpen && !currentId && !sending && sessions.length) {
+        didAutoOpen = true;
+        openSession(sessions[0].id);
+      }
     } catch (e) {
       listEl.innerHTML = '<div class="muted chat-empty">' + UI.t('chat.loadingFailed') + '</div>';
     }
@@ -982,43 +1007,141 @@
     scrollBottom(false);
   }
 
-  // 敏感操作审批：AI 请求删除/恢复类操作时弹窗让用户裁决，SSE 会阻塞等待结果。
-  // 同回合多项敏感操作合并为一次确认（approval.items）。
-  async function showApproval(target, approval) {
+  // 敏感操作审批：对话内嵌警告卡片（非全屏弹窗）；SSE 阻塞等待用户点确认/拒绝。
+  function formatApprovalCall(tool, argsStr) {
+    tool = tool || 'tool';
+    argsStr = String(argsStr || '').trim();
+    if (!argsStr || argsStr === '***') return tool + '(…)';
+    try {
+      var o = JSON.parse(argsStr);
+      if (o && typeof o === 'object' && !Array.isArray(o)) {
+        var parts = Object.keys(o).map(function (k) {
+          var v = o[k];
+          if (/pass/i.test(k) && v != null && v !== '') v = '***';
+          if (typeof v === 'string') return k + '=' + v;
+          return k + '=' + JSON.stringify(v);
+        });
+        return tool + '(' + parts.join(', ') + ')';
+      }
+    } catch (e) {}
+    return tool + '(' + argsStr + ')';
+  }
+  function showApproval(target, approval) {
     if (target.status) { stopStatusAnim(target); target.status.remove(); target.status = null; }
-    var toolNames = {
+    disarmWaiting(target);
+    var tipMap = {
       delete_document:  UI.t('chat.apprDelete'),
       restore_document: UI.t('chat.apprRestore'),
       restore_revision: UI.t('chat.apprRevision'),
       set_share:        UI.t('chat.apprShare')
     };
-    var msg;
     var items = Array.isArray(approval.items) ? approval.items : null;
-    if (items && items.length > 1) {
-      msg = UI.t('chat.apprBatch', { n: items.length }) + '\n\n' + items.map(function (it, i) {
-        var line = (i + 1) + '. ' + (toolNames[it.tool] || it.tool);
-        if (it.args && it.args !== '***') line += '\n' + it.args;
-        return line;
-      }).join('\n\n');
+    var callLines;
+    if (items && items.length) {
+      callLines = items.map(function (it) { return formatApprovalCall(it.tool, it.args); });
     } else {
-      var detail = approval.args && approval.args !== '***' ? '\n' + approval.args : '';
-      msg = (toolNames[approval.tool] || approval.tool) + detail;
+      callLines = [formatApprovalCall(approval.tool, approval.args)];
     }
-    var ok = await UI.confirm(msg, { danger: true });
-    showToolStatus(target, items && items.length ? items.map(function (it) { return it.tool; }).join(', ') : approval.tool);
-    try {
-      await fetch('/console/api/chat/approvals/' + encodeURIComponent(approval.id), {
+    var tip = '';
+    if (items && items.length > 1) tip = UI.t('chat.apprBatch', { n: items.length });
+    else tip = tipMap[approval.tool] || '';
+
+    var card = document.createElement('div');
+    card.className = 'chat-appr';
+    card.innerHTML =
+      '<div class="chat-appr-head">' +
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+          '<path d="M12 3.5L22 20H2L12 3.5Z" stroke="#c2410c" stroke-width="1.8" stroke-linejoin="round"/>' +
+          '<path d="M12 9v5" stroke="#c2410c" stroke-width="1.8" stroke-linecap="round"/>' +
+          '<circle cx="12" cy="17" r="1.1" fill="#c2410c"/>' +
+        '</svg>' +
+        '<span></span>' +
+      '</div>' +
+      '<div class="chat-appr-body"></div>' +
+      (tip ? '<div class="chat-appr-tip"></div>' : '') +
+      '<div class="chat-appr-actions">' +
+        '<button type="button" class="chat-appr-ok"></button>' +
+        '<button type="button" class="chat-appr-no"></button>' +
+      '</div>';
+    card.querySelector('.chat-appr-head span').textContent = UI.t('chat.apprTitle');
+    card.querySelector('.chat-appr-body').textContent = callLines.join('\n');
+    if (tip) card.querySelector('.chat-appr-tip').textContent = tip;
+    var okBtn = card.querySelector('.chat-appr-ok');
+    var noBtn = card.querySelector('.chat-appr-no');
+    okBtn.textContent = UI.t('chat.apprConfirm');
+    noBtn.textContent = UI.t('chat.apprReject');
+
+    var trail = ensureTrail(target);
+    trail.appendChild(card);
+    scrollBottom(false);
+
+    function finish(approve) {
+      okBtn.disabled = true;
+      noBtn.disabled = true;
+      card.classList.add('done');
+      var res = document.createElement('div');
+      res.className = 'chat-appr-result';
+      res.textContent = approve ? UI.t('chat.apprApproved') : UI.t('chat.apprRejected');
+      card.appendChild(res);
+      var toolLabel = items && items.length
+        ? items.map(function (it) { return it.tool; }).join(', ')
+        : approval.tool;
+      showToolStatus(target, toolLabel);
+      fetch('/console/api/chat/approvals/' + encodeURIComponent(approval.id), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ approve: !!ok })
-      });
-    } catch (e) { /* 连接断开时 SSE 会自行终止 */ }
+        body: JSON.stringify({ approve: !!approve })
+      }).catch(function () { /* 连接断开时 SSE 会自行终止 */ });
+    }
+    okBtn.addEventListener('click', function () { finish(true); });
+    noBtn.addEventListener('click', function () { finish(false); });
   }
 
   // ===== 会话加载与发送 =====
+  var pendingPollTimer = null;
+  var pendingPollAi = null;
+  function stopPendingPoll() {
+    if (pendingPollTimer) { clearInterval(pendingPollTimer); pendingPollTimer = null; }
+    pendingPollAi = null;
+  }
+  // 刷新后：若末条是用户消息且后台仍在生成，轮询直到助手回复出现
+  function watchPendingReply(sessionId, afterUserId) {
+    stopPendingPoll();
+    if (!sessionId) return;
+    var ai = addMsg('assistant', '', true);
+    pendingPollAi = ai;
+    var tries = 0;
+    pendingPollTimer = setInterval(async function () {
+      tries++;
+      if (tries > 90 || currentId !== sessionId || sending) {
+        stopPendingPoll();
+        if (ai && !ai.gotDelta) {
+          disarmWaiting(ai);
+          contentEl(ai).textContent = UI.t('chat.genInterrupted');
+        }
+        return;
+      }
+      try {
+        var res = await fetch('/console/api/chat/sessions/' + sessionId + '/messages', {
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+        var data = await res.json();
+        var list = (data.messages || []).filter(function (m) { return m.role === 'user' || m.role === 'assistant'; });
+        var last = list.length ? list[list.length - 1] : null;
+        if (last && last.role === 'assistant' && (!afterUserId || last.id > afterUserId)) {
+          stopPendingPoll();
+          if (ai && ai.wrap && ai.wrap.parentNode) ai.wrap.remove();
+          addMsg('assistant', last.content, false, { createdAt: last.created_at });
+          loadSessions();
+        }
+      } catch (e) { /* 下次再试 */ }
+    }, 2000);
+  }
+
   async function openSession(id) {
     if (window.matchMedia('(max-width:900px)').matches) closeDrawer();
     if (sending) { UI.toast(UI.t('chat.waitStreaming'), 'error'); return; }
+    stopPendingPoll();
     currentId = id;
     clearArtifacts();
     clearPendingImage();
@@ -1027,17 +1150,22 @@
       var res = await fetch('/console/api/chat/sessions/' + id + '/messages', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
       var data = await res.json();
       msgsEl.innerHTML = '';
-      var has = (data.messages || []).length > 0;
+      var msgs = (data.messages || []).filter(function (m) { return m.role === 'user' || m.role === 'assistant'; });
+      var has = msgs.length > 0;
       showHero(!has);
-      (data.messages || []).forEach(function (m) {
-        if (m.role === 'system') return;
+      msgs.forEach(function (m) {
         addMsg(m.role === 'user' ? 'user' : 'assistant', m.content, false, { createdAt: m.created_at });
       });
+      var last = msgs.length ? msgs[msgs.length - 1] : null;
+      if (last && last.role === 'user') {
+        watchPendingReply(id, last.id);
+      }
     } catch (e) { UI.alert(UI.t('chat.loadingFailed')); }
   }
 
   function newSession() {
     if (sending) { UI.toast(UI.t('chat.waitStreaming'), 'error'); return; }
+    stopPendingPoll();
     currentId = null;
     clearArtifacts();
     clearPendingImage();
@@ -1080,6 +1208,7 @@
   }
 
   var abortCtrl = null;   // 当前流式请求的中止控制器
+  var streamReader = null; // 用于停止时 cancel 读流
   var lastSent = '';      // 最近一次发送的内容（用于"重新发送"）
 
   // 忙碌提示：生成中再次尝试发送时，给用户可见反馈而不是静默吞掉
@@ -1110,6 +1239,7 @@
     }
     if (!content) return;
     if (sending) { showBusyHint(); return; }
+    stopPendingPoll();
     sending = true;
     lastSent = content;
     setSendBtnBusy(true);
@@ -1132,7 +1262,8 @@
         var errData = await res.json().catch(function () { return {}; });
         throw new Error((errData && errData.error) || UI.t('chat.sendFailed'));
       }
-      var reader = res.body.getReader();
+      streamReader = res.body.getReader();
+      var reader = streamReader;
       var decoder = new TextDecoder();
       var buf = '';
       var done = false;
@@ -1207,31 +1338,38 @@
         }
       }
     } catch (e) {
-      contentEl(ai).innerHTML = '';
-      var el = document.createElement('div');
-      el.className = 'chat-m-error';
-      el.textContent = (e && e.name === 'AbortError') ? UI.t('chat.stopped') : (e.message || UI.t('chat.sendFailed'));
-      contentEl(ai).appendChild(el);
-      // 停止/失败后提供"重新发送"
-      if (lastSent) {
-        var re = document.createElement('button');
-        re.type = 'button'; re.className = 'chat-resend';
-        re.textContent = UI.t('chat.resend');
-        re.addEventListener('click', function () { re.remove(); send(lastSent); });
-        contentEl(ai).appendChild(re);
+      var aborted = e && e.name === 'AbortError';
+      var cel = contentEl(ai);
+      // 停止时保留思考/正文；失败且无正文时清空占位
+      if (cel) {
+        var work = cel.querySelector('.chat-working');
+        if (work) work.remove();
+        if (!aborted && !ai.gotDelta && !ai.think) cel.innerHTML = '';
+        var el = document.createElement('div');
+        el.className = 'chat-m-error';
+        el.textContent = aborted ? UI.t('chat.stopped') : (e.message || UI.t('chat.sendFailed'));
+        cel.appendChild(el);
+        if (lastSent && !aborted) {
+          var re = document.createElement('button');
+          re.type = 'button'; re.className = 'chat-resend';
+          re.textContent = UI.t('chat.resend');
+          re.addEventListener('click', function () { re.remove(); send(lastSent); });
+          cel.appendChild(re);
+        }
       }
     } finally {
       sending = false;
       abortCtrl = null;
+      streamReader = null;
       // 停止/失败后必须清理 working 状态条，否则它会永远转圈，
       // 看起来像"停止没生效"
       disarmWaiting(ai);
       if (ai.runPill) { ai.runPill.remove(); ai.runPill = null; }
       if (ai.status) { stopStatusAnim(ai); ai.status.remove(); ai.status = null; }
-      // 未产出正文时清掉初始 working 占位，避免结束后仍显示「正在处理」
+      // 仅移除 working 占位，勿清空整段（避免抹掉「已停止」提示或思考块旁的状态）
       if (!ai.gotDelta && contentEl(ai)) {
         var w = contentEl(ai).querySelector('.chat-working');
-        if (w) contentEl(ai).innerHTML = '';
+        if (w) w.remove();
       }
       setSendBtnBusy(false);
       loadSessions();
@@ -1245,12 +1383,32 @@
   function setSendBtnBusy(busy) {
     sendBtn.innerHTML = busy ? stopIcon : sendIcon;
     sendBtn.setAttribute('aria-label', busy ? '停止' : '发送');
-    if (busy) sendBtn.disabled = false;
-    else syncSendEnabled();
+    sendBtn.classList.toggle('is-stop', !!busy);
+    // 停止态始终可点；勿被 syncSendEnabled / disabled 属性卡住
+    if (busy) {
+      sendBtn.disabled = false;
+      sendBtn.removeAttribute('disabled');
+    } else {
+      syncSendEnabled();
+    }
   }
 
   function stopGenerating() {
-    if (abortCtrl) abortCtrl.abort();
+    if (!sending && !abortCtrl) return;
+    // 先通知服务端取消后台生成，再断 SSE（仅 abort 在刷新场景下不会停后台）
+    var sid = currentId;
+    if (sid) {
+      fetch('/console/api/chat/sessions/' + sid + '/cancel', {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      }).catch(function () {});
+    }
+    if (abortCtrl) {
+      try { abortCtrl.abort(); } catch (e) {}
+    }
+    if (streamReader) {
+      try { streamReader.cancel(); } catch (e) {}
+    }
   }
 
   function autoGrow() {
@@ -1261,7 +1419,11 @@
 
   inputEl.addEventListener('input', autoGrow);
   inputEl.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      if (sending) return; // 生成中 Enter 不重发，停止请点按钮
+      send();
+    }
   });
   inputEl.addEventListener('paste', function (e) {
     var items = e.clipboardData && e.clipboardData.items;

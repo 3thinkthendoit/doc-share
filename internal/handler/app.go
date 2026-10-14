@@ -39,6 +39,7 @@ type App struct {
 	searchOnce sync.Once // 保障 Search 惰性初始化（仅测试/手动构造 App 时生效）
 
 	approvals sync.Map // AI 敏感操作待审批表：approvalID -> chatApproval
+	chatGens  sync.Map // 会话级生成取消：sessionID(uint) -> context.CancelFunc；刷新不断开生成，停止按钮显式取消
 }
 
 // chatApproval 一次待用户确认的敏感工具调用

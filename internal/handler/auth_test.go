@@ -265,6 +265,115 @@ func TestProjectMemberCRUD(t *testing.T) {
 	})
 }
 
+// TestTransferDoc 文档转让：仅属主可转；目标须为项目成员；原属主保留编辑权限
+func TestTransferDoc(t *testing.T) {
+	a, doc := newAuthApp(t)
+	users, err := loadTestUsers(a)
+	if err != nil {
+		t.Fatalf("load users: %v", err)
+	}
+	docID := itoa(int(doc.ID))
+	pid := itoa(int(doc.ProjectID))
+
+	t.Run("non_owner_forbidden", func(t *testing.T) {
+		w, c := newCtx()
+		c.Params = gin.Params{{Key: "id", Value: docID}}
+		asUser(c, users["editm"], http.MethodPost, "/console/api/docs/"+docID+"/transfer",
+			`{"user_id":`+itoa(int(users["viewm"].ID))+`}`)
+		a.TransferDoc(c)
+		assertCode(t, w, http.StatusForbidden)
+	})
+
+	t.Run("outsider_rejected", func(t *testing.T) {
+		w, c := newCtx()
+		c.Params = gin.Params{{Key: "id", Value: docID}}
+		asUser(c, users["owner"], http.MethodPost, "/console/api/docs/"+docID+"/transfer",
+			`{"user_id":`+itoa(int(users["outsider"].ID))+`}`)
+		a.TransferDoc(c)
+		assertCode(t, w, http.StatusBadRequest)
+	})
+
+	t.Run("self_rejected", func(t *testing.T) {
+		w, c := newCtx()
+		c.Params = gin.Params{{Key: "id", Value: docID}}
+		asUser(c, users["owner"], http.MethodPost, "/console/api/docs/"+docID+"/transfer",
+			`{"user_id":`+itoa(int(users["owner"].ID))+`}`)
+		a.TransferDoc(c)
+		assertCode(t, w, http.StatusBadRequest)
+	})
+
+	t.Run("member_options_excludes_self", func(t *testing.T) {
+		w, c := newCtx()
+		c.Params = gin.Params{{Key: "id", Value: pid}}
+		asUser(c, users["owner"], http.MethodGet,
+			"/console/api/projects/"+pid+"/member-options?exclude="+itoa(int(users["owner"].ID)), "")
+		a.ProjectMemberOptions(c)
+		assertCode(t, w, http.StatusOK)
+		var res struct {
+			Data []struct {
+				ID       uint   `json:"id"`
+				Username string `json:"username"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		for _, u := range res.Data {
+			if u.ID == users["owner"].ID {
+				t.Fatalf("选项不应包含本人 owner")
+			}
+		}
+		if len(res.Data) == 0 {
+			t.Fatalf("应至少返回其他成员")
+		}
+	})
+
+	t.Run("owner_to_editor_ok", func(t *testing.T) {
+		w, c := newCtx()
+		c.Params = gin.Params{{Key: "id", Value: docID}}
+		asUser(c, users["owner"], http.MethodPost, "/console/api/docs/"+docID+"/transfer",
+			`{"user_id":`+itoa(int(users["editm"].ID))+`}`)
+		a.TransferDoc(c)
+		assertCode(t, w, http.StatusOK)
+
+		var d model.Document
+		if err := a.DB.First(&d, doc.ID).Error; err != nil {
+			t.Fatalf("reload doc: %v", err)
+		}
+		if d.OwnerID != users["editm"].ID {
+			t.Fatalf("owner_id = %d, want %d", d.OwnerID, users["editm"].ID)
+		}
+		// 原属主是项目属主：应仍可编辑（projectRole=edit）
+		if role := a.projectRole(&d, users["owner"].ID); role != model.MemberRoleEdit {
+			t.Fatalf("former owner projectRole = %q, want edit", role)
+		}
+	})
+
+	t.Run("editor_to_viewer_demotes_to_edit_member", func(t *testing.T) {
+		w, c := newCtx()
+		c.Params = gin.Params{{Key: "id", Value: docID}}
+		asUser(c, users["editm"], http.MethodPost, "/console/api/docs/"+docID+"/transfer",
+			`{"user_id":`+itoa(int(users["viewm"].ID))+`}`)
+		a.TransferDoc(c)
+		assertCode(t, w, http.StatusOK)
+
+		var d model.Document
+		if err := a.DB.First(&d, doc.ID).Error; err != nil {
+			t.Fatalf("reload doc: %v", err)
+		}
+		if d.OwnerID != users["viewm"].ID {
+			t.Fatalf("owner_id = %d, want %d", d.OwnerID, users["viewm"].ID)
+		}
+		var m model.ProjectMember
+		if err := a.DB.Where("project_id = ? AND user_id = ?", d.ProjectID, users["editm"].ID).First(&m).Error; err != nil {
+			t.Fatalf("former owner should remain project member: %v", err)
+		}
+		if m.Role != model.MemberRoleEdit {
+			t.Fatalf("former owner role = %q, want edit", m.Role)
+		}
+	})
+}
+
 // ---- 测试辅助 ----
 
 // newRenderApp 带模板与词典的 App（供页面渲染类 handler 使用）

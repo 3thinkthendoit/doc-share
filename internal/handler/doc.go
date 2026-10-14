@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"html"
 	"html/template"
 	"log"
@@ -31,10 +32,22 @@ func (a *App) DocsPage(c *gin.Context) {
 	pg := parseWebPage(c)
 
 	user := middleware.CurrentUser(c)
-	// 当前用户参与的项目（成员路径的可见范围依据）
+	// 当前用户参与的项目（owner ∪ 项目成员，与 search.Params 注释一致）
 	var memberPids []uint
 	if user != nil && !user.IsAdmin() {
 		a.DB.Model(&model.ProjectMember{}).Where("user_id = ?", user.ID).Pluck("project_id", &memberPids)
+		var ownedPids []uint
+		a.DB.Model(&model.Project{}).Where("owner_id = ?", user.ID).Pluck("id", &ownedPids)
+		seen := make(map[uint]bool, len(memberPids)+len(ownedPids))
+		for _, id := range memberPids {
+			seen[id] = true
+		}
+		for _, id := range ownedPids {
+			if !seen[id] {
+				memberPids = append(memberPids, id)
+				seen[id] = true
+			}
+		}
 	}
 
 	// 组装统一搜索参数（Web 文档列表 / AI search_documents / MCP-OpenAPI 共用 search.Service）
@@ -115,7 +128,7 @@ func (a *App) DocsPage(c *gin.Context) {
 	embedTags := detectEmbedTags(a.DB, docs)
 
 	// 逐行编辑权限（批量取成员角色，避免逐条查询）：
-	// 属主/管理员可编辑；edit 角色成员可编辑所参与项目内的他人文档
+	// 属主/管理员可编辑；项目属主与 edit 角色成员可编辑项目内他人文档
 	canEdit := make(map[uint]bool, len(docs))
 	if user != nil {
 		roleByPid := make(map[uint]string)
@@ -124,6 +137,11 @@ func (a *App) DocsPage(c *gin.Context) {
 			a.DB.Where("user_id = ?", user.ID).Find(&ms)
 			for _, m := range ms {
 				roleByPid[m.ProjectID] = m.Role
+			}
+			var ownedPids []uint
+			a.DB.Model(&model.Project{}).Where("owner_id = ?", user.ID).Pluck("id", &ownedPids)
+			for _, pid := range ownedPids {
+				roleByPid[pid] = model.MemberRoleEdit
 			}
 		}
 		for _, d := range docs {
@@ -462,10 +480,15 @@ func (a *App) loadDoc(c *gin.Context) *model.Document {
 	return &doc
 }
 
-// projectRole 用户在文档所属项目中的成员角色；""=非成员或文档未挂项目
+// projectRole 用户在文档所属项目中的成员角色；""=非成员或文档未挂项目。
+// 项目属主对项目内文档等同 edit（无需写入 project_members）。
 func (a *App) projectRole(doc *model.Document, userID uint) string {
 	if doc == nil || doc.ProjectID == 0 || userID == 0 {
 		return ""
+	}
+	var proj model.Project
+	if a.DB.Select("owner_id").First(&proj, doc.ProjectID).Error == nil && proj.OwnerID == userID {
+		return model.MemberRoleEdit
 	}
 	var m model.ProjectMember
 	if err := a.DB.Where("project_id = ? AND user_id = ?", doc.ProjectID, userID).First(&m).Error; err != nil {
@@ -1158,6 +1181,106 @@ func (a *App) DuplicateDoc(c *gin.Context) {
 	}
 	a.reindexDocAsync(newDoc.ID) // 写时双写新副本
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"id": newDoc.ID, "title": newDoc.Title}})
+}
+
+// TransferDoc 文档转让（仅文档属主）：将 OwnerID 改为目标项目成员，原属主降为项目 edit。
+// 请求体 {user_id}；文档须归属项目，目标须为该项目属主或成员且非本人。
+func (a *App) TransferDoc(c *gin.Context) {
+	doc := a.loadDoc(c)
+	if doc == nil {
+		return
+	}
+	user := middleware.CurrentUser(c)
+	if user == nil || user.ID != doc.OwnerID {
+		c.JSON(http.StatusForbidden, gin.H{"error": errDocForbidden})
+		return
+	}
+	if doc.ProjectID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "仅项目内文档可转让"})
+		return
+	}
+	var req struct {
+		UserID uint `json:"user_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.UserID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": errParam})
+		return
+	}
+	if req.UserID == user.ID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "不能转让给自己"})
+		return
+	}
+	var project model.Project
+	if a.DB.First(&project, doc.ProjectID).Error != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "文档所属项目不存在"})
+		return
+	}
+	var target model.User
+	if err := a.DB.Where("id = ? AND status = ?", req.UserID, model.StatusEnabled).First(&target).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "用户不存在或已禁用"})
+		return
+	}
+	if !a.isProjectParticipant(project.ID, target.ID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "目标用户不是当前项目成员"})
+		return
+	}
+	formerOwnerID := doc.OwnerID
+	err := a.DB.Transaction(func(tx *gorm.DB) error {
+		// 按 id 更新，避免 Model(doc) 带上 Preload 的 Owner 关联把 owner_id 写回旧值
+		if err := tx.Model(&model.Document{}).Where("id = ?", doc.ID).Updates(map[string]any{
+			"owner_id":      target.ID,
+			"updated_by_id": user.ID,
+			"updated_via":   openapiVia(c),
+		}).Error; err != nil {
+			return err
+		}
+		// 原属主若已是项目属主，projectRole 已等同 edit，无需写入成员表
+		if formerOwnerID == project.OwnerID {
+			return nil
+		}
+		var m model.ProjectMember
+		err := tx.Where("project_id = ? AND user_id = ?", project.ID, formerOwnerID).First(&m).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return tx.Create(&model.ProjectMember{
+				ProjectID: project.ID, UserID: formerOwnerID, Role: model.MemberRoleEdit,
+			}).Error
+		}
+		if err != nil {
+			return err
+		}
+		if m.Role != model.MemberRoleEdit {
+			return tx.Model(&m).Update("role", model.MemberRoleEdit).Error
+		}
+		return nil
+	})
+	if err != nil {
+		log.Printf("[doc] 转让失败 doc=%d -> user=%d: %v", doc.ID, target.ID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "转让失败"})
+		return
+	}
+	doc.OwnerID = target.ID
+	a.reindexDocAsync(doc.ID)
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{
+		"id": doc.ID, "owner_id": target.ID,
+		"owner_username": target.Username, "owner_nickname": target.DisplayName(),
+	}})
+}
+
+// isProjectParticipant 是否为项目属主或 project_members 表中的成员
+func (a *App) isProjectParticipant(projectID, userID uint) bool {
+	if projectID == 0 || userID == 0 {
+		return false
+	}
+	var proj model.Project
+	if a.DB.Select("owner_id").First(&proj, projectID).Error != nil {
+		return false
+	}
+	if proj.OwnerID == userID {
+		return true
+	}
+	var n int64
+	a.DB.Model(&model.ProjectMember{}).Where("project_id = ? AND user_id = ?", projectID, userID).Count(&n)
+	return n > 0
 }
 
 // DeleteShare 关闭分享（属主级操作）

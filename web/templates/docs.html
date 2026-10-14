@@ -142,6 +142,9 @@
                     {{if and $.user (or $.user.IsAdmin (eq $.user.ID .OwnerID))}}
                     <button type="button" class="ops-item" data-op="share" data-id="{{.ID}}" data-title="{{.Title}}" data-shared="{{if .IsShared}}1{{else}}0{{end}}" data-canedit="{{if .Share}}{{if .Share.CanEdit}}1{{end}}{{end}}" data-haspwd="{{if .Share}}{{if .Share.HasPassword}}1{{end}}{{end}}" data-token="{{if .Share}}{{.Share.ShareToken}}{{end}}">{{$.T "docs.colShare"}}</button>
                     {{end}}
+                    {{if and $.user (eq $.user.ID .OwnerID) .ProjectID}}
+                    <button type="button" class="ops-item" data-op="transfer" data-id="{{.ID}}" data-title="{{.Title}}" data-project="{{.ProjectID}}">{{$.T "docs.transfer"}}</button>
+                    {{end}}
                     {{if .IsShared}}{{if .Share}}
                     <a class="ops-item" href="/s/{{.Share.ShareToken}}" target="_blank" rel="noopener">{{$.T "查看"}}</a>
                     {{end}}{{end}}
@@ -260,6 +263,27 @@
 </div>
 <!-- 分享设置弹窗（公共壳）：状态由 share_modal.js 在打开时注入 -->
 {{template "shareSettingsModal" .}}
+<!-- 文档转让：搜索当前项目成员 → 确认后转让所有权 -->
+<div class="modal-overlay" id="transferModal" hidden>
+  <div class="modal modal-sm" role="dialog" aria-modal="true" aria-label="{{$.T "docs.transfer"}}">
+    <div class="modal-head">
+      <h2>{{$.T "docs.transfer"}}</h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+    </div>
+    <div class="modal-body import-body" style="overflow:visible">
+      <p class="muted" id="transferDocTitle" style="margin:0 0 12px;font-size:13.5px"></p>
+      <div class="member-pick" style="position:relative">
+        <input type="text" id="transferUserInput" autocomplete="off" placeholder="{{$.T "docs.transferSearchPh"}}" aria-label="{{$.T "docs.transferSearchPh"}}">
+        <input type="hidden" id="transferUserId">
+        <div id="transferUserList" class="member-suggest" hidden></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn" data-close-modal>{{$.T "取消"}}</button>
+      <button type="button" id="transferNextBtn" class="btn btn-primary" disabled>{{$.T "docs.transferNext"}}</button>
+    </div>
+  </div>
+</div>
 <style>
 .modal-sm{width:440px}
 /* 回收站提示条 */
@@ -294,6 +318,11 @@
 .ops-item:hover{background:var(--primary-soft);color:var(--primary-dark);text-decoration:none}
 .ops-item.ops-danger{color:#d93025}
 .ops-item.ops-danger:hover{background:#fdf0ef;color:#d93025}
+/* 转让选人：与项目管理成员搜索同构 */
+.member-pick input[type=text]{width:100%;height:38px;padding:0 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:inherit;font-size:13.5px;background:var(--panel);color:var(--text);box-sizing:border-box}
+.member-suggest{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--panel);border:1px solid var(--border-strong);border-radius:var(--radius-sm);box-shadow:var(--shadow);max-height:180px;overflow:auto;z-index:10}
+.member-suggest-item{padding:8px 12px;font-size:13.5px;cursor:pointer}
+.member-suggest-item:hover{background:var(--bg-soft)}
 .import-drop{display:flex;flex-direction:column;align-items:center;gap:5px;padding:24px 16px;border:2px dashed var(--border-strong);border-radius:var(--radius-sm);text-align:center;cursor:pointer;transition:all .15s}
 .import-drop:hover,.import-drop.dragover{border-color:var(--primary);background:var(--bg-soft)}
 .import-drop strong{font-size:14px}
@@ -308,6 +337,7 @@
 </style>
 <script src="/static/share_modal.js"></script>
 <script>
+window.CURRENT_USER_ID = {{if .user}}{{.user.ID}}{{else}}0{{end}};
 async function delDoc(id, btn){
   if(!await UI.confirm(UI.t('docs.confirmDel'), { danger: true })) return;
   const res = await fetch('/console/api/docs/'+id, {method:'DELETE', headers:{'X-Requested-With':'XMLHttpRequest'}});
@@ -334,6 +364,111 @@ async function dupDoc(id, title, btn){
     UI.alert(UI.t('common.netErr'));
   }
 }
+
+/* 文档转让：选项目成员 → 确认弹窗 → POST transfer → 刷新列表 */
+(function () {
+  var modal = document.getElementById('transferModal');
+  var titleEl = document.getElementById('transferDocTitle');
+  var inputEl = document.getElementById('transferUserInput');
+  var idEl = document.getElementById('transferUserId');
+  var listEl = document.getElementById('transferUserList');
+  var nextBtn = document.getElementById('transferNextBtn');
+  if (!modal || !inputEl || !window.UI) return;
+  UI.bindModal(modal);
+
+  var state = { docId: '', title: '', projectId: '', pickLabel: '', timer: 0 };
+
+  function resetPick() {
+    idEl.value = '';
+    inputEl.value = '';
+    listEl.innerHTML = '';
+    listEl.hidden = true;
+    nextBtn.disabled = true;
+    state.pickLabel = '';
+  }
+
+  function openTransfer(docId, title, projectId) {
+    state.docId = String(docId || '');
+    state.title = title || '';
+    state.projectId = String(projectId || '');
+    resetPick();
+    if (titleEl) titleEl.textContent = state.title ? ('《' + state.title + '》') : '';
+    UI.openModal(modal);
+    setTimeout(function () { inputEl.focus(); }, 50);
+  }
+
+  function searchMembers(q) {
+    var url = '/console/api/projects/' + state.projectId + '/member-options?q=' + encodeURIComponent(q);
+    if (window.CURRENT_USER_ID) url += '&exclude=' + encodeURIComponent(window.CURRENT_USER_ID);
+    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (inputEl.value.trim() !== q) return;
+        var opts = (d && d.data) || [];
+        listEl.innerHTML = '';
+        if (!opts.length) { listEl.hidden = true; return; }
+        opts.forEach(function (u) {
+          var label = u.nickname + ' (' + u.username + ')';
+          var item = document.createElement('div');
+          item.className = 'member-suggest-item';
+          item.textContent = label;
+          item.addEventListener('mousedown', function () {
+            idEl.value = u.id;
+            inputEl.value = label;
+            state.pickLabel = label;
+            listEl.hidden = true;
+            nextBtn.disabled = !idEl.value;
+          });
+          listEl.appendChild(item);
+        });
+        listEl.hidden = false;
+      })
+      .catch(function () { listEl.hidden = true; });
+  }
+
+  inputEl.addEventListener('input', function () {
+    idEl.value = '';
+    state.pickLabel = '';
+    nextBtn.disabled = true;
+    clearTimeout(state.timer);
+    var q = inputEl.value.trim();
+    state.timer = setTimeout(function () { searchMembers(q); }, 250);
+  });
+  inputEl.addEventListener('focus', function () {
+    if (!idEl.value) searchMembers(inputEl.value.trim());
+  });
+  inputEl.addEventListener('blur', function () { listEl.hidden = true; });
+
+  nextBtn.addEventListener('click', async function () {
+    var uid = idEl.value;
+    if (!uid || !state.docId) { UI.alert(UI.t('docs.transferPickUser')); return; }
+    var label = state.pickLabel || inputEl.value.trim();
+    var ok = await UI.confirm(UI.t('docs.transferConfirm', state.title, label), { danger: true });
+    if (!ok) return;
+    nextBtn.disabled = true;
+    try {
+      var res = await fetch('/console/api/docs/' + state.docId + '/transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({ user_id: Number(uid) })
+      });
+      var d = await res.json().catch(function () { return {}; });
+      if (res.ok) {
+        UI.closeModal(modal);
+        UI.toast(UI.t('docs.transferOk'), 'success');
+        setTimeout(function () { location.reload(); }, 600);
+      } else {
+        nextBtn.disabled = false;
+        UI.alert((d && d.error) || UI.t('docs.transferFail'));
+      }
+    } catch (e) {
+      nextBtn.disabled = false;
+      UI.alert(UI.t('common.netErr'));
+    }
+  });
+
+  window.openDocTransfer = openTransfer;
+})();
 
 /* ---- 操作下拉：点击按钮弹出菜单，点空白处关闭；菜单项 fixed 定位防裁剪 ---- */
 (function () {
@@ -386,6 +521,15 @@ async function dupDoc(id, title, btn){
       } else if (op === 'dup') {
         e.preventDefault();
         dupDoc(item.getAttribute('data-id'), item.getAttribute('data-title') || '', item);
+      } else if (op === 'transfer') {
+        e.preventDefault();
+        if (window.openDocTransfer) {
+          openDocTransfer(
+            item.getAttribute('data-id'),
+            item.getAttribute('data-title') || '',
+            item.getAttribute('data-project') || ''
+          );
+        }
       }
       /* 无 data-op 的为原生链接（查看/编辑），交给浏览器导航 */
     }
