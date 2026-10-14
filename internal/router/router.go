@@ -69,6 +69,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.GET("/api/chat/sessions", app.ListChatSessions)
 		admin.POST("/api/chat/sessions", app.CreateChatSession)
 		admin.DELETE("/api/chat/sessions/:id", app.DeleteChatSession)
+		admin.PATCH("/api/chat/sessions/:id/trust", app.SetChatSessionTrust)
 		admin.GET("/api/chat/sessions/:id/messages", app.ListChatMessages)
 		admin.POST("/api/chat/sessions/:id/completions", app.ChatCompletions)
 		admin.POST("/api/chat/approvals/:id", app.ReviewChatApproval)

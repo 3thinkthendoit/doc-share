@@ -1101,6 +1101,13 @@
   "chat.apprRestore": "AIがゴミ箱からドキュメントを復元しようとしています。実行しますか？",
   "chat.apprRevision": "AIがドキュメントを過去のリビジョンへロールバックしようとしています（現在の内容は先に新規リビジョンとして保存されます）。実行しますか？",
 "chat.apprShare": "AIがこのドキュメントの公開共有リンクを有効にしようとしています（リンクを知っている全員がアクセス可能になります）。実行しますか？",
+  "chat.apprBatch": "AIが次の {n} 件のセンシティブ操作を実行しようとしています。すべて承認しますか？",
+  "chat.trustSensitive": "この会話で機密操作を信頼",
+  "chat.trustTip": "オンにすると削除/復元/共有開始を毎回確認しません（いつでもオフ可・操作は監査ログに残ります）",
+  "chat.trustNeedSession": "先にメッセージを送って会話を作成してください",
+  "chat.toolTrail": "ツール軌跡",
+  "chat.retryStep": "失敗した手順を再試行",
+  "chat.retryStepPrompt": "直前のツールが失敗しました。エラーに従って引数を直し、ツールを直接呼び出して続行してください。計画だけ出力したり確認待ちにしないでください。",
 
   "set.llmTitle": "AI体験",
   "set.llmTip": "OpenAI互換API：OpenAI / DeepSeek / Qwen / Ollama などに対応。「AI体験」メニューに必須",

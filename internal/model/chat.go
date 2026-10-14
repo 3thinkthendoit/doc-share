@@ -4,12 +4,13 @@ import "time"
 
 // ChatSession AI 在线体验会话（登录用户私有，归属 UserID）
 type ChatSession struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	UserID    uint      `gorm:"index;not null" json:"user_id"`
-	Title     string    `gorm:"size:100;not null;default:新会话" json:"title"` // 首条消息后自动改为内容摘要
-	AgentID   uint      `gorm:"not null;default:0" json:"agent_id"`         // 预留：关联智能体，0=默认助手
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID             uint      `gorm:"primaryKey" json:"id"`
+	UserID         uint      `gorm:"index;not null" json:"user_id"`
+	Title          string    `gorm:"size:100;not null;default:新会话" json:"title"` // 首条消息后自动改为内容摘要
+	AgentID        uint      `gorm:"not null;default:0" json:"agent_id"`         // 预留：关联智能体，0=默认助手
+	TrustSensitive bool      `gorm:"not null;default:false" json:"trust_sensitive"` // 本会话敏感操作免逐次审批（可审计）
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // ChatMessage 会话消息（Role: user / assistant / system）

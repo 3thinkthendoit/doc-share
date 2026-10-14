@@ -1101,6 +1101,13 @@
   "chat.apprRestore": "AI 請求從回收站還原文件。確認執行？",
   "chat.apprRevision": "AI 請求把文件回滾到歷史修訂版本（目前內容會先存為新修訂）。確認執行？",
 "chat.apprShare": "AI 請求開啟該文件的公開分享連結（開啟後任何人都可透過連結存取）。確認執行？",
+  "chat.apprBatch": "AI 請求執行以下 {n} 項敏感操作。確認全部執行？",
+  "chat.trustSensitive": "本對話信任敏感操作",
+  "chat.trustTip": "開啟後，刪除/回滾/開分享等不再逐次彈窗確認（可隨時關閉；操作會記審計日誌）",
+  "chat.trustNeedSession": "請先傳送一則訊息建立對話後再開啟",
+  "chat.toolTrail": "工具軌跡",
+  "chat.retryStep": "重試失敗步驟",
+  "chat.retryStepPrompt": "上一步工具失敗，請根據錯誤訊息修正參數並繼續完成任務；直接發起工具呼叫，不要只輸出計畫或等待確認。",
 
   "set.llmTitle": "線上體驗（AI）",
   "set.llmTip": "OpenAI 相容介面：支援 OpenAI / DeepSeek / Qwen / Ollama 等；設定後選單「線上體驗」可用",

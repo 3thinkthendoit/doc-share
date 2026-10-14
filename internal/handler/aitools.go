@@ -22,6 +22,7 @@ import (
 
 const (
 	aiToolMaxResult    = 8000      // 单次工具结果字符上限（防止撑爆上下文）
+	aiPrereadMaxChars  = 40000     // 系统预读单篇上限（拼齐全量，避免 Flash 因分页停等）
 	aiToolMaxDocs      = 10        // search_documents 返回条数上限
 	aiMaxContentBytes  = 200 << 10 // AI 写入文档正文的大小上限（200KB）
 	aiMaxCreatesPerReq = 3         // 单次对话内 create_document 次数上限
@@ -338,7 +339,8 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			}
 			return clip(strings.Join(out, "\n")), nil
 
-		case "read_document":
+		case "read_document", "__read_document_full":
+			// __read_document_full：仅服务端预读注入使用（未注册到模型工具列表），一次返回尽可能完整正文，避免 Flash 分页后停等用户。
 			var doc model.Document
 			id := argInt("id", 0)
 			if id == 0 {
@@ -350,14 +352,24 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			if doc.Type == model.DocTypeHTML {
 				return clip(fmt.Sprintf("《%s》是整站文档（正文由多个文件组成，存储于对象存储），请引用链接 {{doc:%d}} 让用户自行查看。", doc.Title, doc.ID)), nil
 			}
-			// 分页读取：offset/length 按字符计，默认从 0 读 aiToolMaxResult；返回 content_version 供 update_document 作 base_version
 			runes := []rune(doc.Content)
 			total := len(runes)
+			if total == 0 {
+				return fmt.Sprintf("《%s》（content_version=%d）正文为空。", doc.Title, doc.ContentVersion), nil
+			}
+
+			if name == "__read_document_full" {
+				maxChars := int(argInt("max_chars", aiPrereadMaxChars))
+				if maxChars <= 0 || maxChars > aiPrereadMaxChars {
+					maxChars = aiPrereadMaxChars
+				}
+				query := argStr("query")
+				return buildDocInjectBody(doc.Title, doc.ContentVersion, doc.Content, query, maxChars), nil
+			}
+
+			// 分页读取：offset/length 按字符计，默认从 0 读 aiToolMaxResult；返回 content_version 供 update_document 作 base_version
 			off := int(argInt("offset", 0))
 			if off < 0 || off >= total {
-				if total == 0 {
-					return fmt.Sprintf("《%s》（content_version=%d）正文为空。", doc.Title, doc.ContentVersion), nil
-				}
 				return "", fmt.Errorf("offset 超出范围（全文共 %d 字符）", total)
 			}
 			length := int(argInt("length", aiToolMaxResult))
@@ -772,6 +784,8 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			saved := "正文已更新。"
 			if !changed {
 				saved = "正文与当前版本相同，未做修改（仅可能更新了标题）。"
+			} else if hasContentChange && strings.TrimSpace(content) != "" {
+				saved = "正文已更新。校验通过：content_version 已递增且正文非空。"
 			}
 			return fmt.Sprintf("文档已保存：{{doc:%d}}（id=%d，版本 %s）%s", doc.ID, doc.ID, ver, saved), nil
 
@@ -830,7 +844,8 @@ func (a *App) chatTools(user *model.User) (defs []llm.Tool, exec func(name, args
 			if _, err := a.aiApplyDocUpdate(user, &doc, doc.Title, doc.Title, newContent, true); err != nil {
 				return "", fmt.Errorf("保存失败: %v", err)
 			}
-			return fmt.Sprintf("已完成局部替换（id=%d，版本 %s）。预览：{{doc:%d}}", doc.ID, doc.Version, doc.ID), nil
+			check := verifyReplaceResult(newContent, oldText, newText)
+			return fmt.Sprintf("已完成局部替换（id=%d，版本 %s）。%s 预览：{{doc:%d}}", doc.ID, doc.Version, check, doc.ID), nil
 
 		case "create_document":
 			creates++

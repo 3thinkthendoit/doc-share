@@ -201,8 +201,72 @@ func trimHistory(history []model.ChatMessage) []llm.Message {
 // aiToolRounds function calling 最大轮数（防止模型无限连环调用）
 const aiToolRounds = 8
 
+// aiAutoContinueMax Flash 等弱模型「只说话不调工具」时的服务端自动续跑次数上限
+const aiAutoContinueMax = 3
+
 // chatApprovalTTL 敏感操作等待用户确认的时限
 const chatApprovalTTL = 3 * time.Minute
+
+// reToolUnread 工具结果提示仍有未读分页
+var reToolUnread = regexp.MustCompile(`请用 offset=\d+ 继续读取`)
+
+// reWaitUser 模型口头停等用户（说开始/继续）而未发起 tool_calls。
+// 刻意不含「是否继续」——那常见于「已做完，要不要接着做下一件」的合法澄清。
+var reWaitUser = regexp.MustCompile(`(?i)(?:请(?:你)?(?:回复|说|输入).{0,12}(?:开始|继续)|等待(?:你的)?(?:确认|命令|指示)|如果你说|你说[「"']?开始|准备好了吗)`)
+
+// aiAutoContinueShortRunes 未读完时，助手正文短于此阈值且无实质作答，才视为「卡住」可续跑
+const aiAutoContinueShortRunes = 80
+
+// readDocInject 系统预读：走未暴露给模型的全量/片段读取，避免 8k 分页被标成「完整正文」。
+func readDocInject(exec func(name, argsJSON string) (string, error), id int64, maxChars int, query string) (string, error) {
+	if maxChars <= 0 {
+		maxChars = aiPrereadMaxChars
+	}
+	return exec("__read_document_full", fmt.Sprintf(`{"id":%d,"max_chars":%d,"query":%s}`, id, maxChars, jsonQuote(query)))
+}
+
+// wrapExecSkipReread 对本轮已预读的文档禁止模型再 read_document（浪费轮次/token）。
+func wrapExecSkipReread(exec func(name, argsJSON string) (string, error), prereadIDs map[int64]bool) func(name, argsJSON string) (string, error) {
+	return func(name, argsJSON string) (string, error) {
+		if name == "read_document" && len(prereadIDs) > 0 {
+			var args struct {
+				ID     int64 `json:"id"`
+				Offset int64 `json:"offset"`
+			}
+			_ = json.Unmarshal([]byte(argsJSON), &args)
+			if args.ID > 0 && prereadIDs[args.ID] && args.Offset == 0 {
+				return fmt.Sprintf("文档 id=%d 已在本轮系统预读中注入正文，请直接基于上下文作答或调用 replace_section / update_document；禁止重复 read_document。", args.ID), nil
+			}
+		}
+		return exec(name, argsJSON)
+	}
+}
+
+// injectBudgetPerDoc 多篇预读时均分预算，单篇不低于一页工具结果上限。
+func injectBudgetPerDoc(n int) int {
+	if n <= 1 {
+		return aiPrereadMaxChars
+	}
+	per := aiPrereadMaxChars / n
+	if per < aiToolMaxResult {
+		return aiToolMaxResult
+	}
+	return per
+}
+
+// shouldAutoContinue 判断本轮无 tool_calls 时是否应由服务端催促模型继续调工具。
+// 规则：口头停等必续跑；仅「上一轮未读完」时，只在助手几乎没作答时续跑，避免冲掉合法终答。
+func shouldAutoContinue(lastToolResults, assistantText string) bool {
+	text := strings.TrimSpace(assistantText)
+	if text != "" && reWaitUser.MatchString(text) {
+		return true
+	}
+	if !reToolUnread.MatchString(lastToolResults) {
+		return false
+	}
+	// 未读完但已给出较长回答：视为基于已读内容的终答，不再续跑
+	return utf8.RuneCountInString(text) < aiAutoContinueShortRunes
+}
 
 // aiExecTool 执行一次工具调用并整理结果：错误转文案回传模型，同时把错误暴露给调用方
 // （调用方据此决定是否写入 toolCache——失败结果不得缓存，否则模型重试会被"不要重复调用"提示堵死）
@@ -261,6 +325,87 @@ func maskArgs(argsJSON string) string {
 	return argsJSON
 }
 
+// toolStepEndJSON 构造 Cursor 风格工具结束事件：短标签 + 可选 replace 小 diff。
+func toolStepEndJSON(tc llm.ToolCallMsg, result string, ok bool) string {
+	sum := clipRunes(strings.TrimSpace(result), 120)
+	label := toolStepLabel(tc.Function.Name, tc.Function.Arguments, result, ok)
+	b := strings.Builder{}
+	b.WriteString(`{"tool_step":{"phase":"end","tool":` + jsonQuote(tc.Function.Name))
+	b.WriteString(`,"ok":` + strconv.FormatBool(ok))
+	b.WriteString(`,"label":` + jsonQuote(label))
+	b.WriteString(`,"summary":` + jsonQuote(sum))
+	if tc.Function.Name == "replace_section" {
+		var args struct {
+			ID      int64  `json:"id"`
+			OldText string `json:"old_text"`
+			NewText string `json:"new_text"`
+		}
+		if json.Unmarshal([]byte(tc.Function.Arguments), &args) == nil && (args.OldText != "" || args.NewText != "") {
+			oldN := utf8.RuneCountInString(args.OldText)
+			newN := utf8.RuneCountInString(args.NewText)
+			b.WriteString(`,"diff":{"id":` + strconv.FormatInt(args.ID, 10))
+			b.WriteString(`,"old":` + jsonQuote(clipRunes(args.OldText, 280)))
+			b.WriteString(`,"new":` + jsonQuote(clipRunes(args.NewText, 280)))
+			b.WriteString(`,"old_n":` + strconv.Itoa(oldN))
+			b.WriteString(`,"new_n":` + strconv.Itoa(newN) + `}`)
+		}
+	}
+	b.WriteString(`}}`)
+	return b.String()
+}
+
+// toolStepLabel 一行摘要，对标 Cursor 的 "Explored 2 files" 式短句。
+func toolStepLabel(name, argsJSON, result string, ok bool) string {
+	var args map[string]any
+	_ = json.Unmarshal([]byte(argsJSON), &args)
+	id := int64(0)
+	if v, ok := args["id"].(float64); ok {
+		id = int64(v)
+	}
+	switch name {
+	case "replace_section":
+		if !ok {
+			return "replace_section failed"
+		}
+		if id > 0 {
+			return fmt.Sprintf("Replaced section · doc %d", id)
+		}
+		return "Replaced section"
+	case "update_document":
+		if !ok {
+			return "update_document failed"
+		}
+		if id > 0 {
+			return fmt.Sprintf("Updated document · doc %d", id)
+		}
+		return "Updated document"
+	case "read_document":
+		if id > 0 {
+			return fmt.Sprintf("Read document · doc %d", id)
+		}
+		return "Read document"
+	case "search_documents":
+		return "Searched documents"
+	case "create_document":
+		return "Created document"
+	case "delete_document":
+		return "Deleted document"
+	case "restore_document":
+		return "Restored document"
+	case "restore_revision":
+		return "Restored revision"
+	case "set_share":
+		return "Updated share"
+	case "list_projects":
+		return "Listed projects"
+	default:
+		if !ok {
+			return name + " failed"
+		}
+		return name
+	}
+}
+
 // chatSystemPrompt 默认系统提示词（未启用智能体时使用）。
 // 链接一律用占位符 {{doc:<id>}} / {{share:<id>}}，服务端流式替换为真实 URL ——
 // 模型接触不到真实 URL，从根上杜绝编造/改写链接。
@@ -268,7 +413,7 @@ const chatSystemPrompt = "你是 DocShare 文档平台的 AI 助手，用与用�
 	"【标准流程】" +
 	"①读文档：用户要查看/阅读/总结/对比某文档时，直接调用 read_document 读正文后回答；上下文里若已有 [系统预读]/[系统自动读取] 的正文，直接使用，不要重复调 read_document；" +
 	"②改文档：改局部内容用 replace_section，old_text 必须来自上下文最近一段正文（逐字一致）；整体重写才用 update_document，并回传 content_version 作为 base_version；改完汇报改了哪几处。用户已给出明确修改要求时，直接调用工具执行，禁止先 read_document 重读全文，禁止用\"总结要点\"代替执行修改；" +
-	"③执行：凡说要执行的操作，同一条回复直接发起工具调用；工具失败就如实告知并按错误提示重试；删除/回滚等敏感操作不用口头确认（系统会弹审批）；" +
+	"③执行：凡说要执行的操作，同一条回复直接发起工具调用，禁止只输出计划或要求用户回复「开始/继续」；工具失败就如实告知并按错误提示重试；删除/回滚等敏感操作不用口头确认（系统会弹审批）；" +
 	"④歧义：语义无歧义时直接执行，不要列 A/B/C 方案让用户选；只有用户表述确实存在多种理解时才先问一个澄清问题。" +
 	"【链接】引用文档/分享一律原样输出占位符 {{doc:8}}，系统替换为真实链接；不输出任何 http:// 或 https://；没经工具核实的信息（分享链接、密码、过期时间）不输出，先查再说。" +
 	"【上下文感知】历史工具结果可能被服务端裁短到摘要；需要完整正文时直接再调用对应工具，不要凭空补全。" +
@@ -428,6 +573,29 @@ func (a *App) DeleteChatSession(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// SetChatSessionTrust 开关本会话敏感操作免审批（删除/回滚/开分享等）；写审计日志。
+func (a *App) SetChatSessionTrust(c *gin.Context) {
+	user := middleware.CurrentUser(c)
+	s, ok := a.ownSession(c, user.ID, c.Param("id"))
+	if !ok {
+		return
+	}
+	var body struct {
+		TrustSensitive bool `json:"trust_sensitive"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	if err := a.DB.Model(&model.ChatSession{}).Where("id = ? AND user_id = ?", s.ID, user.ID).
+		Update("trust_sensitive", body.TrustSensitive).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新失败"})
+		return
+	}
+	log.Printf("[llm] audit trust_sensitive session=%d user=%d value=%v", s.ID, user.ID, body.TrustSensitive)
+	c.JSON(http.StatusOK, gin.H{"ok": true, "trust_sensitive": body.TrustSensitive})
+}
+
 // ListMessages 会话消息列表（仅本人）
 func (a *App) ListChatMessages(c *gin.Context) {
 	user := middleware.CurrentUser(c)
@@ -498,34 +666,38 @@ func (a *App) ChatCompletions(c *gin.Context) {
 
 	// 数据工具：按当前用户权限检索/读取站内文档
 	tools, execTool := a.chatTools(user)
+	prereadIDs := map[int64]bool{} // 本轮已注入的文档，禁止模型重复 read
 
 	// 确定性兜底：用户消息里提到任何文档 ID 时，服务端把对应正文预读到本轮上下文，
 	// 解决"模型要改文档却手上没有完整原文"导致的反复列清单/瞎猜。
 	// 同时：若命中明确的"阅读"意图（带动词），进一步禁用本轮工具，强制基于正文作答。
 	forceAnswer := false
+	isEdit := reEditVerb.MatchString(content)
 	if id := readIntentID(content); id > 0 {
-		if docText, err := execTool("read_document", fmt.Sprintf(`{"id":%d}`, id)); err == nil {
+		if docText, err := readDocInject(execTool, id, aiPrereadMaxChars, content); err == nil {
 			msgs = append(msgs, llm.Message{Role: "user", Content: "[系统自动读取] 用户已明确要求阅读文档 id=" + strconv.FormatInt(id, 10) +
-				"，下面是它的完整正文。请直接基于此正文回答，不要罗列文档清单，不要反问用户要读哪篇：\n\n" + docText})
+				"，下面是预读正文（若标注截断/片段可再分页 read_document）。请直接基于此正文回答，不要罗列文档清单，不要反问用户要读哪篇：\n\n" + docText})
+			prereadIDs[id] = true
 			forceAnswer = true
 			log.Printf("[llm] 阅读意图命中，自动注入文档 %d 正文（%d 字符），本轮禁用工具", id, utf8.RuneCountInString(docText))
 		}
 	}
 	if !forceAnswer {
-		// 非纯阅读场景：把用户提到的所有文档全量预读到本轮上下文（不做工具截断，模型可继续调用 replace_section 等）
-		isEdit := reEditVerb.MatchString(content)
-		for _, id := range extractDocIDs(content) {
-			if docText, err := execTool("read_document", fmt.Sprintf(`{"id":%d}`, id)); err == nil {
+		ids := extractDocIDs(content)
+		budget := injectBudgetPerDoc(len(ids))
+		for _, id := range ids {
+			if docText, err := readDocInject(execTool, id, budget, content); err == nil {
 				injectMsg := "[系统预读] 用户提到了文档 id=" + strconv.FormatInt(id, 10) +
-					"，下面是它的完整正文（已加载到本轮上下文，用于后续回答/修改）：\n\n" + docText
+					"，下面是预读正文（已加载到本轮上下文；若标注截断/片段才可再分页 read_document）：\n\n" + docText
 				if isEdit {
 					injectMsg = "[系统预读] 用户要求修改文档 id=" + strconv.FormatInt(id, 10) +
-						"，下面是它当前的完整正文。请直接执行用户要求的修改：局部改动调用 replace_section" +
+						"，下面是它当前的预读正文。请直接执行用户要求的修改：优先 replace_section" +
 						"（old_text 必须逐字取自下方正文），整体重写才用 update_document 并带上 content_version。" +
-						"不要重新 read_document，不要输出全文要点总结来代替修改：\n\n" + docText
+						"未标注截断时不要重新 read_document，不要输出全文要点总结来代替修改，不要要求用户回复开始/继续：\n\n" + docText
 				}
 				msgs = append(msgs, llm.Message{Role: "user", Content: injectMsg})
-				log.Printf("[llm] 文档预读 id=%d（%d 字符，edit=%v）", id, utf8.RuneCountInString(docText), isEdit)
+				prereadIDs[id] = true
+				log.Printf("[llm] 文档预读 id=%d（%d 字符，edit=%v，budget=%d）", id, utf8.RuneCountInString(docText), isEdit, budget)
 			}
 		}
 	}
@@ -533,21 +705,21 @@ func (a *App) ChatCompletions(c *gin.Context) {
 	// 用 search_documents（自带权限范围）定位；唯一命中就直接注入正文并禁用工具。
 	// 多个命中时不强注入（无法替用户做选择），交给模型正常处理。
 	if !forceAnswer {
-		isEdit := reEditVerb.MatchString(content)
 		if title := readIntentTitle(content); title != "" {
-			if res, err := execTool("search_documents", fmt.Sprintf(`{"q":%s}`, jsonQuote(title))); err == nil {
+			if res, err := execTool("search_documents", fmt.Sprintf(`{"query":%s}`, jsonQuote(title))); err == nil {
 				ids := extractResultIDs(res)
 				if len(ids) == 1 {
-					if docText, err := execTool("read_document", fmt.Sprintf(`{"id":%d}`, ids[0])); err == nil {
+					if docText, err := readDocInject(execTool, ids[0], aiPrereadMaxChars, content); err == nil {
 						injectMsg := "[系统自动读取] 用户要求阅读的《" + title + "》已定位为文档 id=" + strconv.FormatInt(ids[0], 10) +
-							"，下面是它的完整正文。请直接基于此正文回答，不要罗列文档清单，不要反问：\n\n" + docText
+							"，下面是预读正文（若标注截断/片段可再分页 read_document）。请直接基于此正文回答，不要罗列文档清单，不要反问：\n\n" + docText
 						if isEdit {
 							injectMsg = "[系统自动读取] 用户要求修改的《" + title + "》已定位为文档 id=" + strconv.FormatInt(ids[0], 10) +
-								"，下面是它当前的完整正文。请直接执行用户要求的修改：局部改动调用 replace_section" +
+								"，下面是它当前的预读正文。请直接执行用户要求的修改：优先 replace_section" +
 								"（old_text 必须逐字取自下方正文），整体重写才用 update_document 并带上 content_version。" +
-								"不要重新 read_document，不要输出要点总结来代替修改：\n\n" + docText
+								"未标注截断时不要重新 read_document，不要输出要点总结来代替修改，不要要求用户回复开始/继续：\n\n" + docText
 						}
 						msgs = append(msgs, llm.Message{Role: "user", Content: injectMsg})
+						prereadIDs[ids[0]] = true
 						if !isEdit {
 							forceAnswer = true // 修改需要调工具，不能禁用
 						}
@@ -562,20 +734,27 @@ func (a *App) ChatCompletions(c *gin.Context) {
 	// 短句确认修改（如"三期都要改"）：当前消息没有 ID 也没有标题引用，
 	// 但带修改动词 —— 回溯历史找回最近一次预读/读取过的文档，重新注入正文并下达编辑指令。
 	// 不兜底的话模型手里没正文，极易复读旧清单或反问。
-	if !forceAnswer && reEditVerb.MatchString(content) &&
+	if !forceAnswer && isEdit &&
 		len(extractDocIDs(content)) == 0 && readIntentTitle(content) == "" {
 		if id := lastHistoryDocID(history); id > 0 {
-			if docText, err := execTool("read_document", fmt.Sprintf(`{"id":%d}`, id)); err == nil {
+			if docText, err := readDocInject(execTool, id, aiPrereadMaxChars, content); err == nil {
 				msgs = append(msgs, llm.Message{Role: "user", Content: "[系统预读] 用户正在延续上文对文档 id=" + strconv.FormatInt(id, 10) +
-					" 的修改要求（本轮是确认/补充，未重复文档名）。下面是它当前的完整正文，请直接执行修改：" +
-					"局部改动调用 replace_section（old_text 必须逐字取自下方正文），整体重写才用 update_document" +
-					" 并带上 content_version。不要罗列文档清单，不要反问，不要输出要点总结：\n\n" + docText})
+					" 的修改要求（本轮是确认/补充，未重复文档名）。下面是它当前的预读正文，请直接执行修改：" +
+					"优先 replace_section（old_text 必须逐字取自下方正文），整体重写才用 update_document" +
+					" 并带上 content_version。不要罗列文档清单，不要反问，不要输出要点总结，不要要求用户回复开始/继续：\n\n" + docText})
+				prereadIDs[id] = true
 				log.Printf("[llm] 编辑短句兜底：从历史回溯文档 %d（%d 字符）重新注入", id, utf8.RuneCountInString(docText))
 			}
 		}
 	}
+	if isEdit && !forceAnswer && len(prereadIDs) > 0 {
+		msgs = append(msgs, llm.Message{Role: "user", Content: "[系统编排] 这是编辑任务：禁止只输出计划；本回复必须直接发起 replace_section（首选）或 update_document；" +
+			"改完用一句话汇报改了哪几处。已预读文档勿再 read_document。"})
+	}
 	if forceAnswer {
 		tools = nil
+	} else if len(prereadIDs) > 0 {
+		execTool = wrapExecSkipReread(execTool, prereadIDs)
 	}
 
 	// SSE 响应头
@@ -605,6 +784,8 @@ func (a *App) ChatCompletions(c *gin.Context) {
 	var totalUsage llm.Usage  // 累计所有轮的 token 用量
 	startedAt := time.Now()
 	toolCache := map[string]string{} // 重复的相同调用直接复用结果，防止模型原地打转
+	var lastToolResults string       // 上一轮工具结果（用于无 tool_call 时的自动续跑判断）
+	autoContinues := 0
 	for round := 0; round < aiToolRounds; round++ {
 		// 客户端已断开（用户点了停止/刷新/关页）：不再继续烧后续轮次的 LLM 与工具调用；
 		// 已有部分回答时继续走落库流程把它保存下来，而不是直接丢弃
@@ -629,15 +810,6 @@ func (a *App) ChatCompletions(c *gin.Context) {
 			totalUsage.CompletionTokens += assistant.Usage.CompletionTokens
 			totalUsage.TotalTokens += assistant.Usage.TotalTokens
 		}
-		// usage 只在最终回答完成后回传：中间轮（调工具）不显示，
-		// 避免回答还没开始 meta 就先出现在气泡旁边
-		if assistant.Usage != nil && len(assistant.ToolCalls) == 0 {
-			writeEvent(`{"usage":{"prompt":` + strconv.Itoa(totalUsage.PromptTokens) +
-				`,"completion":` + strconv.Itoa(totalUsage.CompletionTokens) +
-				`,"total":` + strconv.Itoa(totalUsage.TotalTokens) +
-				`},"round_ms":` + strconv.FormatInt(time.Since(roundStart).Milliseconds(), 10) +
-				`,"elapsed_ms":` + strconv.FormatInt(time.Since(startedAt).Milliseconds(), 10) + `}`)
-		}
 		if err != nil {
 			if c.Request.Context().Err() != nil {
 				// 流被用户断开打断（停止/刷新/关页）：保留用户消息与已生成的部分
@@ -656,6 +828,30 @@ func (a *App) ChatCompletions(c *gin.Context) {
 			break
 		}
 		if len(assistant.ToolCalls) == 0 {
+			// Flash 常见：口述「说开始再读/再改」或上一页未读完却不调工具 —— 服务端自动续跑，不把球踢回用户
+			if tools != nil && autoContinues < aiAutoContinueMax && shouldAutoContinue(lastToolResults, rc.String()) {
+				autoContinues++
+				if rc.Len() > 0 {
+					writeEvent(`{"reset":true}`)
+				}
+				msgs = append(msgs,
+					llm.Message{Role: "assistant", Content: rc.String()},
+					llm.Message{Role: "user", Content: "[系统] 不要只输出计划或等待用户确认。请立即发起工具调用继续执行未完成操作；" +
+						"若文档未读完，直接调用 read_document 并带上正确的 offset；若已有完整正文，直接 replace_section / update_document。" +
+						"禁止要求用户回复「开始/继续」。"},
+				)
+				log.Printf("[llm] 自动续跑 #%d session=%d（未读完或口头停等）", autoContinues, s.ID)
+				writeEvent(`{"tool":` + jsonQuote("auto_continue") + `}`)
+				continue
+			}
+			// usage 只在最终回答完成后回传：中间轮（调工具）不显示
+			if assistant.Usage != nil {
+				writeEvent(`{"usage":{"prompt":` + strconv.Itoa(totalUsage.PromptTokens) +
+					`,"completion":` + strconv.Itoa(totalUsage.CompletionTokens) +
+					`,"total":` + strconv.Itoa(totalUsage.TotalTokens) +
+					`},"round_ms":` + strconv.FormatInt(time.Since(roundStart).Milliseconds(), 10) +
+					`,"elapsed_ms":` + strconv.FormatInt(time.Since(startedAt).Milliseconds(), 10) + `}`)
+			}
 			final.WriteString(rc.String())
 			break // 最终回答完成
 		}
@@ -670,6 +866,7 @@ func (a *App) ChatCompletions(c *gin.Context) {
 		// 先发状态事件再执行：工具可能耗时较长（读大文档/写文档），
 		// 用户必须在整个等待期间看到 Working 动画，而不是空白气泡
 		writeEvent(`{"tool":` + jsonQuote(strings.Join(names, ", ")) + `}`)
+		writeEvent(`{"tool_step":{"phase":"start","tools":` + jsonQuote(strings.Join(names, ", ")) + `}}`)
 		// 工具结果不使用 role:"tool" 消息回传（部分网关会丢失/变形该角色消息），
 		// 而是以普通 user 消息注入 —— 兼容所有 OpenAI 兼容实现。
 		// 注意：assistant 消息必须连同 ToolCalls 一并回传给上游，否则严格网关（如新版 OpenAI/Azure）
@@ -678,62 +875,110 @@ func (a *App) ChatCompletions(c *gin.Context) {
 		msgs = append(msgs, llm.Message{Role: "assistant", Content: assistant.Content, ToolCalls: assistant.ToolCalls})
 		results := strings.Builder{}
 		results.WriteString("[工具查询结果]\n")
-		for _, tc := range assistant.ToolCalls {
-			var result string
-			var execErr error
+
+		// 同回合敏感操作合并为一次审批；若存在待审批项，先等人再按序执行，
+		// 避免 update 等写操作在弹窗前已落地、用户拒绝却无法撤回。
+		// 会话 TrustSensitive=true 时跳过弹窗并写审计日志。
+		type slot struct {
+			result  string
+			execErr error
+			hit     bool
+			filled  bool
+		}
+		slots := make([]slot, len(assistant.ToolCalls))
+		var pendingIdx []int
+		for i, tc := range assistant.ToolCalls {
 			cacheKey := tc.Function.Name + "\x00" + tc.Function.Arguments
-			// 先查缓存：完全相同的调用直接复用结果，不再执行——
-			// 对敏感操作（删除/回滚等）尤其重要，防止审批通过后模型原地打转造成重复执行
-			cached, hit := toolCache[cacheKey]
-			switch {
-			case hit:
+			if cached, hit := toolCache[cacheKey]; hit {
 				log.Printf("[llm] 重复工具调用命中缓存 %s(%s)", tc.Function.Name, maskArgs(tc.Function.Arguments))
-				result = cached + "\n（该调用已执行过且结果相同，请基于已有结果直接作答，不要重复调用）"
-			case aiNeedsApproval(tc):
-				// 敏感操作（删除/恢复/回滚/开启公开分享）：先弹会话内审批，用户确认才执行
-				apprID := util.RandomHex(8)
-				decision := make(chan bool, 1)
-				a.approvals.Store(apprID, chatApproval{
-					UserID: user.ID, Tool: tc.Function.Name, Args: tc.Function.Arguments,
-					Ch: decision, Expire: time.Now().Add(chatApprovalTTL),
-				})
-				writeEvent(`{"approval":{"id":` + jsonQuote(apprID) + `,"tool":` + jsonQuote(tc.Function.Name) + `,"args":` + jsonQuote(maskArgs(tc.Function.Arguments)) + `}}`)
-				var approved bool
-				select {
-				case approved = <-decision:
-				case <-time.After(chatApprovalTTL):
-					result = "等待用户确认超时，操作未执行。"
-				case <-c.Request.Context().Done():
-					a.approvals.Delete(apprID)
-					return
+				slots[i] = slot{result: cached + "\n（该调用已执行过且结果相同，请基于已有结果直接作答，不要重复调用）", hit: true, filled: true}
+				continue
+			}
+			if aiNeedsApproval(tc) {
+				if s.TrustSensitive {
+					log.Printf("[llm] audit auto-approve session=%d user=%d tool=%s args=%s",
+						s.ID, user.ID, tc.Function.Name, maskArgs(tc.Function.Arguments))
+					continue // 受信会话：不进 pending，下面按普通工具执行
 				}
+				pendingIdx = append(pendingIdx, i)
+			}
+		}
+		approvedSensitive := true
+		var timeoutMsg string
+		if len(pendingIdx) > 0 {
+			apprID := util.RandomHex(8)
+			decision := make(chan bool, 1)
+			first := assistant.ToolCalls[pendingIdx[0]]
+			a.approvals.Store(apprID, chatApproval{
+				UserID: user.ID, Tool: first.Function.Name, Args: first.Function.Arguments,
+				Ch: decision, Expire: time.Now().Add(chatApprovalTTL),
+			})
+			var items []string
+			for _, idx := range pendingIdx {
+				tc := assistant.ToolCalls[idx]
+				items = append(items, `{"tool":`+jsonQuote(tc.Function.Name)+`,"args":`+jsonQuote(maskArgs(tc.Function.Arguments))+`}`)
+			}
+			writeEvent(`{"approval":{"id":` + jsonQuote(apprID) +
+				`,"tool":` + jsonQuote(first.Function.Name) +
+				`,"args":` + jsonQuote(maskArgs(first.Function.Arguments)) +
+				`,"items":[` + strings.Join(items, ",") + `]}}`)
+			select {
+			case approvedSensitive = <-decision:
+			case <-time.After(chatApprovalTTL):
+				timeoutMsg = "等待用户确认超时，操作未执行。"
+				approvedSensitive = false
+			case <-c.Request.Context().Done():
 				a.approvals.Delete(apprID)
-				if approved && result == "" {
-					result, execErr = a.aiExecTool(execTool, tc)
-				} else if result == "" {
-					result = "用户拒绝了该操作，未执行。请勿重复请求，向用户确认意图后继续。"
+				return
+			}
+			a.approvals.Delete(apprID)
+		}
+		pendingSet := map[int]bool{}
+		for _, idx := range pendingIdx {
+			pendingSet[idx] = true
+		}
+		for i, tc := range assistant.ToolCalls {
+			if slots[i].filled {
+				continue
+			}
+			if pendingSet[i] {
+				switch {
+				case timeoutMsg != "":
+					slots[i] = slot{result: timeoutMsg, filled: true}
+				case approvedSensitive:
+					result, execErr := a.aiExecTool(execTool, tc)
+					slots[i] = slot{result: result, execErr: execErr, filled: true}
+				default:
+					slots[i] = slot{result: "用户拒绝了该操作，未执行。请勿重复请求，向用户确认意图后继续。", filled: true}
 					log.Printf("[llm] 用户拒绝 %s(%s)", tc.Function.Name, maskArgs(tc.Function.Arguments))
 				}
-			default:
-				result, execErr = a.aiExecTool(execTool, tc)
+				continue
 			}
+			result, execErr := a.aiExecTool(execTool, tc)
+			slots[i] = slot{result: result, execErr: execErr, filled: true}
+		}
 
-			if execErr == nil {
-				if !hit {
-					logResult := result
+		for i, tc := range assistant.ToolCalls {
+			sl := slots[i]
+			ok := sl.execErr == nil && !strings.HasPrefix(sl.result, "工具执行失败：") &&
+				!strings.HasPrefix(sl.result, "用户拒绝") && !strings.HasPrefix(sl.result, "等待用户确认超时")
+			if sl.execErr == nil {
+				if !sl.hit {
+					logResult := sl.result
 					if utf8.RuneCountInString(logResult) > 400 {
 						logResult = string([]rune(logResult)[:400]) + "…"
 					}
 					log.Printf("[llm] 工具调用 %s(%s) -> %s", tc.Function.Name, maskArgs(tc.Function.Arguments), logResult)
-					toolCache[cacheKey] = result
+					toolCache[tc.Function.Name+"\x00"+tc.Function.Arguments] = sl.result
 				}
 			} else {
-				// 失败结果不进缓存：允许模型修正参数后重试（如 JSON 截断、并发冲突）
-				log.Printf("[llm] 工具调用失败 %s(%s) -> %s", tc.Function.Name, maskArgs(tc.Function.Arguments), result)
+				log.Printf("[llm] 工具调用失败 %s(%s) -> %s", tc.Function.Name, maskArgs(tc.Function.Arguments), sl.result)
 			}
-			results.WriteString("\n[" + tc.Function.Name + " 参数: " + maskArgs(tc.Function.Arguments) + "]\n" + result + "\n")
+			writeEvent(toolStepEndJSON(tc, sl.result, ok))
+			results.WriteString("\n[" + tc.Function.Name + " 参数: " + maskArgs(tc.Function.Arguments) + "]\n" + sl.result + "\n")
 		}
-		msgs = append(msgs, llm.Message{Role: "user", Content: results.String()})
+		lastToolResults = results.String()
+		msgs = append(msgs, llm.Message{Role: "user", Content: lastToolResults})
 	}
 
 	// 吐出缓冲中未闭合的占位符残片

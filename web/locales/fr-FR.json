@@ -1101,6 +1101,13 @@
   "chat.apprRestore": "L'IA demande de restaurer un document depuis la corbeille. Confirmer ?",
   "chat.apprRevision": "L'IA demande de restaurer le document à une révision antérieure (le contenu actuel sera d'abord sauvegardé comme nouvelle révision). Confirmer ?",
 "chat.apprShare": "L'IA demande d'activer le partage public de ce document (toute personne disposant du lien pourra y accéder). Confirmer ?",
+  "chat.apprBatch": "L'IA demande d'exécuter les {n} actions sensibles suivantes. Tout approuver ?",
+  "chat.trustSensitive": "Faire confiance aux actions sensibles",
+  "chat.trustTip": "Si activé, suppression/restauration/partage ne demandent plus de confirmation à chaque fois (désactivable ; actions journalisées)",
+  "chat.trustNeedSession": "Envoyez d'abord un message pour créer une session",
+  "chat.toolTrail": "Parcours des outils",
+  "chat.retryStep": "Réessayer l'étape échouée",
+  "chat.retryStepPrompt": "L'appel d'outil précédent a échoué. Corrigez les arguments d'après l'erreur et continuez en appelant les outils directement — ne faites pas que planifier ni attendre une confirmation.",
 
   "set.llmTitle": "Essai IA",
   "set.llmTip": "API compatible OpenAI : OpenAI / DeepSeek / Qwen / Ollama, etc. Requis pour le menu « Essai IA »",

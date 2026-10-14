@@ -41,6 +41,10 @@
       <div class="chat-input-card" id="inputCard">
         <textarea id="chatInput" rows="1" placeholder="{{$.T "chat.inputPh"}}"></textarea>
         <div class="chat-input-foot">
+          <label class="chat-trust" title="{{$.T "chat.trustTip"}}">
+            <input type="checkbox" id="trustSensitiveChk">
+            <span>{{$.T "chat.trustSensitive"}}</span>
+          </label>
           <span class="chat-hint muted chat-enter-hint-hide">{{$.T "chat.enterHint"}}</span>
           <button type="button" class="chat-send" id="sendBtn" aria-label="{{$.T "chat.send"}}" disabled>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
@@ -54,6 +58,25 @@
 
 <style>
 /* ===== 在线体验页布局 ===== */
+.chat-trust{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none;margin-right:auto}
+.chat-trust input{accent-color:var(--chat-accent)}
+/* Cursor 风格工具轨迹：轻量灰字 + 可展开 diff，不抢正文 */
+.chat-trail{width:100%;display:flex;flex-direction:column;gap:6px;font-size:12.5px;line-height:1.45;color:var(--muted)}
+.chat-trail-pill{display:inline-flex;align-items:center;align-self:flex-start;gap:6px;max-width:100%;padding:4px 10px;border-radius:8px;background:rgba(127,127,127,.08);border:1px solid transparent;color:var(--muted);word-break:break-word}
+.chat-trail-pill.run{border-color:rgba(16,185,133,.25);background:rgba(16,185,133,.06)}
+.chat-trail-pill.ok{color:var(--text)}
+.chat-trail-pill.fail{color:#e5484d;background:rgba(229,72,77,.06);border-color:rgba(229,72,77,.2)}
+.chat-trail-pill .ico{flex:none;opacity:.7;font-size:11px}
+.chat-diff{width:100%;border:1px solid var(--border);border-radius:10px;background:var(--bg);overflow:hidden;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
+.chat-diff>summary{cursor:pointer;list-style:none;padding:7px 10px;color:var(--muted);user-select:none;display:flex;gap:8px;align-items:center}
+.chat-diff>summary::-webkit-details-marker{display:none}
+.chat-diff>summary:hover{background:rgba(127,127,127,.06)}
+.chat-diff .dh{color:var(--text);font-weight:600}
+.chat-diff .dm{margin-left:auto;font-variant-numeric:tabular-nums;opacity:.75}
+.chat-diff-body{border-top:1px solid var(--border);max-height:220px;overflow:auto}
+.chat-diff-line{padding:2px 10px;white-space:pre-wrap;word-break:break-word}
+.chat-diff-line.del{background:rgba(229,72,77,.10);color:#b42318}
+.chat-diff-line.add{background:rgba(16,185,133,.10);color:#0f766e}
 .chat-body{height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;--chat-accent:#10b981;--chat-accent2:#0d9488;background:var(--bg-soft)}
 .chat-body .topnav{flex:none}
 .chat-wrap{flex:1;display:flex;min-height:0;width:100%;max-width:1280px;margin:20px auto;padding:0}
@@ -100,28 +123,28 @@
 .chat-bubble{max-width:78%;padding:12px 16px;border-radius:16px;font-size:14.5px;line-height:1.7;overflow-wrap:break-word;min-width:0}
 .chat-m.user .chat-bubble{background:linear-gradient(135deg,var(--chat-accent),var(--chat-accent2));color:#fff;border-bottom-right-radius:6px;box-shadow:0 4px 14px rgba(16,185,133,.26);white-space:pre-wrap}
 .chat-m.user .chat-bubble a{color:#fff}
-.chat-m.assistant .chat-bubble{background:var(--bg-soft);border:1px solid var(--border);border-top-left-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.04)}
-.chat-m.assistant .chat-bubble>*:first-child{margin-top:0}
-.chat-m.assistant .chat-bubble>*:last-child{margin-bottom:0}
-.chat-m.assistant .chat-bubble pre{overflow-x:auto;padding:12px;border-radius:10px;background:rgba(127,127,127,.12);font-size:13px;border:1px solid var(--border)}
-.chat-m.assistant .chat-bubble code{font-size:13px}
-.chat-m.assistant .chat-bubble table{display:block;border-collapse:collapse;width:100%;overflow-x:auto}
-.chat-m.assistant .chat-bubble{overflow-wrap:break-word}
-.chat-m.assistant .chat-bubble img{max-width:100%}
-.chat-m.assistant .chat-bubble td,.chat-m.assistant .chat-bubble th{border:1px solid var(--border);padding:5px 10px}
+.chat-m.assistant .chat-bubble{display:flex;flex-direction:column;gap:8px;background:var(--bg-soft);border:1px solid var(--border);border-top-left-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+.chat-m.assistant .chat-bubble-body>*:first-child{margin-top:0}
+.chat-m.assistant .chat-bubble-body>*:last-child{margin-bottom:0}
+.chat-m.assistant .chat-bubble-body pre{overflow-x:auto;padding:12px;border-radius:10px;background:rgba(127,127,127,.12);font-size:13px;border:1px solid var(--border)}
+.chat-m.assistant .chat-bubble-body code{font-size:13px}
+.chat-m.assistant .chat-bubble-body table{display:block;border-collapse:collapse;width:100%;overflow-x:auto}
+.chat-m.assistant .chat-bubble-body{overflow-wrap:break-word;min-width:0}
+.chat-m.assistant .chat-bubble-body img{max-width:100%}
+.chat-m.assistant .chat-bubble-body td,.chat-m.assistant .chat-bubble-body th{border:1px solid var(--border);padding:5px 10px}
 .chat-m-error{color:#e5484d;font-size:13.5px;margin-top:6px}
-/* meta 行容器：独占一行换到气泡下方；药丸本身只包内容，不通栏 */
-.chat-m-meta-line{flex-basis:calc(100% - 44px);margin-left:44px;margin-top:6px}
-.chat-m-meta{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);padding:3px 10px;border:1px solid var(--border);border-radius:999px;background:var(--bg);font-variant-numeric:tabular-nums;max-width:100%}
+/* 耗时 meta：贴在回答气泡底部（与正文同容器） */
+.chat-m-meta{display:inline-flex;align-self:flex-start;align-items:center;gap:6px;font-size:12px;color:var(--muted);padding:3px 10px;border:1px solid var(--border);border-radius:999px;background:var(--bg);font-variant-numeric:tabular-nums;max-width:100%}
 /* 用户消息 hover 操作行：时间 + 编辑 + 复制（参考主流 AI 对话） */
 .chat-u-acts{flex-basis:100%;display:flex;align-items:center;justify-content:flex-end;gap:2px;margin-right:44px;margin-top:2px;font-size:11.5px;color:var(--muted);opacity:0;transition:opacity .15s;user-select:none}
 .chat-m.user:hover .chat-u-acts,.chat-m.user:focus-within .chat-u-acts{opacity:1}
 .chat-u-acts button{border:none;background:none;color:var(--muted);cursor:pointer;padding:3px;border-radius:6px;display:inline-flex;align-items:center;transition:color .12s,background .12s}
 .chat-u-acts button:hover{color:var(--text);background:var(--bg-soft)}
-/* 思考过程面板：置于气泡下方，正文开始后折叠 */
-.chat-think{flex-basis:100%;margin-left:44px;margin-top:6px;border:1px dashed var(--border);border-radius:10px;background:var(--bg-soft);font-size:12.5px;color:var(--muted);max-width:78%}
-.chat-think summary{cursor:pointer;padding:6px 10px;user-select:none}
-.chat-think-body{padding:2px 10px 8px;max-height:200px;overflow-y:auto;white-space:pre-wrap;line-height:1.6}
+/* 思考过程：轻量灰字，对标 Cursor Thought */
+.chat-think{width:100%;margin:0;border:none;background:transparent;font-size:12.5px;color:var(--muted);max-width:100%}
+.chat-think summary{cursor:pointer;padding:0 0 2px;user-select:none;list-style:none;opacity:.85}
+.chat-think summary::-webkit-details-marker{display:none}
+.chat-think-body{padding:0 0 4px;max-height:160px;overflow-y:auto;white-space:pre-wrap;line-height:1.55;opacity:.9}
 .chat-resend{display:inline-block;margin-top:8px;padding:4px 12px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--chat-accent);font-size:13px;cursor:pointer}
 .chat-resend:hover{border-color:var(--chat-accent)}
 .chat-tool-status{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);padding:4px 2px}
@@ -204,6 +227,8 @@
   var newBtn = document.getElementById('newSessionBtn');
   var currentId = null;
   var sending = false;
+  var sessionMeta = {}; // id -> { trust_sensitive }
+  var trustChk = document.getElementById('trustSensitiveChk');
 
   function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
 
@@ -218,10 +243,15 @@
     return null;
   }
 
-  function setBubbleContent(bubble, text) {
+  function setBubbleContent(el, text) {
     var html = renderMd(text);
-    if (html != null) bubble.innerHTML = html;
-    else bubble.textContent = text;
+    if (html != null) el.innerHTML = html;
+    else el.textContent = text;
+  }
+
+  // 助手气泡：外层 .chat-bubble 装正文 + 底部 meta；正文写在 .chat-bubble-body，避免 markdown 重渲冲掉耗时
+  function contentEl(target) {
+    return target.body || target.bubble;
   }
 
   function nearBottom() { return scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 120; }
@@ -233,7 +263,9 @@
       var res = await fetch('/console/api/chat/sessions', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
       var data = await res.json();
       listEl.innerHTML = '';
+      sessionMeta = {};
       (data.sessions || []).forEach(function (s) {
+        sessionMeta[s.id] = { trust_sensitive: !!s.trust_sensitive };
         var item = document.createElement('div');
         item.className = 'chat-s-item' + (String(s.id) === String(currentId) ? ' active' : '');
         item.dataset.id = s.id;
@@ -257,8 +289,32 @@
         listEl.appendChild(item);
       });
       if (!listEl.children.length) listEl.innerHTML = '<div class="muted chat-empty">' + UI.t('chat.noSession') + '</div>';
+      syncTrustCheckbox();
     } catch (e) {
       listEl.innerHTML = '<div class="muted chat-empty">' + UI.t('chat.loadingFailed') + '</div>';
+    }
+  }
+
+  function syncTrustCheckbox() {
+    if (!trustChk) return;
+    var meta = currentId ? sessionMeta[currentId] : null;
+    trustChk.checked = !!(meta && meta.trust_sensitive);
+    trustChk.disabled = !currentId || sending;
+  }
+
+  async function setSessionTrust(on) {
+    if (!currentId) return;
+    try {
+      var res = await fetch('/console/api/chat/sessions/' + currentId + '/trust', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({ trust_sensitive: !!on })
+      });
+      if (!res.ok) throw new Error('fail');
+      sessionMeta[currentId] = { trust_sensitive: !!on };
+    } catch (e) {
+      UI.toast(UI.t('chat.sendFailed'), 'error');
+      syncTrustCheckbox();
     }
   }
 
@@ -266,6 +322,7 @@
     listEl.querySelectorAll('.chat-s-item').forEach(function (el) {
       el.classList.toggle('active', el.dataset.id === String(currentId));
     });
+    syncTrustCheckbox();
   }
 
   function showHero(show) { heroEl.hidden = !show; }
@@ -287,6 +344,7 @@
     }
     var bubble = document.createElement('div');
     bubble.className = 'chat-bubble';
+    var body = null;
     if (role === 'user') {
       bubble.textContent = text;
       wrap._raw = text;
@@ -322,13 +380,17 @@
       });
       acts.appendChild(ts); acts.appendChild(editBtn); acts.appendChild(copyBtn);
       wrap.appendChild(acts);
+    } else {
+      body = document.createElement('div');
+      body.className = 'chat-bubble-body';
+      bubble.appendChild(body);
+      if (streaming) { body.innerHTML = workingHtml(); wrap._raw = text || ''; }
+      else setBubbleContent(body, text);
     }
-    else if (streaming) { bubble.innerHTML = workingHtml(); wrap._raw = text || ''; }
-    else setBubbleContent(bubble, text);
     wrap.appendChild(av); wrap.appendChild(bubble);
     msgsEl.appendChild(wrap);
     scrollBottom(true);
-    return { wrap: wrap, bubble: bubble };
+    return { wrap: wrap, bubble: bubble, body: body };
   }
 
   // 流式等待占位：working+动态点，首个增量到达后被内容替换
@@ -338,11 +400,11 @@
 
   function appendDelta(target, delta) {
     target.wrap._raw = (target.wrap._raw || '') + delta;
-    setBubbleContent(target.bubble, target.wrap._raw);
+    setBubbleContent(contentEl(target), target.wrap._raw);
     scrollBottom(false);
   }
 
-  // 思考过程面板：推理模型（reasoning_content）实时流入，正文开始后自动折叠
+  // 思考过程：推理模型（reasoning_content）实时流入，正文开始后自动折叠
   function showThink(ai, s) {
     if (!ai.think) {
       ai.think = document.createElement('details');
@@ -353,7 +415,9 @@
       ai.thinkPre = document.createElement('div');
       ai.thinkPre.className = 'chat-think-body';
       ai.think.appendChild(sum); ai.think.appendChild(ai.thinkPre);
-      ai.wrap.appendChild(ai.think);
+      var anchor = ai.trail || ai.body || ai.bubble.firstChild;
+      if (anchor) ai.bubble.insertBefore(ai.think, anchor);
+      else ai.bubble.insertBefore(ai.think, ai.bubble.firstChild);
     }
     if (!ai.think.open) ai.think.open = true;
     ai.thinkPre.textContent += s;
@@ -361,26 +425,106 @@
     scrollBottom(false);
   }
 
-  // 工具调用状态条：Worring + 点数 0→4 循环
   function stopStatusAnim(target) {
     if (target.statusTimer) { clearInterval(target.statusTimer); target.statusTimer = null; }
   }
+  function ensureTrail(target) {
+    if (target.trail) return target.trail;
+    target.trail = document.createElement('div');
+    target.trail.className = 'chat-trail';
+    var anchor = target.body || target.bubble.firstChild;
+    if (anchor) target.bubble.insertBefore(target.trail, anchor);
+    else target.bubble.appendChild(target.trail);
+    return target.trail;
+  }
+  function diffLines(text, prefix, cls) {
+    var lines = String(text || '').split('\n');
+    if (!lines.length) lines = [''];
+    return lines.map(function (ln) {
+      return '<div class="chat-diff-line ' + cls + '">' + esc(prefix + ln) + '</div>';
+    }).join('');
+  }
+  function renderToolDiff(diff) {
+    if (!diff) return null;
+    var det = document.createElement('details');
+    det.className = 'chat-diff';
+    det.open = true;
+    var plus = diff.new_n != null ? diff.new_n : (diff.add != null ? diff.add : 0);
+    var minus = diff.old_n != null ? diff.old_n : (diff.del != null ? diff.del : 0);
+    var title = 'replace_section';
+    if (diff.id) title += ' · doc ' + diff.id;
+    det.innerHTML = '<summary><span class="dh">&lt;&gt; ' + esc(title) + '</span>' +
+      '<span class="dm">+' + plus + ' −' + minus + '</span></summary>' +
+      '<div class="chat-diff-body">' + diffLines(diff.old, '- ', 'del') + diffLines(diff.new, '+ ', 'add') + '</div>';
+    return det;
+  }
+  function onToolStep(target, step) {
+    var trail = ensureTrail(target);
+    if (step.phase === 'start') {
+      stopStatusAnim(target);
+      // 进行中 pill；正式结果由 end 覆盖/追加
+      if (target.runPill) target.runPill.remove();
+      target.runPill = document.createElement('div');
+      target.runPill.className = 'chat-trail-pill run';
+      target.runPill.innerHTML = '<span class="ico">◎</span><span>' + esc(step.tools || UI.t('chat.working')) + '</span>';
+      trail.appendChild(target.runPill);
+      scrollBottom(false);
+      return;
+    }
+    if (step.phase === 'end') {
+      stopStatusAnim(target);
+      if (target.runPill) { target.runPill.remove(); target.runPill = null; }
+      var row = document.createElement('div');
+      row.className = 'chat-trail-pill ' + (step.ok ? 'ok' : 'fail');
+      var label = step.label || step.tool || '';
+      row.innerHTML = '<span class="ico">' + (step.ok ? '✓' : '✗') + '</span><span>' + esc(label) + '</span>';
+      if (!step.ok && step.summary) row.title = step.summary;
+      trail.appendChild(row);
+      if (step.diff && step.ok) {
+        var d = renderToolDiff(step.diff);
+        if (d) trail.appendChild(d);
+      }
+      if (!step.ok) showStepRetry(target);
+      scrollBottom(false);
+    }
+  }
+  function showStepRetry(target) {
+    if (target.retryBtn) return;
+    var re = document.createElement('button');
+    re.type = 'button';
+    re.className = 'chat-resend';
+    re.textContent = UI.t('chat.retryStep');
+    re.addEventListener('click', function () {
+      re.remove();
+      target.retryBtn = null;
+      send(UI.t('chat.retryStepPrompt'));
+    });
+    target.retryBtn = re;
+    target.bubble.appendChild(re);
+  }
   function showToolStatus(target, names) {
+    // Working 收进轨迹 pill，不再占用正文区、避免与轨迹并排错乱
     stopStatusAnim(target);
-    if (target.status) target.status.remove();
-    target.status = document.createElement('div');
-    target.status.className = 'chat-tool-status';
-    target.status.title = names;
+    if (target.status) { target.status.remove(); target.status = null; }
+    var trail = ensureTrail(target);
+    if (target.runPill) target.runPill.remove();
+    target.runPill = document.createElement('div');
+    target.runPill.className = 'chat-trail-pill run';
     var dots = 0;
-    var render = function () { target.status.innerHTML = '<span class="chat-tool-dot"></span>Worring' + '.'.repeat(dots); };
+    var base = names || (UI.t('chat.working') || 'Working');
+    var render = function () {
+      target.runPill.innerHTML = '<span class="ico">◎</span><span>' + esc(base) + '.'.repeat(dots) + '</span>';
+    };
     render();
     target.statusTimer = setInterval(function () { dots = (dots + 1) % 5; render(); }, 350);
-    target.bubble.textContent = '';
-    target.bubble.appendChild(target.status);
+    trail.appendChild(target.runPill);
+    var el = contentEl(target);
+    if (!target.gotDelta) el.textContent = '';
     scrollBottom(false);
   }
 
-  // 敏感操作审批：AI 请求删除/恢复类操作时弹窗让用户裁决，SSE 会阻塞等待结果
+  // 敏感操作审批：AI 请求删除/恢复类操作时弹窗让用户裁决，SSE 会阻塞等待结果。
+  // 同回合多项敏感操作合并为一次确认（approval.items）。
   async function showApproval(target, approval) {
     if (target.status) { stopStatusAnim(target); target.status.remove(); target.status = null; }
     var toolNames = {
@@ -389,9 +533,20 @@
       restore_revision: UI.t('chat.apprRevision'),
       set_share:        UI.t('chat.apprShare')
     };
-    var detail = approval.args && approval.args !== '***' ? '\n' + approval.args : '';
-    var ok = await UI.confirm((toolNames[approval.tool] || approval.tool) + detail, { danger: true });
-    showToolStatus(target, approval.tool);
+    var msg;
+    var items = Array.isArray(approval.items) ? approval.items : null;
+    if (items && items.length > 1) {
+      msg = UI.t('chat.apprBatch', { n: items.length }) + '\n\n' + items.map(function (it, i) {
+        var line = (i + 1) + '. ' + (toolNames[it.tool] || it.tool);
+        if (it.args && it.args !== '***') line += '\n' + it.args;
+        return line;
+      }).join('\n\n');
+    } else {
+      var detail = approval.args && approval.args !== '***' ? '\n' + approval.args : '';
+      msg = (toolNames[approval.tool] || approval.tool) + detail;
+    }
+    var ok = await UI.confirm(msg, { danger: true });
+    showToolStatus(target, items && items.length ? items.map(function (it) { return it.tool; }).join(', ') : approval.tool);
     try {
       await fetch('/console/api/chat/approvals/' + encodeURIComponent(approval.id), {
         method: 'POST',
@@ -426,7 +581,19 @@
     markActive();
     msgsEl.innerHTML = '';
     showHero(true);
+    syncTrustCheckbox();
     inputEl.focus();
+  }
+
+  if (trustChk) {
+    trustChk.addEventListener('change', function () {
+      if (!currentId) {
+        trustChk.checked = false;
+        UI.toast(UI.t('chat.trustNeedSession'), 'error');
+        return;
+      }
+      setSessionTrust(trustChk.checked);
+    });
   }
 
   async function ensureSession() {
@@ -439,6 +606,8 @@
     var data = await res.json();
     if (!res.ok) throw new Error((data && data.error) || UI.t('chat.sendFailed'));
     currentId = data.session.id;
+    sessionMeta[currentId] = { trust_sensitive: !!(data.session && data.session.trust_sensitive) };
+    syncTrustCheckbox();
     return currentId;
   }
 
@@ -501,21 +670,29 @@
           if (line.indexOf('data:') !== 0) continue;
           var payload;
           try { payload = JSON.parse(line.slice(5).trim()); } catch (e) { continue; }
-          if (payload.reset) { ai.bubble.textContent = ''; if (ai.status) { stopStatusAnim(ai); ai.status.remove(); ai.status = null; } }
+          if (payload.reset) {
+            contentEl(ai).textContent = '';
+            ai.wrap._raw = '';
+            ai.gotDelta = false;
+            if (ai.status) { stopStatusAnim(ai); ai.status.remove(); ai.status = null; }
+          }
           if (payload.tool) { showToolStatus(ai, payload.tool); }
+          if (payload.tool_step) { onToolStep(ai, payload.tool_step); }
           if (payload.approval) { showApproval(ai, payload.approval); }
           if (payload.think) { showThink(ai, payload.think); }
-          if (payload.delta) { if (ai.status) { stopStatusAnim(ai); ai.status.remove(); ai.status = null; } if (ai.think) { ai.think.open = false; } ai.bubble.textContent = ''; ai.gotDelta = true; appendDelta(ai, payload.delta); }
+          if (payload.delta) {
+            if (ai.status) { stopStatusAnim(ai); ai.status.remove(); ai.status = null; }
+            if (ai.think) { ai.think.open = false; }
+            if (!ai.gotDelta) { ai.wrap._raw = ''; contentEl(ai).textContent = ''; }
+            ai.gotDelta = true;
+            appendDelta(ai, payload.delta);
+          }
           if (payload.usage) {
-            // 多轮思考时实时更新：耗时 + 输入/输出 token 累计
+            // 贴在回答气泡底部；与 .chat-bubble-body 分离子节点，markdown 重渲不会冲掉
             if (!ai.meta) {
-              var line = document.createElement('div');
-              line.className = 'chat-m-meta-line';
               ai.meta = document.createElement('span');
               ai.meta.className = 'chat-m-meta';
-              line.appendChild(ai.meta);
-              ai.wrap.appendChild(line);
-              ai.metaLine = line;
+              ai.bubble.appendChild(ai.meta);
             }
             var secs = (payload.elapsed_ms / 1000).toFixed(payload.elapsed_ms < 2000 ? 1 : 0);
             ai.meta.textContent = UI.t('chat.meta', {
@@ -524,35 +701,35 @@
           }
           if (payload.error) {
             // 尚未有正文时清掉加载动画占位，避免"正在处理…"一直转
-            if (!ai.gotDelta) ai.bubble.textContent = '';
+            if (!ai.gotDelta) contentEl(ai).textContent = '';
             var errEl = document.createElement('div');
             errEl.className = 'chat-m-error';
             errEl.textContent = UI.t('chat.streamError') + payload.error;
-            ai.bubble.appendChild(errEl);
+            contentEl(ai).appendChild(errEl);
             if (lastSent) {
               var re = document.createElement('button');
               re.type = 'button'; re.className = 'chat-resend';
               re.textContent = UI.t('chat.resend');
               re.addEventListener('click', function () { re.remove(); send(lastSent); });
-              ai.bubble.appendChild(re);
+              contentEl(ai).appendChild(re);
             }
           }
           if (payload.done) done = true;
         }
       }
     } catch (e) {
-      ai.bubble.innerHTML = '';
+      contentEl(ai).innerHTML = '';
       var el = document.createElement('div');
       el.className = 'chat-m-error';
       el.textContent = (e && e.name === 'AbortError') ? UI.t('chat.stopped') : (e.message || UI.t('chat.sendFailed'));
-      ai.bubble.appendChild(el);
+      contentEl(ai).appendChild(el);
       // 停止/失败后提供"重新发送"
       if (lastSent) {
         var re = document.createElement('button');
         re.type = 'button'; re.className = 'chat-resend';
         re.textContent = UI.t('chat.resend');
         re.addEventListener('click', function () { re.remove(); send(lastSent); });
-        ai.bubble.appendChild(re);
+        contentEl(ai).appendChild(re);
       }
     } finally {
       sending = false;
