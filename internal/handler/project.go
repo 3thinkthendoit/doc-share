@@ -395,7 +395,8 @@ func (a *App) ProjectMemberOptions(c *gin.Context) {
 		tx = tx.Where("username LIKE ? OR nickname LIKE ?", like, like)
 	}
 	var us []model.User
-	tx.Order("username asc").Limit(20).Find(&us)
+	// 转让弹窗按完整列表展示；项目成员通常不多，放宽到 200，避免静默截断
+	tx.Order("username asc").Limit(200).Find(&us)
 	out := make([]gin.H, 0, len(us))
 	for _, u := range us {
 		out = append(out, gin.H{"id": u.ID, "username": u.Username, "nickname": u.DisplayName()})

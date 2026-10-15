@@ -263,19 +263,19 @@
 </div>
 <!-- 分享设置弹窗（公共壳）：状态由 share_modal.js 在打开时注入 -->
 {{template "shareSettingsModal" .}}
-<!-- 文档转让：搜索当前项目成员 → 确认后转让所有权 -->
+<!-- 文档转让：打开加载项目成员列表，可搜索过滤 → 确认后转让所有权 -->
 <div class="modal-overlay" id="transferModal" hidden>
   <div class="modal modal-sm" role="dialog" aria-modal="true" aria-label="{{$.T "docs.transfer"}}">
     <div class="modal-head">
       <h2>{{$.T "docs.transfer"}}</h2>
       <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
     </div>
-    <div class="modal-body import-body" style="overflow:visible">
+    <div class="modal-body import-body">
       <p class="muted" id="transferDocTitle" style="margin:0 0 12px;font-size:13.5px"></p>
-      <div class="member-pick" style="position:relative">
+      <div class="member-pick">
         <input type="text" id="transferUserInput" autocomplete="off" placeholder="{{$.T "docs.transferSearchPh"}}" aria-label="{{$.T "docs.transferSearchPh"}}">
         <input type="hidden" id="transferUserId">
-        <div id="transferUserList" class="member-suggest" hidden></div>
+        <div id="transferUserList" class="member-list" role="listbox" aria-label="{{$.T "docs.transfer"}}"></div>
       </div>
     </div>
     <div class="modal-foot">
@@ -318,11 +318,14 @@
 .ops-item:hover{background:var(--primary-soft);color:var(--primary-dark);text-decoration:none}
 .ops-item.ops-danger{color:#d93025}
 .ops-item.ops-danger:hover{background:#fdf0ef;color:#d93025}
-/* 转让选人：与项目管理成员搜索同构 */
+/* 转让选人：打开即加载项目成员，搜索框过滤列表 */
 .member-pick input[type=text]{width:100%;height:38px;padding:0 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:inherit;font-size:13.5px;background:var(--panel);color:var(--text);box-sizing:border-box}
-.member-suggest{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--panel);border:1px solid var(--border-strong);border-radius:var(--radius-sm);box-shadow:var(--shadow);max-height:180px;overflow:auto;z-index:10}
-.member-suggest-item{padding:8px 12px;font-size:13.5px;cursor:pointer}
-.member-suggest-item:hover{background:var(--bg-soft)}
+.member-list{margin-top:10px;border:1px solid var(--border);border-radius:var(--radius-sm);max-height:220px;overflow:auto;background:var(--panel)}
+.member-list-item{padding:9px 12px;font-size:13.5px;cursor:pointer;border-bottom:1px solid var(--border)}
+.member-list-item:last-child{border-bottom:none}
+.member-list-item:hover{background:var(--bg-soft)}
+.member-list-item.is-active{background:var(--primary-soft);color:var(--primary-dark)}
+.member-list-empty{padding:16px 12px;font-size:13px;color:var(--muted);text-align:center}
 .import-drop{display:flex;flex-direction:column;align-items:center;gap:5px;padding:24px 16px;border:2px dashed var(--border-strong);border-radius:var(--radius-sm);text-align:center;cursor:pointer;transition:all .15s}
 .import-drop:hover,.import-drop.dragover{border-color:var(--primary);background:var(--bg-soft)}
 .import-drop strong{font-size:14px}
@@ -365,7 +368,7 @@ async function dupDoc(id, title, btn){
   }
 }
 
-/* 文档转让：选项目成员 → 确认弹窗 → POST transfer → 刷新列表 */
+/* 文档转让：打开即加载项目成员列表 → 可选搜索过滤 → 确认后 POST transfer → 刷新列表 */
 (function () {
   var modal = document.getElementById('transferModal');
   var titleEl = document.getElementById('transferDocTitle');
@@ -376,15 +379,22 @@ async function dupDoc(id, title, btn){
   if (!modal || !inputEl || !window.UI) return;
   UI.bindModal(modal);
 
-  var state = { docId: '', title: '', projectId: '', pickLabel: '', timer: 0 };
+  var state = { docId: '', title: '', projectId: '', pickLabel: '', timer: 0, req: 0 };
+
+  function showListMsg(text) {
+    listEl.innerHTML = '';
+    var empty = document.createElement('div');
+    empty.className = 'member-list-empty';
+    empty.textContent = text;
+    listEl.appendChild(empty);
+  }
 
   function resetPick() {
     idEl.value = '';
     inputEl.value = '';
-    listEl.innerHTML = '';
-    listEl.hidden = true;
     nextBtn.disabled = true;
     state.pickLabel = '';
+    showListMsg(UI.t('加载中…'));
   }
 
   function openTransfer(docId, title, projectId) {
@@ -394,36 +404,54 @@ async function dupDoc(id, title, btn){
     resetPick();
     if (titleEl) titleEl.textContent = state.title ? ('《' + state.title + '》') : '';
     UI.openModal(modal);
+    loadMembers('');
     setTimeout(function () { inputEl.focus(); }, 50);
   }
 
-  function searchMembers(q) {
+  function loadMembers(q) {
+    if (!state.projectId) {
+      showListMsg(UI.t('proj.noMembers'));
+      return;
+    }
+    var req = ++state.req;
     var url = '/console/api/projects/' + state.projectId + '/member-options?q=' + encodeURIComponent(q);
     if (window.CURRENT_USER_ID) url += '&exclude=' + encodeURIComponent(window.CURRENT_USER_ID);
     fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (inputEl.value.trim() !== q) return;
-        var opts = (d && d.data) || [];
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (req !== state.req || inputEl.value.trim() !== q) return;
+        var opts = (res.d && res.d.data) || [];
         listEl.innerHTML = '';
-        if (!opts.length) { listEl.hidden = true; return; }
+        if (!res.ok) {
+          showListMsg((res.d && res.d.error) || UI.t('加载失败'));
+          return;
+        }
+        if (!opts.length) {
+          showListMsg(UI.t(q ? 'docs.transferNoMatch' : 'proj.noMembers'));
+          return;
+        }
         opts.forEach(function (u) {
           var label = u.nickname + ' (' + u.username + ')';
           var item = document.createElement('div');
-          item.className = 'member-suggest-item';
+          item.className = 'member-list-item';
+          item.setAttribute('role', 'option');
           item.textContent = label;
-          item.addEventListener('mousedown', function () {
+          if (String(idEl.value) === String(u.id)) item.classList.add('is-active');
+          item.addEventListener('click', function () {
             idEl.value = u.id;
-            inputEl.value = label;
             state.pickLabel = label;
-            listEl.hidden = true;
-            nextBtn.disabled = !idEl.value;
+            nextBtn.disabled = false;
+            listEl.querySelectorAll('.member-list-item').forEach(function (el) {
+              el.classList.toggle('is-active', el === item);
+            });
           });
           listEl.appendChild(item);
         });
-        listEl.hidden = false;
       })
-      .catch(function () { listEl.hidden = true; });
+      .catch(function () {
+        if (req !== state.req) return;
+        showListMsg(UI.t('加载失败'));
+      });
   }
 
   inputEl.addEventListener('input', function () {
@@ -432,12 +460,9 @@ async function dupDoc(id, title, btn){
     nextBtn.disabled = true;
     clearTimeout(state.timer);
     var q = inputEl.value.trim();
-    state.timer = setTimeout(function () { searchMembers(q); }, 250);
+    showListMsg(UI.t('加载中…'));
+    state.timer = setTimeout(function () { loadMembers(q); }, 250);
   });
-  inputEl.addEventListener('focus', function () {
-    if (!idEl.value) searchMembers(inputEl.value.trim());
-  });
-  inputEl.addEventListener('blur', function () { listEl.hidden = true; });
 
   nextBtn.addEventListener('click', async function () {
     var uid = idEl.value;
