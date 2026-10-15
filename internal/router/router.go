@@ -163,6 +163,9 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		// 文档转换：pdf / doc / docx → Markdown
 		admin.POST("/api/convert", app.Convert)
 
+		// Markdown 导出：pdf（Chromium）/ docx（Pandoc）；权限同预览
+		admin.GET("/api/docs/:id/export", app.PreviewExport)
+
 		// 修改自己的密码（任意登录用户）
 		admin.PUT("/api/password", app.ChangePassword)
 		admin.PUT("/api/profile", app.UpdateProfile)
@@ -239,6 +242,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 	r.GET("/s/:token/comments", app.ShareListComments)
 	r.POST("/s/:token/comments", app.ShareAddComment)
 	r.PUT("/s/:token/content", app.ShareSaveContent)
+	r.GET("/s/:token/export", app.ShareExport)
 	// HTML 整站文件（分享侧）：/s/:token/raw/<sig>/<path>。
 	// 不走 cookie 鉴权——sandbox iframe 子资源是跨站请求带不上 cookie，凭路径内短时签名。
 	r.GET("/s/:token/raw/*path", app.ShareRaw)
@@ -250,6 +254,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 	r.POST("/ps/:token", app.ProjectShareSubmit)
 	r.POST("/ps/:token/access-request", app.ProjectShareAccessApply)
 	r.GET("/ps/:token/d/:docId", app.ProjectShareDocView)
+	r.GET("/ps/:token/d/:docId/export", app.ProjectShareExport)
 	r.GET("/ps/:token/d/:docId/comments", app.ProjectShareListComments)
 	r.POST("/ps/:token/d/:docId/comments", app.ProjectShareAddComment)
 	r.PUT("/ps/:token/d/:docId/content", app.ProjectShareSaveContent)

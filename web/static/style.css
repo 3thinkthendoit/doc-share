@@ -654,7 +654,11 @@ body.modal-open{overflow:hidden}
 .rev-ops{display:flex;gap:8px;justify-content:flex-end;white-space:nowrap}
 .rev-empty{padding:22px}
 .reader{width:min(1080px,100%);max-width:1080px;margin:0 auto;padding:44px 24px 96px;box-sizing:border-box}
-.doc-title{font-size:34px;font-weight:700;letter-spacing:-.03em;margin:0 0 12px;padding:0;border:none}
+.doc-title-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px 16px;margin:0 0 12px;flex-wrap:wrap}
+.doc-title{font-size:34px;font-weight:700;letter-spacing:-.03em;margin:0;padding:0;border:none;flex:1;min-width:min(100%,240px)}
+.doc-export{display:inline-flex;align-items:center;gap:8px;flex:none;padding-top:6px}
+.doc-export-btn{text-decoration:none}
+.doc-export-btn[aria-busy="true"]{opacity:.55;pointer-events:none}
 /* 阅读/分享页标题旁的业务版本号小胶囊 */
 .doc-version-tag{display:inline-block;vertical-align:middle;margin-left:8px;padding:2px 10px;font-size:13px;font-weight:600;line-height:1.6;letter-spacing:0;color:var(--primary-dark);background:var(--primary-soft);border-radius:999px}
 /* 阅读页作者信息：头像 + 昵称 + 更新时间 + 浏览 + 访客 */

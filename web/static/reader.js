@@ -10,6 +10,48 @@
   }
   function t(s) { return window.UI ? UI.t(s) : s; }
 
+  /* ---- 顶栏 PDF/DOCX：fetch 触发下载，失败提示（避免浏览器直接打开 JSON） ---- */
+  document.querySelectorAll('.doc-export-btn').forEach(function (a) {
+    a.addEventListener('click', async function (e) {
+      e.preventDefault();
+      if (a.dataset.busy) return;
+      a.dataset.busy = '1';
+      a.setAttribute('aria-busy', 'true');
+      try {
+        var res = await fetch(a.href, { credentials: 'same-origin' });
+        var ct = (res.headers.get('Content-Type') || '').toLowerCase();
+        if (!res.ok || ct.indexOf('application/json') === 0) {
+          var data = {};
+          try { data = await res.json(); } catch (_) {}
+          if (window.UI && UI.alert) UI.alert((data && data.error) || t('share.exportFail'));
+          else alert((data && data.error) || t('share.exportFail'));
+          return;
+        }
+        var blob = await res.blob();
+        var dispo = res.headers.get('Content-Disposition') || '';
+        var name = 'document';
+        var m = /filename\*=UTF-8''([^;]+)/i.exec(dispo) || /filename="([^"]+)"/i.exec(dispo);
+        if (m) {
+          try { name = decodeURIComponent(m[1]); } catch (_) { name = m[1]; }
+        }
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = name;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        if (window.UI && UI.alert) UI.alert(t('share.exportFail'));
+        else alert(t('share.exportFail'));
+      } finally {
+        delete a.dataset.busy;
+        a.removeAttribute('aria-busy');
+      }
+    });
+  });
+
   /* ---- 访客头像：点击弹出昵称/访问信息 ---- */
   var tip = document.getElementById('visitorTip');
   if (tip) {

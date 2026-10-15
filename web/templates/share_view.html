@@ -9,7 +9,15 @@
 <body class="reader-body">
   {{template "siteNav" .}}
   <article class="reader">
-    <h1 class="doc-title">{{.doc.Title}}{{if .doc.Version}} <span class="doc-version-tag">{{.doc.Version}}</span>{{end}}</h1>
+    <div class="doc-title-row">
+      <h1 class="doc-title">{{.doc.Title}}{{if .doc.Version}} <span class="doc-version-tag">{{.doc.Version}}</span>{{end}}</h1>
+      {{if .canExport}}
+      <div class="doc-export" role="group" aria-label="{{$.T "share.download"}}">
+        <a class="btn btn-sm doc-export-btn" href="{{.exportBase}}?format=pdf" download>{{$.T "share.downloadPdf"}}</a>
+        <a class="btn btn-sm doc-export-btn" href="{{.exportBase}}?format=docx" download>{{$.T "share.downloadDocx"}}</a>
+      </div>
+      {{end}}
+    </div>
     <div class="doc-author">
       {{if .doc.Owner}}
       <span class="user-avatar user-avatar-sm">{{if .doc.Owner.Avatar}}<img src="{{.doc.Owner.Avatar}}" alt="">{{else}}{{avatar .doc.Owner.Nickname .doc.Owner.Username}}{{end}}</span>

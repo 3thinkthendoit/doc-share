@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"html"
 	"html/template"
 	"log"
@@ -1035,7 +1036,9 @@ func (a *App) PreviewDoc(c *gin.Context) {
 		"canEdit":     false, // 编辑走后台编辑器，预览页只读
 		"canModerate": user != nil && (user.ID == doc.OwnerID || user.IsAdmin()),
 		// 预览承诺“不计浏览数”，只读展示最近访客，不写访客记录
-		"visitors": a.recentVisitors(doc.ID),
+		"visitors":   a.recentVisitors(doc.ID),
+		"canExport":  true,
+		"exportBase": fmt.Sprintf("/console/api/docs/%d/export", doc.ID),
 	})
 }
 

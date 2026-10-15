@@ -16,8 +16,15 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o main .
 FROM alpine
 
 # ca-certificates：外链图片/HTTPS 必需；tzdata：日志时间用东八区
-RUN apk add --no-cache ca-certificates tzdata
+# pandoc + chromium：Markdown → DOCX / 打印版 PDF；Noto CJK：中日韩正文可印
+# font-noto-cjk 在 Alpine community 源（官方 alpine 镜像默认已启用）
+RUN apk add --no-cache \
+    ca-certificates tzdata \
+    pandoc \
+    chromium nss freetype harfbuzz ttf-freefont font-noto-cjk
 ENV TZ=Asia/Shanghai
+# Alpine chromium 包二进制一般为 /usr/bin/chromium
+ENV CHROME_PATH=/usr/bin/chromium
 
 WORKDIR /app
 COPY --from=builder /build/main /app/main

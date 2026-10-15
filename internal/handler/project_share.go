@@ -427,6 +427,8 @@ func (a *App) serveProjectDoc(c *gin.Context, ps *model.ProjectShare, doc *model
 		"canEdit":     canEdit,
 		"canModerate": canModerate,
 		"visitors":    a.recordVisitor(c, doc),
+		"canExport":   true,
+		"exportBase":  apiBase + "/export",
 	})
 }
 

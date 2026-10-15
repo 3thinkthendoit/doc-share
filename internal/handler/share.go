@@ -374,6 +374,8 @@ func (a *App) serveDoc(c *gin.Context, doc *model.Document, share *model.Share, 
 		"canEdit":     user != nil && share != nil && share.CanEdit,
 		"canModerate": user != nil && (user.ID == doc.OwnerID || user.IsAdmin()),
 		"visitors":    a.recordVisitor(c, doc),
+		"canExport":   true,
+		"exportBase":  "/s/" + token + "/export",
 	})
 }
 

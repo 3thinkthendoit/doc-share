@@ -111,7 +111,6 @@ body.l-nav-open { overflow: hidden; }
 .l-nav-right { display: flex; align-items: center; gap: 10px; margin-left: auto; --ctl-h: 38px; }
 .l-nav-right > .l-btn,
 .l-nav-right .l-lang select { height: var(--ctl-h); box-sizing: border-box; line-height: 1; }
-
 .l-lang { display: inline-flex; align-items: center; }
 .l-lang select {
   background: var(--l-panel); color: var(--l-muted);
