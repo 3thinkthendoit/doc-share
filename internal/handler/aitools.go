@@ -34,6 +34,7 @@ var aiApprovalTools = map[string]bool{
 	"delete_document":  true,
 	"restore_document": true,
 	"restore_revision": true,
+	"delete_skill":     true,
 }
 
 // aiNeedsApproval 判断一次工具调用是否需要用户确认：
@@ -270,6 +271,47 @@ func (a *App) chatTools(user *model.User) (
 					"project_id": map[string]any{"type": "integer", "description": "归属项目 ID（可选，必须是自己的项目）"},
 				},
 				"required": []string{"title"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "list_skills",
+			Description: "列出当前用户已保存的 Agent Skills（name/description）。用户问有哪些 skill、或 /create-skill 前后需要对照时调用。",
+			Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "get_skill",
+			Description: "按 name 读取当前用户某个 skill 的完整正文（含 description）。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{"type": "string", "description": "skill 名称（如 code-review）"},
+				},
+				"required": []string{"name"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "save_skill",
+			Description: "创建或更新当前用户的 Agent Skill（同名则覆盖）。/create-skill 流程的落库步骤；name 小写字母/数字/连字符。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name":                     map[string]any{"type": "string", "description": "skill 唯一名，如 weekly-report"},
+					"description":              map[string]any{"type": "string", "description": "第三人称：做什么 + 何时用，含触发词"},
+					"content":                  map[string]any{"type": "string", "description": "SKILL.md 正文（Markdown 指引）"},
+					"disable_model_invocation": map[string]any{"type": "boolean", "description": "true=仅 /name 显式加载（默认）；false=可按 description 自动选用"},
+				},
+				"required": []string{"name", "description", "content"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "delete_skill",
+			Description: "删除当前用户的某个 Agent Skill（按 name）。执行前需用户确认。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{"type": "string", "description": "要删除的 skill 名称"},
+				},
+				"required": []string{"name"},
 			},
 		}},
 	}
@@ -889,6 +931,90 @@ func (a *App) chatTools(user *model.User) (
 			}
 			a.reindexDocAsync(doc.ID)
 			return fmt.Sprintf("文档已创建：{{doc:%d}}（id=%d）", doc.ID, doc.ID), nil
+
+		case "list_skills":
+			var skills []model.ChatSkill
+			a.DB.Select("id", "name", "description", "disable_model_invocation", "updated_at").
+				Where("user_id = ?", user.ID).Order("name asc").Limit(200).Find(&skills)
+			if len(skills) == 0 {
+				return "暂无自定义 skill。可用 /create-skill 创建。", nil
+			}
+			lines := make([]string, 0, len(skills))
+			for _, s := range skills {
+				mode := "仅 /" + s.Name + " 显式调用"
+				if !s.DisableModelInvocation {
+					mode = "可自动选用"
+				}
+				lines = append(lines, fmt.Sprintf("- /%s：%s（%s）", s.Name, s.Description, mode))
+			}
+			return clip(strings.Join(lines, "\n")), nil
+
+		case "get_skill":
+			name := strings.ToLower(argStr("name"))
+			if name == "" {
+				return "", fmt.Errorf("name 不能为空")
+			}
+			var sk model.ChatSkill
+			if err := a.DB.Where("user_id = ? AND name = ?", user.ID, name).First(&sk).Error; err != nil {
+				return "", fmt.Errorf("skill 不存在：/%s", name)
+			}
+			return clip(fmt.Sprintf("name: %s\ndescription: %s\ndisable_model_invocation: %v\n\n%s",
+				sk.Name, sk.Description, sk.DisableModelInvocation, sk.Content)), nil
+
+		case "save_skill":
+			name := strings.ToLower(argStr("name"))
+			desc := argStr("description")
+			body := argStr("content")
+			if err := validateSkillFields(name, desc, body); err != nil {
+				return "", err
+			}
+			if isCreateSkillCommand(name) {
+				return "", fmt.Errorf("name 与内置指令 /create-skill 冲突，请换一个名称")
+			}
+			disable := true
+			if v, ok := args["disable_model_invocation"].(bool); ok {
+				disable = v
+			}
+			var existing model.ChatSkill
+			err := a.DB.Where("user_id = ? AND name = ?", user.ID, name).First(&existing).Error
+			if err != nil && a.skillCount(user.ID) >= skillMaxPerUser {
+				return "", fmt.Errorf("最多保存 %d 个 skill，请先删除不用的再创建", skillMaxPerUser)
+			}
+			if err == nil {
+				if err := a.DB.Model(&existing).Updates(map[string]any{
+					"description":              desc,
+					"content":                  body,
+					"disable_model_invocation": disable,
+				}).Error; err != nil {
+					return "", fmt.Errorf("更新失败: %v", err)
+				}
+				return fmt.Sprintf("已更新 skill：/%s（id=%d）。用户可输入 /%s 调用。", name, existing.ID, name), nil
+			}
+			sk := model.ChatSkill{
+				UserID: user.ID, Name: name, Description: desc, Content: body,
+				DisableModelInvocation: disable,
+			}
+			if err := a.DB.Create(&sk).Error; err != nil {
+				if isDupKey(err) {
+					return "", fmt.Errorf("同名 skill 已存在，请改名或先 get_skill 再 save_skill 覆盖")
+				}
+				return "", fmt.Errorf("保存失败: %v", err)
+			}
+			return fmt.Sprintf("已创建 skill：/%s（id=%d）。用户可输入 /%s 调用。", name, sk.ID, name), nil
+
+		case "delete_skill":
+			name := strings.ToLower(argStr("name"))
+			if name == "" {
+				return "", fmt.Errorf("name 不能为空")
+			}
+			res := a.DB.Where("user_id = ? AND name = ?", user.ID, name).Delete(&model.ChatSkill{})
+			if res.Error != nil {
+				return "", fmt.Errorf("删除失败: %v", res.Error)
+			}
+			if res.RowsAffected == 0 {
+				return "", fmt.Errorf("skill 不存在：/%s", name)
+			}
+			return fmt.Sprintf("已删除 skill：/%s", name), nil
 		}
 		return "", fmt.Errorf("未知工具: %s", name)
 	}

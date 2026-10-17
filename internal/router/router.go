@@ -74,6 +74,13 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.POST("/api/chat/sessions/:id/completions", app.ChatCompletions)
 		admin.POST("/api/chat/sessions/:id/cancel", app.CancelChatCompletions)
 		admin.POST("/api/chat/approvals/:id", app.ReviewChatApproval)
+		// Agent Skills：斜杠菜单 + CRUD（对话内亦可用 save_skill 等工具）
+		admin.GET("/api/chat/commands", app.ListChatCommands)
+		admin.GET("/api/chat/skills", app.ListChatSkills)
+		admin.POST("/api/chat/skills", app.CreateChatSkill)
+		admin.GET("/api/chat/skills/:id", app.GetChatSkill)
+		admin.PUT("/api/chat/skills/:id", app.UpdateChatSkill)
+		admin.DELETE("/api/chat/skills/:id", app.DeleteChatSkill)
 
 		// 项目内文档列表（属主/管理员/成员）：项目弹窗用
 		admin.GET("/api/projects/:id/docs", app.ListProjectDocs)

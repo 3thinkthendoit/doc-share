@@ -45,6 +45,7 @@
       </div>
 
       <div class="chat-composer">
+        <div class="chat-slash" id="slashMenu" hidden></div>
         <div class="chat-input-card" id="inputCard">
           <div class="chat-attach-row" id="chatImgPreview" hidden>
             <span class="chat-attach-chip" title="">
@@ -271,11 +272,18 @@
 @keyframes chat-blink{50%{opacity:0}}
 @keyframes chat-fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @keyframes chat-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.chat-composer{flex:none;width:100%;max-width:760px;margin:0 auto;padding:10px 20px calc(14px + env(safe-area-inset-bottom));box-sizing:border-box}
+.chat-composer{position:relative;flex:none;width:100%;max-width:760px;margin:0 auto;padding:10px 20px calc(14px + env(safe-area-inset-bottom));box-sizing:border-box}
 .chat-input-card{border:1px solid var(--border);border-radius:14px;background:var(--bg);box-shadow:0 2px 12px rgba(0,0,0,.04);padding:12px 14px 10px;transition:border-color .15s,box-shadow .2s}
 .chat-input-card:focus-within{border-color:var(--chat-accent);box-shadow:0 0 0 3px rgba(16,185,133,.12)}
 .chat-input-card textarea{width:100%;border:none;outline:none;resize:none;background:transparent;color:var(--text);font:inherit;font-size:14.5px;line-height:1.6;max-height:180px}
 .chat-input-card textarea::placeholder{color:var(--muted)}
+.chat-slash{position:absolute;left:20px;right:20px;bottom:calc(100% - 6px);z-index:30;max-height:min(280px,42vh);overflow:auto;margin:0;border:1px solid var(--border);border-radius:12px;background:var(--bg);box-shadow:0 8px 28px rgba(0,0,0,.12)}
+.chat-slash-item{display:flex;flex-direction:column;gap:2px;width:100%;padding:8px 12px;border:none;background:transparent;text-align:left;cursor:pointer;color:var(--text);font:inherit}
+.chat-slash-item:hover,.chat-slash-item.active{background:rgba(16,185,133,.08)}
+.chat-slash-name{font-size:13.5px;font-weight:600}
+.chat-slash-name code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:600;color:var(--chat-accent)}
+.chat-slash-desc{font-size:12px;color:var(--muted);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.chat-slash-empty{padding:10px 12px;font-size:12px;color:var(--muted)}
 .chat-input-foot{display:flex;align-items:center;justify-content:space-between;margin-top:8px;gap:8px}
 .chat-hint{font-size:12px;user-select:none}
 .chat-send{width:34px;height:34px;border-radius:10px;border:none;background:var(--chat-accent);color:#fff;display:grid;place-items:center;cursor:pointer;transition:filter .15s,opacity .15s;flex:none;z-index:2;position:relative}
@@ -316,6 +324,7 @@
   .chat-m.user .chat-u-acts{max-width:86%}
   .chat-msgs,.chat-composer,.chat-hero{max-width:none}
   .chat-composer{padding:8px 12px calc(10px + env(safe-area-inset-bottom))}
+  .chat-slash{left:12px;right:12px}
   .chat-enter-hint-hide{display:none}
   .chat-input-card{padding:10px 12px 8px}
   .chat-input-card textarea{font-size:16px}
@@ -1033,7 +1042,8 @@
       delete_document:  UI.t('chat.apprDelete'),
       restore_document: UI.t('chat.apprRestore'),
       restore_revision: UI.t('chat.apprRevision'),
-      set_share:        UI.t('chat.apprShare')
+      set_share:        UI.t('chat.apprShare'),
+      delete_skill:     UI.t('chat.apprDeleteSkill')
     };
     var items = Array.isArray(approval.items) ? approval.items : null;
     var callLines;
@@ -1359,6 +1369,7 @@
       }
     } finally {
       sending = false;
+      loadSlashCommands();
       abortCtrl = null;
       streamReader = null;
       // 停止/失败后必须清理 working 状态条，否则它会永远转圈，
@@ -1417,13 +1428,27 @@
     syncSendEnabled();
   }
 
-  inputEl.addEventListener('input', autoGrow);
+  inputEl.addEventListener('input', function () {
+    autoGrow();
+    syncSlashMenu();
+  });
   inputEl.addEventListener('keydown', function (e) {
+    if (slashMenu && !slashMenu.hidden) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); moveSlash(1); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); moveSlash(-1); return; }
+      if (e.key === 'Escape') { e.preventDefault(); hideSlash(); return; }
+      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && !e.isComposing)) {
+        if (applyActiveSlash()) { e.preventDefault(); return; }
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       if (sending) return; // 生成中 Enter 不重发，停止请点按钮
       send();
     }
+  });
+  inputEl.addEventListener('blur', function () {
+    setTimeout(hideSlash, 150);
   });
   inputEl.addEventListener('paste', function (e) {
     var items = e.clipboardData && e.clipboardData.items;
@@ -1475,12 +1500,110 @@
       inputEl.value = chip.textContent;
       autoGrow();
       inputEl.focus();
+      hideSlash();
     });
   });
+
+  // ===== 斜杠指令菜单：/create-skill + 用户 skills =====
+  var slashMenu = document.getElementById('slashMenu');
+  var slashCmds = [];
+  var slashActive = -1;
+  var slashFilter = '';
+  async function loadSlashCommands() {
+    try {
+      var res = await fetch('/console/api/chat/commands', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+      var data = await res.json();
+      slashCmds = (data && data.commands) || [];
+    } catch (e) { slashCmds = []; }
+  }
+  function hideSlash() {
+    if (!slashMenu) return;
+    slashMenu.hidden = true;
+    slashMenu.innerHTML = '';
+    slashActive = -1;
+  }
+  function slashQueryFromInput() {
+    var v = inputEl.value;
+    // 仅当输入以 /xxx 开头（尚无空格后的长文）时弹出
+    var m = v.match(/^\/([a-z0-9-]*)?$/i);
+    if (!m) return null;
+    return (m[1] || '').toLowerCase();
+  }
+  function renderSlash(q) {
+    if (!slashMenu) return;
+    slashFilter = q;
+    var list = slashCmds.filter(function (c) {
+      return !q || c.name.indexOf(q) === 0 || c.name.indexOf(q) >= 0;
+    });
+    slashMenu.hidden = false;
+    slashMenu.textContent = '';
+    slashMenu._list = list;
+    if (!list.length) {
+      var empty = document.createElement('div');
+      empty.className = 'chat-slash-empty';
+      empty.textContent = UI.t('chat.slashEmpty');
+      slashMenu.appendChild(empty);
+      slashActive = -1;
+      return;
+    }
+    slashActive = 0;
+    list.forEach(function (c, i) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'chat-slash-item' + (i === 0 ? ' active' : '');
+      btn.setAttribute('data-name', c.name || '');
+      var nameEl = document.createElement('span');
+      nameEl.className = 'chat-slash-name';
+      var code = document.createElement('code');
+      code.textContent = '/' + (c.name || '');
+      nameEl.appendChild(code);
+      if (c.builtin) {
+        nameEl.appendChild(document.createTextNode(' · ' + UI.t('chat.slashBuiltin')));
+      }
+      var descEl = document.createElement('span');
+      descEl.className = 'chat-slash-desc';
+      descEl.textContent = c.description || '';
+      btn.appendChild(nameEl);
+      btn.appendChild(descEl);
+      btn.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+        pickSlash(c.name);
+      });
+      slashMenu.appendChild(btn);
+    });
+  }
+  function pickSlash(name) {
+    inputEl.value = '/' + name + ' ';
+    autoGrow();
+    hideSlash();
+    syncSendEnabled();
+    inputEl.focus();
+  }
+  function moveSlash(delta) {
+    if (!slashMenu || slashMenu.hidden || !slashMenu._list || !slashMenu._list.length) return;
+    var n = slashMenu._list.length;
+    slashActive = (slashActive + delta + n) % n;
+    Array.prototype.forEach.call(slashMenu.querySelectorAll('.chat-slash-item'), function (el, i) {
+      el.classList.toggle('active', i === slashActive);
+    });
+  }
+  function applyActiveSlash() {
+    if (!slashMenu || slashMenu.hidden || !slashMenu._list || slashActive < 0) return false;
+    var c = slashMenu._list[slashActive];
+    if (!c) return false;
+    pickSlash(c.name);
+    return true;
+  }
+  function syncSlashMenu() {
+    var q = slashQueryFromInput();
+    if (q === null) { hideSlash(); return; }
+    renderSlash(q);
+  }
 
   clearArtifacts();
   setPanelOpen(false);
   loadSessions();
+  loadSlashCommands();
   inputEl.focus();
 })();
 </script>

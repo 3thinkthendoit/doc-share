@@ -20,7 +20,7 @@
   <div class="panel">
     <table class="table" id="categoryTable">
       <thead>
-        <tr><th>{{$.T "名称"}}</th><th>{{$.T "排序"}}</th><th>{{$.T "文档数"}}</th>{{if and .user .user.IsAdmin}}<th>{{$.T "所有者"}}</th>{{end}}<th>{{$.T "操作"}}</th></tr>
+        <tr><th>{{$.T "名称"}}</th><th>{{$.T "排序"}}</th><th>{{$.T "文档数"}}</th>{{if and .user .user.IsAdmin}}<th>{{$.T "所有者"}}</th>{{end}}<th>{{$.T "common.createdAt"}}</th><th>{{$.T "common.updatedAt"}}</th><th>{{$.T "操作"}}</th></tr>
       </thead>
       <tbody>
         {{range .categories}}
@@ -29,13 +29,15 @@
           <td>{{.Sort}}</td>
           <td>{{.DocCount}}</td>
           {{if and $.user $.user.IsAdmin}}<td>{{if .Owner.ID}}<span class="owner-link" data-name="{{.Owner.DisplayName}}" data-username="{{.Owner.Username}}" data-avatar="{{.Owner.Avatar}}" data-email="{{.Owner.MaskedEmail}}" data-phone="{{.Owner.MaskedPhone}}" data-active="{{if .Owner.LastActiveAt}}{{.Owner.LastActiveAt.Format "2006-01-02 15:04"}}{{end}}">{{.Owner.DisplayName}}</span>{{else}}—{{end}}</td>{{end}}
+          <td>{{if .CreatedAt.IsZero}}—{{else}}<span data-ts="{{.CreatedAt.Unix}}">{{.CreatedAt.Format "2006-01-02 15:04"}}</span>{{end}}</td>
+          <td>{{if .UpdatedAt.IsZero}}—{{else}}<span data-ts="{{.UpdatedAt.Unix}}">{{.UpdatedAt.Format "2006-01-02 15:04"}}</span>{{end}}</td>
           <td class="col-actions">
             <button class="btn btn-sm" data-id="{{.ID}}" data-name="{{.Name}}" data-sort="{{.Sort}}" onclick="editCategory(this)">{{$.T "编辑"}}</button>
             <button class="btn btn-sm btn-danger" data-id="{{.ID}}" data-name="{{.Name}}" onclick="delCategory(this)">{{$.T "删除"}}</button>
           </td>
         </tr>
         {{else}}
-        <tr class="empty-row"><td colspan="{{if and $.user $.user.IsAdmin}}5{{else}}4{{end}}">{{$.T "暂无分类"}}</td></tr>
+        <tr class="empty-row"><td colspan="{{if and $.user $.user.IsAdmin}}7{{else}}6{{end}}">{{$.T "暂无分类"}}</td></tr>
         {{end}}
       </tbody>
     </table>

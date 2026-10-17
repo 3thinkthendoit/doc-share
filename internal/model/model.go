@@ -99,12 +99,14 @@ type ProjectMember struct {
 
 // Category 分类（个人所有，与 Project 同构；admin 可见全部）
 type Category struct {
-	ID       uint   `gorm:"primaryKey" json:"id"`
-	Name     string `gorm:"size:50;uniqueIndex:idx_cat_owner_name;not null" json:"name"` // 同一所有者内名称唯一
-	Sort     int    `gorm:"not null;default:0" json:"sort"`                              // 数字越小越靠前
-	OwnerID  uint   `gorm:"uniqueIndex:idx_cat_owner_name;index;not null;default:0" json:"owner_id"`
-	Owner    User   `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
-	DocCount int64  `gorm:"-" json:"doc_count"` // 子查询统计，非数据库列
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Name      string    `gorm:"size:50;uniqueIndex:idx_cat_owner_name;not null" json:"name"` // 同一所有者内名称唯一
+	Sort      int       `gorm:"not null;default:0" json:"sort"`                              // 数字越小越靠前
+	OwnerID   uint      `gorm:"uniqueIndex:idx_cat_owner_name;index;not null;default:0" json:"owner_id"`
+	Owner     User      `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
+	DocCount  int64     `gorm:"-" json:"doc_count"` // 子查询统计，非数据库列
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // ApiKey API 开放平台密钥：外部系统用 Secret 签名调用 /openapi（个人所有，与 Project 同构）
