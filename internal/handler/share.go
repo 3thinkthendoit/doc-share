@@ -129,6 +129,24 @@ func (a *App) renderSharePassword(c *gin.Context, doc *model.Document, share *mo
 	a.render(c, "share_password.html", data)
 }
 
+// shareGateFail 密码门失败：异步请求回 JSON，其余走 303，让刷新不会重复提交。
+func (a *App) shareGateFail(c *gin.Context, path string, status int, errKey, errCode string) {
+	if isAjax(c) {
+		c.JSON(status, gin.H{"error": errKey})
+		return
+	}
+	c.Redirect(http.StatusSeeOther, path+"?err="+errCode)
+}
+
+// shareGateOK 密码门通过：写完 cookie 后，异步请求回跳转地址，其余 303 到内容页。
+func (a *App) shareGateOK(c *gin.Context, path string) {
+	if isAjax(c) {
+		c.JSON(http.StatusOK, gin.H{"ok": true, "redirect": path})
+		return
+	}
+	c.Redirect(http.StatusSeeOther, path)
+}
+
 // ShareSubmit 分享密码提交：POST /s/:token
 func (a *App) ShareSubmit(c *gin.Context) {
 	token := c.Param("token")
@@ -137,28 +155,31 @@ func (a *App) ShareSubmit(c *gin.Context) {
 		return
 	}
 	if !share.HasPassword() || a.shareOwnerBypass(c, doc) {
+		if isAjax(c) {
+			a.shareGateOK(c, "/s/"+token)
+			return
+		}
 		a.serveDoc(c, doc, share, token)
 		return
 	}
 
 	ip := c.ClientIP()
 	if !a.Limiter.Allowed(ip, token) {
-		c.Redirect(http.StatusSeeOther, "/s/"+token+"?err=lock")
+		a.shareGateFail(c, "/s/"+token, http.StatusTooManyRequests, "share.tryLater", "lock")
 		return
 	}
 
 	password := c.PostForm("password")
 	if bcrypt.CompareHashAndPassword([]byte(share.Password), []byte(password)) != nil {
 		a.Limiter.Fail(ip, token)
-		c.Redirect(http.StatusSeeOther, "/s/"+token+"?err=pwd")
+		a.shareGateFail(c, "/s/"+token, http.StatusBadRequest, "share.pwdWrong", "pwd")
 		return
 	}
 
 	a.Limiter.Reset(ip, token)
 	cred := a.Signer.MakeShareToken(token, shareVerifyTTL*time.Second)
 	setCookie(c, CookieShare, cred, shareVerifyTTL)
-	// PRG：验证成功 303 回跳阅读页，后续 GET 命中免密凭证，刷新不再重复提交表单
-	c.Redirect(http.StatusSeeOther, "/s/"+token)
+	a.shareGateOK(c, "/s/"+token)
 }
 
 // ShareAccessApply 申请查看：POST /s/:token/access-request（有密码分享）

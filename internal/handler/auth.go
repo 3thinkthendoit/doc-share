@@ -30,39 +30,55 @@ func (a *App) Captcha(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"id": id, "b64": b64s})
 }
 
-// Login 处理登录表单
+// Login 处理登录。异步请求返回 JSON；非异步仍回渲染页，避免旧客户端直接丢会话。
 func (a *App) Login(c *gin.Context) {
 	username := c.PostForm("username")
 	password := c.PostForm("password")
 
+	fail := func(msg string) {
+		if isAjax(c) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": msg})
+			return
+		}
+		a.render(c, "login.html", gin.H{"title": "登录", "error": msg})
+	}
+
 	// 先验验证码（一次性，失败即消耗），再进入密码校验
 	if !a.CaptchaMgr.Verify(c.PostForm("captcha_id"), c.PostForm("captcha"), true) {
-		a.render(c, "login.html", gin.H{"title": "登录", "error": "验证码错误或已过期"})
+		fail("验证码错误或已过期")
 		return
 	}
 
 	var user model.User
 	if err := a.DB.Where("username = ?", username).First(&user).Error; err != nil {
-		a.render(c, "login.html", gin.H{"title": "登录", "error": "用户名或密码错误"})
+		fail("用户名或密码错误")
 		return
 	}
 	if user.Status != model.StatusEnabled {
-		a.render(c, "login.html", gin.H{"title": "登录", "error": "账号已被禁用"})
+		fail("账号已被禁用")
 		return
 	}
 	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)) != nil {
-		a.render(c, "login.html", gin.H{"title": "登录", "error": "用户名或密码错误"})
+		fail("用户名或密码错误")
 		return
 	}
 
 	token := a.Signer.MakeUserToken(user.ID, sessionTTL)
 	setCookie(c, middleware.CookieSession, token, int(sessionTTL.Seconds()))
+	if isAjax(c) {
+		c.JSON(http.StatusOK, gin.H{"ok": true, "redirect": "/console"})
+		return
+	}
 	c.Redirect(http.StatusFound, "/console")
 }
 
 // Logout 登出
 func (a *App) Logout(c *gin.Context) {
 	setCookie(c, middleware.CookieSession, "", -1)
+	if isAjax(c) {
+		c.JSON(http.StatusOK, gin.H{"ok": true, "redirect": "/login"})
+		return
+	}
 	c.Redirect(http.StatusFound, "/login")
 }
 
@@ -123,6 +139,10 @@ func (a *App) Register(c *gin.Context) {
 
 	var email, phone string
 	renderErr := func(msg string) {
+		if isAjax(c) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": msg})
+			return
+		}
 		a.render(c, "register.html", gin.H{
 			"title": "注册", "error": msg, "settings": s,
 			"username": username, "identifier": identifier, "method": method,
@@ -205,5 +225,9 @@ func (a *App) Register(c *gin.Context) {
 
 	token := a.Signer.MakeUserToken(user.ID, sessionTTL)
 	setCookie(c, middleware.CookieSession, token, int(sessionTTL.Seconds()))
+	if isAjax(c) {
+		c.JSON(http.StatusOK, gin.H{"ok": true, "redirect": "/console"})
+		return
+	}
 	c.Redirect(http.StatusFound, "/console")
 }

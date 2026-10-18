@@ -7,8 +7,8 @@
   <div class="auth-card">
     <h1 class="auth-title">{{$.T "reg.title"}}</h1>
     <p class="auth-sub">{{$.T "reg.sub"}}</p>
-    {{if .error}}<div class="alert alert-error">{{.error}}</div>{{end}}
-    <form method="post" action="/register" id="registerForm" novalidate>
+    <div class="alert alert-error" id="registerError" {{if not .error}}hidden{{end}}>{{.error}}</div>
+    <form id="registerForm" novalidate onsubmit="event.preventDefault()">
       {{/* 注册方式由系统设置唯一决定，服务端注入 METHOD；邮箱方式有邮箱+验证码，手机方式有手机号，用户名方式仅账号 */}}
       <label>{{$.T "reg.account"}}
         <input type="text" name="username" value="{{.username}}" required maxlength="50" autocomplete="username">
@@ -185,18 +185,23 @@
     });
   }
 
-  form.addEventListener('submit', function (e) {
-    if (!UI.validateForm(form)) { e.preventDefault(); return; }
+  var errBox = document.getElementById('registerError');
+  function showError(msg) {
+    if (!errBox) { UI.toast(UI.t(msg || '注册失败'), 'error'); return; }
+    errBox.hidden = false;
+    errBox.textContent = UI.t(msg || '注册失败');
+  }
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    if (!UI.validateForm(form)) return;
     if (METHOD === 'email') {
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(idInput.value.trim())) {
-        e.preventDefault();
         idInput.classList.add('field-error');
         UI.toast(UI.t('邮箱格式不正确'), 'error');
         idInput.focus();
         return;
       }
       if (codeInput.value.trim().length !== 6) {
-        e.preventDefault();
         codeInput.classList.add('field-error');
         UI.toast(UI.t('请输入 6 位邮箱验证码'), 'error');
         codeInput.focus();
@@ -204,7 +209,6 @@
       }
     }
     if (METHOD === 'phone' && !/^1[3-9]\d{9}$/.test(idInput.value.trim())) {
-      e.preventDefault();
       idInput.classList.add('field-error');
       UI.toast(UI.t('手机号格式不正确'), 'error');
       idInput.focus();
@@ -212,10 +216,31 @@
     }
     var pwd = form.querySelector('input[name=password]');
     if (pwd.value.length < 6) {
-      e.preventDefault();
       pwd.classList.add('field-error');
-      UI.toast('密码至少 6 位', 'error');
+      UI.toast(UI.t('密码至少 6 位'), 'error');
       pwd.focus();
+      return;
+    }
+    var btn = form.querySelector('[type=submit]');
+    if (btn) btn.disabled = true;
+    if (errBox) errBox.hidden = true;
+    try {
+      var res = await fetch('/register', {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+        body: new FormData(form)
+      });
+      var data = await res.json().catch(function () { return {}; });
+      if (!res.ok) {
+        showError((data && data.error) || '注册失败');
+        refreshCaptcha();
+        if (btn) btn.disabled = false;
+        return;
+      }
+      location.href = UI.safeRedirect(data && data.redirect, '/console');
+    } catch (err) {
+      showError('网络错误');
+      if (btn) btn.disabled = false;
     }
   });
 })();

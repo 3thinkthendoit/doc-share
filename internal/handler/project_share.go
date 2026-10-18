@@ -226,25 +226,28 @@ func (a *App) ProjectShareSubmit(c *gin.Context) {
 		return
 	}
 	if !ps.HasPassword() || a.psOwnerBypass(c, project) {
+		if isAjax(c) {
+			a.shareGateOK(c, "/ps/"+token)
+			return
+		}
 		a.renderProjectList(c, project, ps, token)
 		return
 	}
 	ip := c.ClientIP()
 	if !a.Limiter.Allowed(ip, token) {
-		c.Redirect(http.StatusSeeOther, "/ps/"+token+"?err=lock")
+		a.shareGateFail(c, "/ps/"+token, http.StatusTooManyRequests, "share.tryLater", "lock")
 		return
 	}
 	password := c.PostForm("password")
 	if bcrypt.CompareHashAndPassword([]byte(ps.Password), []byte(password)) != nil {
 		a.Limiter.Fail(ip, token)
-		c.Redirect(http.StatusSeeOther, "/ps/"+token+"?err=pwd")
+		a.shareGateFail(c, "/ps/"+token, http.StatusBadRequest, "share.pwdWrong", "pwd")
 		return
 	}
 	a.Limiter.Reset(ip, token)
 	cred := a.Signer.MakeShareToken(token, shareVerifyTTL*time.Second)
 	setCookie(c, CookieProjectShare, cred, shareVerifyTTL)
-	// PRG：验证成功 303 回跳列表页，后续 GET 命中免密凭证
-	c.Redirect(http.StatusSeeOther, "/ps/"+token)
+	a.shareGateOK(c, "/ps/"+token)
 }
 
 // ProjectShareAccessApply 申请查看：POST /ps/:token/access-request（有密码分享）

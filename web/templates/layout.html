@@ -45,9 +45,9 @@
 {{end}}
 
 {{define "langSwitch"}}
-<form class="lang-switch" method="get" action="/lang">
+<form class="lang-switch" action="/lang" onsubmit="event.preventDefault()">
   <input type="hidden" name="next" value="{{.Path}}">
-  <select name="lang" aria-label="{{$.T "nav.langTip"}}" onchange="this.form.submit()">
+  <select name="lang" aria-label="{{$.T "nav.langTip"}}" onchange="location.href='/lang?lang='+encodeURIComponent(this.value)+'&next='+encodeURIComponent(this.form.next.value)">
     {{range .Langs}}<option value="{{.Code}}" {{if eq .Code $.Lang}}selected{{end}}>{{.Name}}</option>{{end}}
   </select>
 </form>
@@ -91,9 +91,9 @@
       <svg class="i-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
       <svg class="i-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
     </button>
-    <form class="l-lang" method="get" action="/lang">
+    <form class="l-lang" action="/lang" onsubmit="event.preventDefault()">
       <input type="hidden" name="next" value="{{.Path}}">
-      <select name="lang" aria-label="{{$.T "界面语言"}}" onchange="this.form.submit()">
+      <select name="lang" aria-label="{{$.T "界面语言"}}" onchange="location.href='/lang?lang='+encodeURIComponent(this.value)+'&next='+encodeURIComponent(this.form.next.value)">
         {{range .Langs}}<option value="{{.Code}}" {{if eq .Code $.Lang}}selected{{end}}>{{.Name}}</option>{{end}}
       </select>
     </form>
@@ -180,9 +180,7 @@
     <div class="user-dropdown" id="userDropdown" hidden>
       <button type="button" id="profileBtn">{{$.T "nav.profile"}}</button>
       <button type="button" id="changePwdBtn">{{$.T "nav.changePwd"}}</button>
-      <form method="post" action="/logout">
-        <button type="submit" class="danger">{{$.T "nav.logout"}}</button>
-      </form>
+      <button type="button" class="danger" id="logoutBtn">{{$.T "nav.logout"}}</button>
     </div>
   </div>
   {{end}}

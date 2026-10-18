@@ -3,7 +3,7 @@ window.UI = (function () {
   'use strict';
 
   /* ---- 多语言 ----
-     后端按当前页面语言注入“中文原文 → 译文”映射（默认语言下为空对象）。
+     后端注入 window.__L10N：中文原文和 i18n key 都映射到当前语言译文。
      所有可见文案都经过 toast / dialog 这两个出口，因此在它们内部统一查表，
      页面脚本无需逐个改写；直写 DOM 的文案用 UI.t('中文原文') 包裹。 */
   var L10N = window.__L10N || {};
@@ -184,7 +184,8 @@ window.UI = (function () {
     }
     return ok;
   }
-  // 给表单绑定提交拦截（需配合 form 上的 novalidate 使用）
+  // 给表单绑定提交拦截（需配合 form 上的 novalidate 使用）。
+  // 只拦浏览器默认提交；业务监听自己再校验，避免靠监听顺序互相掐断。
   function bindFormValidation(form) {
     if (!form) return;
     form.addEventListener('submit', function (e) {
@@ -192,8 +193,26 @@ window.UI = (function () {
     });
   }
 
+  // 只接受站内相对路径，拒绝 //、反斜杠和空白，避免把接口里的 redirect 当成开放跳转。
+  function safeRedirect(url, fallback) {
+    if (typeof url === 'string' && /^\/(?!\/)[^\s\\]*$/.test(url)) return url;
+    return fallback;
+  }
+
+  // 筛选栏：禁止浏览器原生 GET 提交，改为拼查询串后跳转（结果页仍由服务端渲染）
+  function bindFilterNav(form) {
+    if (!form || form._filterNavBound) return;
+    form._filterNavBound = true;
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var action = form.getAttribute('action') || location.pathname;
+      var qs = new URLSearchParams(new FormData(form)).toString();
+      location.assign(qs ? action + (action.indexOf('?') >= 0 ? '&' : '?') + qs : action);
+    });
+  }
+
   /* ---- 自定义下拉（原生 select 弹出面板由系统绘制，无法主题化）----
-     保留原生 select 在 DOM 内：FormData / GET 表单提交 / .value 读取全部不变，
+     保留原生 select 在 DOM 内：FormData / .value 读取全部不变，
      只在其上叠加按钮触发器 + 自绘面板 */
   var xsOpen = null;
   function closeXs() {
@@ -482,6 +501,8 @@ window.UI = (function () {
     toast: toast,
     validateForm: validateForm,
     bindFormValidation: bindFormValidation,
+    bindFilterNav: bindFilterNav,
+    safeRedirect: safeRedirect,
     openModal: openModal,
     closeModal: closeModal,
     syncBodyLock: syncBodyLock,
@@ -519,6 +540,11 @@ window.UI = (function () {
     },
   };
 })();
+
+document.addEventListener('DOMContentLoaded', function () {
+  if (!window.UI || !UI.bindFilterNav) return;
+  document.querySelectorAll('form.filter-bar').forEach(UI.bindFilterNav);
+});
 
 // 相对时间：任何带 data-ts（unix 秒）的元素一年内显示相对时间（刚刚/N分钟前/…/N个月前），
 // ≥1 年保留服务端绝对时间，并把绝对时间写入 title 供悬停查看；文案用 Intl 随页面语言自动本地化
@@ -602,6 +628,28 @@ document.addEventListener('DOMContentLoaded', function () {
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') dropdown.hidden = true;
     });
+    var logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', async function () {
+        logoutBtn.disabled = true;
+        try {
+          var res = await fetch('/logout', {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+          });
+          var data = await res.json().catch(function () { return {}; });
+          if (!res.ok) {
+            logoutBtn.disabled = false;
+            UI.toast(UI.t((data && data.error) || '操作失败'), 'error');
+            return;
+          }
+          location.href = UI.safeRedirect(data && data.redirect, '/login');
+        } catch (err) {
+          logoutBtn.disabled = false;
+          UI.toast(UI.t('网络错误'), 'error');
+        }
+      });
+    }
   }
 
   var pwdModal = document.getElementById('pwdModal');
