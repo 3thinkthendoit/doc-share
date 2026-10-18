@@ -8,19 +8,30 @@
     <h1 class="auth-title">{{.SiteName}}</h1>
     <div class="alert alert-error" id="loginError" {{if not .error}}hidden{{end}}>{{.error}}</div>
     <form id="loginForm" novalidate onsubmit="event.preventDefault()">
+      <div id="loginCred" {{if .totpStep}}hidden{{end}}>
       <label>{{$.T "login.username"}}
-        <input type="text" name="username" required autofocus>
+        <input type="text" name="username" {{if not .totpStep}}required{{end}} autofocus>
       </label>
       <label>{{$.T "login.password"}}
-        <input type="password" name="password" required>
+        <input type="password" name="password" {{if not .totpStep}}required{{end}}>
       </label>
       <label>{{$.T "login.captcha"}}
         <div class="captcha-row">
-          <input type="text" name="captcha" required maxlength="4" autocomplete="off" placeholder="{{$.T "login.captchaPh"}}">
+          <input type="text" name="captcha" {{if not .totpStep}}required{{end}} maxlength="4" autocomplete="off" placeholder="{{$.T "login.captchaPh"}}">
           <img id="captchaImg" class="captcha-img" alt="{{$.T "login.captchaAlt"}}" title="{{$.T "login.captchaTip"}}">
         </div>
       </label>
       <input type="hidden" name="captcha_id" id="captchaId">
+      </div>
+      <div id="loginTotp" {{if not .totpStep}}hidden{{end}}>
+        <p class="muted" id="totpHint" style="font-size:13px;margin:0 0 10px">{{if eq .totpStep "totp_enroll"}}{{$.T "login.totpEnroll"}}{{else}}{{$.T "login.totpHint"}}{{end}}</p>
+        <img id="totpQr" alt="" style="width:180px;height:180px;display:block;margin:0 auto 10px;{{if ne .totpStep "totp_enroll"}}display:none{{end}}" {{if .totpQR}}src="{{.totpQR}}"{{end}}>
+        <p id="totpSecret" class="mono" style="font-size:12px;word-break:break-all;text-align:center;margin:0 0 10px">{{.totpSecret}}</p>
+        <label>{{$.T "login.totp"}}
+          <input type="text" name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000" {{if .totpStep}}required{{end}}>
+        </label>
+        <input type="hidden" name="pending" id="totpPending" value="{{.totpPending}}">
+      </div>
       <button type="submit" class="btn btn-primary btn-block">{{$.T "login.submit"}}</button>
     </form>
     <p class="auth-alt">{{$.T "login.noAccount"}}<a href="/register">{{$.T "login.registerLink"}}</a></p>
@@ -44,14 +55,40 @@
   }
   document.getElementById('captchaImg').addEventListener('click', refreshCaptcha);
   refreshCaptcha();
+  var credBox = document.getElementById('loginCred');
+  var totpBox = document.getElementById('loginTotp');
+  var pendingEl = document.getElementById('totpPending');
+  function showTOTP(data) {
+    credBox.hidden = true;
+    credBox.querySelectorAll('[required]').forEach(function (el) { el.required = false; });
+    totpBox.hidden = false;
+    var code = form.querySelector('input[name=code]');
+    if (code) { code.required = true; code.value = ''; code.focus(); }
+    pendingEl.value = data.pending || '';
+    var hint = document.getElementById('totpHint');
+    var qr = document.getElementById('totpQr');
+    var secret = document.getElementById('totpSecret');
+    if (data.step === 'totp_enroll') {
+      hint.textContent = UI.t('login.totpEnroll');
+      qr.style.display = 'block';
+      qr.src = data.qr || '';
+      secret.textContent = data.secret || '';
+    } else {
+      hint.textContent = UI.t('login.totpHint');
+      qr.style.display = 'none';
+      qr.removeAttribute('src');
+      secret.textContent = '';
+    }
+  }
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
     if (!UI.validateForm(form)) return;
     var btn = form.querySelector('[type=submit]');
     if (btn) btn.disabled = true;
     errBox.hidden = true;
+    var totp = !totpBox.hidden;
     try {
-      var res = await fetch('/login', {
+      var res = await fetch(totp ? '/login/totp' : '/login', {
         method: 'POST',
         headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
         body: new FormData(form)
@@ -59,7 +96,12 @@
       var data = await res.json().catch(function () { return {}; });
       if (!res.ok) {
         showError((data && data.error) || '登录失败');
-        refreshCaptcha();
+        if (!totp) refreshCaptcha();
+        if (btn) btn.disabled = false;
+        return;
+      }
+      if (data && (data.step === 'totp' || data.step === 'totp_enroll')) {
+        showTOTP(data);
         if (btn) btn.disabled = false;
         return;
       }

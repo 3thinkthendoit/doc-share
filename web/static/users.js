@@ -115,6 +115,36 @@ async function resetPwd(id) {
   else { UI.alert((data && data.error) || '重置失败'); }
 }
 
+async function unlockUser(id) {
+  if (!await UI.confirm(UI.t('user.unlockConfirm'))) return;
+  var res = await fetch('/console/api/users/' + id + '/unlock', {
+    method: 'POST',
+    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+  });
+  var data = await res.json().catch(function () { return {}; });
+  if (res.ok) {
+    UI.toast(UI.t('user.unlocked'), 'success');
+    setTimeout(function () { location.reload(); }, 400);
+  } else {
+    UI.alert((data && data.error) || UI.t('user.unlockFail'));
+  }
+}
+
+async function resetTOTP(id) {
+  if (!await UI.confirm(UI.t('user.resetTotpConfirm'))) return;
+  var res = await fetch('/console/api/users/' + id + '/reset-totp', {
+    method: 'POST',
+    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+  });
+  var data = await res.json().catch(function () { return {}; });
+  if (res.ok) {
+    UI.toast(UI.t('user.resetTotpOk'), 'success');
+    setTimeout(function () { location.reload(); }, 400);
+  } else {
+    UI.alert((data && data.error) || UI.t('user.resetTotpFail'));
+  }
+}
+
 async function delUser(id) {
   if (!await UI.confirm('确认删除该用户？', { danger: true })) return;
   var res = await fetch('/console/api/users/' + id, {

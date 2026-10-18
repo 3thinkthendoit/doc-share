@@ -17,21 +17,26 @@ const (
 	ContextUser   = "currentUser"
 )
 
-// RequireAuth 校验登录凭证，注入当前用户；未登录时页面跳转登录、API 返回 401
-func RequireAuth(db *gorm.DB, signer *session.Signer) gin.HandlerFunc {
+// RequireAuth 校验登录凭证，注入当前用户；未登录时页面跳转登录、API 返回 401。
+// requireTOTP 为 true 时，会话必须带有动态口令已验证标记（开启全站 TOTP 后作废旧会话）。
+func RequireAuth(db *gorm.DB, signer *session.Signer, requireTOTP func() bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token, err := c.Cookie(CookieSession)
 		if err != nil || token == "" {
 			unauthorized(c)
 			return
 		}
-		uid, err := signer.ParseUserToken(token)
+		claims, err := signer.ParseUserToken(token)
 		if err != nil {
 			unauthorized(c)
 			return
 		}
+		if requireTOTP != nil && requireTOTP() && !claims.TOTPVerified {
+			unauthorized(c)
+			return
+		}
 		var user model.User
-		if err := db.First(&user, uid).Error; err != nil {
+		if err := db.First(&user, claims.UID).Error; err != nil {
 			unauthorized(c)
 			return
 		}
@@ -63,20 +68,24 @@ func RequireAdmin() gin.HandlerFunc {
 }
 
 // OptionalAuth 公开页可选认证：有有效会话则注入当前用户（按登录态切换 UI），未登录直接放行
-func OptionalAuth(db *gorm.DB, signer *session.Signer) gin.HandlerFunc {
+func OptionalAuth(db *gorm.DB, signer *session.Signer, requireTOTP func() bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token, err := c.Cookie(CookieSession)
 		if err != nil || token == "" {
 			c.Next()
 			return
 		}
-		uid, err := signer.ParseUserToken(token)
+		claims, err := signer.ParseUserToken(token)
 		if err != nil {
 			c.Next()
 			return
 		}
+		if requireTOTP != nil && requireTOTP() && !claims.TOTPVerified {
+			c.Next()
+			return
+		}
 		var user model.User
-		if err := db.First(&user, uid).Error; err != nil || user.Status != model.StatusEnabled {
+		if err := db.First(&user, claims.UID).Error; err != nil || user.Status != model.StatusEnabled {
 			c.Next()
 			return
 		}

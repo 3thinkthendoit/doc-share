@@ -58,18 +58,24 @@ func (a *App) Login(c *gin.Context) {
 		fail("账号已被禁用")
 		return
 	}
+	a.expireLoginLock(&user)
+	if user.Locked() {
+		fail(msgLocked)
+		return
+	}
 	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)) != nil {
+		if a.Settings().LoginMaxFails > 0 && a.recordLoginFailure(&user) {
+			fail(msgLocked)
+			return
+		}
 		fail("用户名或密码错误")
 		return
 	}
-
-	token := a.Signer.MakeUserToken(user.ID, sessionTTL)
-	setCookie(c, middleware.CookieSession, token, int(sessionTTL.Seconds()))
-	if isAjax(c) {
-		c.JSON(http.StatusOK, gin.H{"ok": true, "redirect": "/console"})
+	if a.Settings().TOTPEnabled {
+		a.beginTOTP(c, &user)
 		return
 	}
-	c.Redirect(http.StatusFound, "/console")
+	a.issueSession(c, &user)
 }
 
 // Logout 登出
@@ -223,11 +229,9 @@ func (a *App) Register(c *gin.Context) {
 		return
 	}
 
-	token := a.Signer.MakeUserToken(user.ID, sessionTTL)
-	setCookie(c, middleware.CookieSession, token, int(sessionTTL.Seconds()))
-	if isAjax(c) {
-		c.JSON(http.StatusOK, gin.H{"ok": true, "redirect": "/console"})
+	if a.Settings().TOTPEnabled {
+		a.beginTOTP(c, &user)
 		return
 	}
-	c.Redirect(http.StatusFound, "/console")
+	a.issueSession(c, &user)
 }

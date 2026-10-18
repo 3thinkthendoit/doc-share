@@ -32,12 +32,15 @@ func (a *App) sessionUser(c *gin.Context) *model.User {
 	if err != nil || token == "" {
 		return nil
 	}
-	uid, err := a.Signer.ParseUserToken(token)
+	claims, err := a.Signer.ParseUserToken(token)
 	if err != nil {
 		return nil
 	}
+	if a.Settings().TOTPEnabled && !claims.TOTPVerified {
+		return nil
+	}
 	var u model.User
-	if err := a.DB.First(&u, uid).Error; err != nil || u.Status != model.StatusEnabled {
+	if err := a.DB.First(&u, claims.UID).Error; err != nil || u.Status != model.StatusEnabled {
 		return nil
 	}
 	return &u

@@ -48,31 +48,54 @@ func (s *Signer) mac(payload string) []byte {
 	return h.Sum(nil)
 }
 
-// MakeUserToken 生成用户登录凭证： "uid.exp" 签名
-func (s *Signer) MakeUserToken(uid uint, ttl time.Duration) string {
-	exp := time.Now().Add(ttl).Unix()
-	return s.Sign(strconv.FormatUint(uint64(uid), 10) + ":" + strconv.FormatInt(exp, 10))
+// DeriveKey 用会话密钥派生用途固定的 32 字节密钥（例如加密 TOTP 密钥）。
+func (s *Signer) DeriveKey(purpose string) []byte {
+	return s.mac("key:" + purpose)
 }
 
-// ParseUserToken 解析登录凭证，返回 uid；无效或过期返回 error
-func (s *Signer) ParseUserToken(token string) (uint, error) {
+// UserClaims 登录会话声明
+type UserClaims struct {
+	UID          uint
+	TOTPVerified bool // 本会话是否已通过动态口令（开启 TOTP 后必须为 true）
+}
+
+// MakeUserToken 生成用户登录凭证。
+// 格式：uid:exp 或 uid:exp:t（末段 t = 已通过动态口令）
+func (s *Signer) MakeUserToken(uid uint, ttl time.Duration, totpVerified bool) string {
+	exp := time.Now().Add(ttl).Unix()
+	payload := strconv.FormatUint(uint64(uid), 10) + ":" + strconv.FormatInt(exp, 10)
+	if totpVerified {
+		payload += ":t"
+	}
+	return s.Sign(payload)
+}
+
+// ParseUserToken 解析登录凭证
+func (s *Signer) ParseUserToken(token string) (UserClaims, error) {
 	payload, ok := s.Verify(token)
 	if !ok {
-		return 0, ErrInvalidToken
+		return UserClaims{}, ErrInvalidToken
 	}
-	parts := strings.SplitN(payload, ":", 2)
-	if len(parts) != 2 {
-		return 0, ErrInvalidToken
+	parts := strings.Split(payload, ":")
+	if len(parts) != 2 && len(parts) != 3 {
+		return UserClaims{}, ErrInvalidToken
 	}
 	exp, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil || time.Now().Unix() > exp {
-		return 0, ErrExpiredToken
+		return UserClaims{}, ErrExpiredToken
 	}
 	uid, err := strconv.ParseUint(parts[0], 10, 64)
 	if err != nil {
-		return 0, ErrInvalidToken
+		return UserClaims{}, ErrInvalidToken
 	}
-	return uint(uid), nil
+	claims := UserClaims{UID: uint(uid)}
+	if len(parts) == 3 {
+		if parts[2] != "t" {
+			return UserClaims{}, ErrInvalidToken
+		}
+		claims.TOTPVerified = true
+	}
+	return claims, nil
 }
 
 // MakeShareToken 生成分享验证凭证： "shareToken.exp" 签名

@@ -24,8 +24,9 @@ func (a *App) UsersPage(c *gin.Context) {
 	var users []model.User
 	tx.Order("id asc").Offset(pg.Offset).Limit(pg.Size).Find(&users)
 	data := gin.H{
-		"title": "用户管理",
-		"users": users,
+		"title":  "用户管理",
+		"users":  users,
+		"totpOn": a.Settings().TOTPEnabled,
 	}
 	for k, v := range pagerFields(pg, "/console/users", "") {
 		data[k] = v
@@ -150,15 +151,29 @@ func (a *App) UpdateUser(c *gin.Context) {
 	if req.Status != nil && (*req.Status == model.StatusEnabled || *req.Status == model.StatusDisabled) {
 		user.Status = *req.Status
 	}
+	// 只更新资料字段，避免 Save 整行把并发写入的锁定/动态口令状态盖掉
+	updates := map[string]any{
+		"nickname": user.Nickname,
+		"email":    user.Email,
+		"phone":    user.Phone,
+		"role":     user.Role,
+		"status":   user.Status,
+		"avatar":   user.Avatar,
+	}
 	if req.Password != "" {
 		if len(req.Password) < 6 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "密码至少 6 位"})
 			return
 		}
-		hash, _ := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+		hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "更新失败"})
+			return
+		}
+		updates["password_hash"] = string(hash)
 		user.PasswordHash = string(hash)
 	}
-	if err := a.DB.Save(&user).Error; err != nil {
+	if err := a.DB.Model(&model.User{}).Where("id = ?", user.ID).Updates(updates).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新失败"})
 		return
 	}
@@ -273,6 +288,39 @@ func (a *App) UpdateProfile(c *gin.Context) {
 		"phone":    phone,
 	}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// UnlockUser 解除密码错误导致的登录锁定，并清零错误次数。不改变启用/禁用。
+func (a *App) UnlockUser(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var user model.User
+	if err := a.DB.First(&user, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+		return
+	}
+	if err := a.clearLoginLock(&user); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "解锁失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// ResetUserTOTP 清除动态口令密钥并作废未完成的绑定/校验票据。
+func (a *App) ResetUserTOTP(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var user model.User
+	if err := a.DB.First(&user, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+		return
+	}
+	if err := a.DB.Model(&user).Updates(map[string]any{
+		"totp_secret": "",
+		"totp_epoch":  user.TOTPEpoch + 1,
+	}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "重置失败"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})

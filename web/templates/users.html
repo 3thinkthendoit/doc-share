@@ -21,12 +21,14 @@
           <td class="mono">{{.Username}}</td>
           <td>{{.Nickname}}</td>
           <td class="mono">{{.Role}}</td>
-          <td>{{if eq .Status 1}}<span class="badge badge-on">{{$.T "启用"}}</span>{{else}}<span class="badge badge-off">{{$.T "禁用"}}</span>{{end}}</td>
+          <td>{{if eq .Status 1}}<span class="badge badge-on">{{$.T "启用"}}</span>{{else}}<span class="badge badge-off">{{$.T "禁用"}}</span>{{end}}{{if .Locked}} <span class="badge badge-off">{{$.T "user.locked"}}</span>{{end}}</td>
           <td>{{.CreatedAt.Format "2006-01-02"}}</td>
           <td>{{if .LastActiveAt}}{{.LastActiveAt.Format "2006-01-02 15:04"}}{{else}}—{{end}}</td>
           <td class="col-actions">
             <button class="btn btn-sm" onclick="editUser({{.ID}}, {{.Username}}, {{.Nickname}}, {{.Role}}, {{.Status}}, {{.Avatar}}, {{.Email}}, {{.Phone}})">{{$.T "编辑"}}</button>
             <button class="btn btn-sm" onclick="resetPwd({{.ID}})">{{$.T "重置密码"}}</button>
+            {{if .Locked}}<button class="btn btn-sm" onclick="unlockUser({{.ID}})">{{$.T "user.unlock"}}</button>{{end}}
+            {{if and $.totpOn .TOTPBound}}<button class="btn btn-sm" onclick="resetTOTP({{.ID}})">{{$.T "user.resetTotp"}}</button>{{end}}
             <button class="btn btn-sm btn-danger" onclick="delUser({{.ID}})">{{$.T "删除"}}</button>
           </td>
         </tr>

@@ -11,6 +11,7 @@
   <aside class="doc-side docs-side" aria-label="{{$.T "set.title"}}">
     <div class="docs-side-label">{{$.T "set.title"}}</div>
     <a href="#sec-basic" class="active">{{$.T "set.navBasic"}}</a>
+    <a href="#sec-security">{{$.T "set.navSecurity"}}</a>
     <a href="#sec-share">{{$.T "set.shareTitle"}}</a>
     <a href="#sec-reg">{{$.T "set.regTitle"}}</a>
     <a href="#sec-mail">{{$.T "set.smtpTitle"}}</a>
@@ -50,6 +51,22 @@
         <input type="text" name="drawio_url" value="{{.set.DrawioURL}}" placeholder="http://127.0.0.1:8181">
         <span class="muted" style="font-size:12.5px">{{$.T "set.drawioURLTip"}}</span>
       </label>
+      </section>
+
+      <section id="sec-security" class="set-sec">
+      <div class="settings-section">{{$.T "set.navSecurity"}}</div>
+      <label class="check"><input type="checkbox" name="login_lock" {{if gt .set.LoginMaxFails 0}}checked{{end}}> {{$.T "set.loginLock"}}</label>
+      <p class="muted" style="font-size:12.5px;margin:-4px 0 10px">{{$.T "set.loginLockTip"}}</p>
+      <div class="smtp-grid">
+        <label>{{$.T "set.loginMaxFails"}}
+          <input type="number" name="login_max_fails" min="1" max="20" value="{{if gt .set.LoginMaxFails 0}}{{.set.LoginMaxFails}}{{else}}5{{end}}">
+        </label>
+        <label>{{$.T "set.loginLockMinutes"}}
+          <input type="number" name="login_lock_minutes" min="1" max="1440" value="{{.set.LoginLockMinutes}}">
+        </label>
+      </div>
+      <label class="check"><input type="checkbox" name="totp_enabled" {{if .set.TOTPEnabled}}checked{{end}}> {{$.T "set.totpEnabled"}}</label>
+      <p class="muted" style="font-size:12.5px;margin:-4px 0 10px">{{$.T "set.totpEnabledTip"}}</p>
       </section>
 
       <section id="sec-share" class="set-sec">
@@ -707,7 +724,10 @@
       cos_secret_id: form.cos_secret_id.value.trim(),
       cos_secret_key: form.cos_secret_key.value,
       cos_bucket: form.cos_bucket.value.trim(),
-      allow_share_apply: form.allow_share_apply.checked
+      allow_share_apply: form.allow_share_apply.checked,
+      login_max_fails: form.login_lock.checked ? (parseInt(form.login_max_fails.value, 10) || 5) : 0,
+      login_lock_minutes: parseInt(form.login_lock_minutes.value, 10) || 30,
+      totp_enabled: form.totp_enabled.checked
     };
     try {
       var res = await fetch('/console/api/settings', {

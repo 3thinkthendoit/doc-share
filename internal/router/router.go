@@ -42,7 +42,8 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		http.StripPrefix("/uploads", uploadsFS).ServeHTTP(c.Writer, c.Request)
 	})
 
-	admin := r.Group("/console", middleware.RequireAuth(app.DB, app.Signer))
+	totpOn := func() bool { return app.Settings().TOTPEnabled }
+	admin := r.Group("/console", middleware.RequireAuth(app.DB, app.Signer, totpOn))
 	{
 		admin.GET("", app.Dashboard)
 		admin.GET("/docs", app.DocsPage)
@@ -55,6 +56,8 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.POST("/api/users", middleware.RequireAdmin(), app.CreateUser)
 		admin.PUT("/api/users/:id", middleware.RequireAdmin(), app.UpdateUser)
 		admin.DELETE("/api/users/:id", middleware.RequireAdmin(), app.DeleteUser)
+		admin.POST("/api/users/:id/unlock", middleware.RequireAdmin(), app.UnlockUser)
+		admin.POST("/api/users/:id/reset-totp", middleware.RequireAdmin(), app.ResetUserTOTP)
 
 		// 系统设置仅 admin
 		admin.GET("/settings", middleware.RequireAdmin(), app.SettingsPage)
@@ -202,13 +205,14 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 
 	// 对接文档（公开）：潜在用户未登录也可查看 API / MCP 接入方式；
 	// 可选认证注入登录态，已登录时顶栏菜单与控制台其他页一致，避免跨页「菜单不一样」
-	r.GET("/console/apidoc", middleware.OptionalAuth(app.DB, app.Signer), app.APIDocPage)
-	r.GET("/console/mcpdoc", middleware.OptionalAuth(app.DB, app.Signer), app.MCPDocPage)
+	r.GET("/console/apidoc", middleware.OptionalAuth(app.DB, app.Signer, totpOn), app.APIDocPage)
+	r.GET("/console/mcpdoc", middleware.OptionalAuth(app.DB, app.Signer, totpOn), app.MCPDocPage)
 
 	// 认证
 	r.GET("/captcha", app.Captcha)
 	r.GET("/login", app.LoginPage)
 	r.POST("/login", app.Login)
+	r.POST("/login/totp", app.LoginTOTP)
 	r.GET("/register", app.RegisterPage)
 	r.POST("/register", app.Register)
 	r.POST("/register/email-code", app.SendRegisterCode)
@@ -274,7 +278,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 	r.GET("/ps/:token/d/:docId/raw/*path", app.ProjectShareRaw)
 
 	// 官网首页（公开）；可选认证注入登录态，供首页按用户状态切换 CTA
-	r.GET("/", middleware.OptionalAuth(app.DB, app.Signer), app.Home)
+	r.GET("/", middleware.OptionalAuth(app.DB, app.Signer, totpOn), app.Home)
 
 	return r
 }

@@ -9,6 +9,7 @@
     <p class="auth-sub">{{$.T "reg.sub"}}</p>
     <div class="alert alert-error" id="registerError" {{if not .error}}hidden{{end}}>{{.error}}</div>
     <form id="registerForm" novalidate onsubmit="event.preventDefault()">
+      <div id="regCred">
       {{/* 注册方式由系统设置唯一决定，服务端注入 METHOD；邮箱方式有邮箱+验证码，手机方式有手机号，用户名方式仅账号 */}}
       <label>{{$.T "reg.account"}}
         <input type="text" name="username" value="{{.username}}" required maxlength="50" autocomplete="username">
@@ -43,6 +44,17 @@
       </label>
       <input type="hidden" name="captcha_id" id="captchaId">
       {{end}}
+      </div>
+
+      <div id="regTotp" hidden>
+        <p class="muted" id="regTotpHint" style="font-size:13px;margin:0 0 10px">{{$.T "login.totpEnroll"}}</p>
+        <img id="regTotpQr" alt="" style="width:180px;height:180px;display:block;margin:0 auto 10px">
+        <p id="regTotpSecret" class="mono" style="font-size:12px;word-break:break-all;text-align:center;margin:0 0 10px"></p>
+        <label>{{$.T "login.totp"}}
+          <input type="text" name="totp_code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000">
+        </label>
+        <input type="hidden" name="pending" id="regTotpPending">
+      </div>
 
       <button type="submit" class="btn btn-primary btn-block">{{$.T "reg.submit"}}</button>
     </form>
@@ -225,15 +237,41 @@
     if (btn) btn.disabled = true;
     if (errBox) errBox.hidden = true;
     try {
-      var res = await fetch('/register', {
-        method: 'POST',
-        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
-        body: new FormData(form)
-      });
+      var totpBox = document.getElementById('regTotp');
+      var onTotp = totpBox && !totpBox.hidden;
+      var res;
+      if (onTotp) {
+        var fd = new FormData();
+        fd.set('pending', document.getElementById('regTotpPending').value);
+        fd.set('code', (form.querySelector('input[name=totp_code]') || {}).value || '');
+        res = await fetch('/login/totp', {
+          method: 'POST',
+          headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+          body: fd
+        });
+      } else {
+        res = await fetch('/register', {
+          method: 'POST',
+          headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+          body: new FormData(form)
+        });
+      }
       var data = await res.json().catch(function () { return {}; });
       if (!res.ok) {
         showError((data && data.error) || '注册失败');
-        refreshCaptcha();
+        if (!onTotp) refreshCaptcha();
+        if (btn) btn.disabled = false;
+        return;
+      }
+      if (data && (data.step === 'totp' || data.step === 'totp_enroll')) {
+        document.getElementById('regCred').hidden = true;
+        document.getElementById('regCred').querySelectorAll('[required]').forEach(function (el) { el.required = false; });
+        totpBox.hidden = false;
+        document.getElementById('regTotpPending').value = data.pending || '';
+        document.getElementById('regTotpQr').src = data.qr || '';
+        document.getElementById('regTotpSecret').textContent = data.secret || '';
+        var codeEl = form.querySelector('input[name=totp_code]');
+        if (codeEl) { codeEl.required = true; codeEl.value = ''; codeEl.focus(); }
         if (btn) btn.disabled = false;
         return;
       }

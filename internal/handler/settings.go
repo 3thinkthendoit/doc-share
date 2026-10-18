@@ -79,6 +79,12 @@ type SiteSettings struct {
 
 	// 有密码分享是否开放「申请查看」（站点级，默认开）
 	AllowShareApply bool
+
+	// 密码连续错误锁定。LoginMaxFails 为 0 表示关闭。
+	LoginMaxFails    int
+	LoginLockMinutes int
+	// 登录在密码正确后还要 Google 动态口令
+	TOTPEnabled bool
 }
 
 // 常用默认值
@@ -108,6 +114,10 @@ const (
 	keyCOSBucket       = "cos_bucket"
 
 	keyAllowShareApply = "allow_share_apply" // 有密码分享是否开放「申请查看」
+
+	keyLoginMaxFails    = "login_max_fails"    // 0 = 不锁定
+	keyLoginLockMinutes = "login_lock_minutes" // 锁定持续分钟，到期自动解除
+	keyTOTPEnabled      = "totp_enabled"
 )
 
 func boolVal(s string) bool { return s == "1" || s == "true" }
@@ -137,7 +147,8 @@ func (a *App) Settings() SiteSettings {
 		StorageDriver:   storage.DriverLocal,
 		RustFSRegion:    "us-east-1",
 		COSRegion:       "ap-guangzhou",
-		AllowShareApply: true, // 默认开放申请查看
+		AllowShareApply:  true, // 默认开放申请查看
+		LoginLockMinutes: 30,
 	}
 	var rows []model.SystemSetting
 	if err := a.DB.Find(&rows).Error; err != nil {
@@ -205,6 +216,16 @@ func (a *App) Settings() SiteSettings {
 			s.COSBucket = strings.TrimSpace(r.Value)
 		case keyAllowShareApply:
 			s.AllowShareApply = boolVal(r.Value)
+		case keyLoginMaxFails:
+			if n, err := strconv.Atoi(strings.TrimSpace(r.Value)); err == nil && n >= 0 && n <= 20 {
+				s.LoginMaxFails = n
+			}
+		case keyLoginLockMinutes:
+			if n, err := strconv.Atoi(strings.TrimSpace(r.Value)); err == nil && n >= 1 && n <= 1440 {
+				s.LoginLockMinutes = n
+			}
+		case keyTOTPEnabled:
+			s.TOTPEnabled = boolVal(r.Value)
 		}
 	}
 
@@ -265,6 +286,9 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		COSSecretKey    string `json:"cos_secret_key"`
 		COSBucket       string `json:"cos_bucket"`
 		AllowShareApply bool `json:"allow_share_apply"`
+		LoginMaxFails    int  `json:"login_max_fails"`
+		LoginLockMinutes int  `json:"login_lock_minutes"`
+		TOTPEnabled      bool `json:"totp_enabled"`
 	}
 	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -367,6 +391,16 @@ func (a *App) UpdateSettings(c *gin.Context) {
 	if strings.TrimSpace(cosSecretKey) == "" {
 		cosSecretKey = a.Settings().COSSecretKey
 	}
+	maxFails := req.LoginMaxFails
+	if maxFails < 0 || maxFails > 20 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "set.errLoginFails")})
+		return
+	}
+	lockMinutes := req.LoginLockMinutes
+	if lockMinutes < 1 || lockMinutes > 1440 {
+		lockMinutes = 30
+	}
+
 	if driver == storage.DriverCOS {
 		if _, err := (storage.COSConfig{
 			Endpoint: cosEndpoint, Region: cosRegion, SecretID: cosSecretID,
@@ -401,7 +435,10 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		keyCOSSecretID:          cosSecretID,
 		keyCOSSecretKey:         cosSecretKey,
 		keyCOSBucket:       cosBucket,
-		keyAllowShareApply: boolStr(req.AllowShareApply),
+		keyAllowShareApply:  boolStr(req.AllowShareApply),
+		keyLoginMaxFails:    strconv.Itoa(maxFails),
+		keyLoginLockMinutes: strconv.Itoa(lockMinutes),
+		keyTOTPEnabled:      boolStr(req.TOTPEnabled),
 	}
 	// 单条批量 upsert（INSERT ... ON DUPLICATE KEY UPDATE）：
 	// 一次网络往返写完全部设置。逐条 SELECT+UPDATE 在远程 MySQL 上要 2N 次往返，保存明显变慢
