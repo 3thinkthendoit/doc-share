@@ -921,7 +921,7 @@ document.addEventListener('DOMContentLoaded', function () {
     setInterval(refreshCount, 60000);
   })();
 
-  // 列表窄屏卡片：从 thead 注入 data-label；空行/合并格跳过
+  // 列表窄屏卡片：从 thead 注入 data-label；值包进 .table-card-val 便于折行/对齐；空行/合并格跳过
   (function enhanceTableCards() {
     document.querySelectorAll('.panel > table.table').forEach(function (table) {
       if (table.closest('.api-doc, .share-access-list, .pending-apply-scroll')) return;
@@ -933,6 +933,12 @@ document.addEventListener('DOMContentLoaded', function () {
         if (tr.classList.contains('empty-row') || tr.querySelector('td[colspan]')) return;
         Array.prototype.forEach.call(tr.children, function (td, i) {
           if (ths[i]) td.setAttribute('data-label', ths[i]);
+          if (td.classList.contains('col-actions')) return;
+          if (td.children.length === 1 && td.children[0].classList.contains('table-card-val')) return;
+          var wrap = document.createElement('div');
+          wrap.className = 'table-card-val';
+          while (td.firstChild) wrap.appendChild(td.firstChild);
+          td.appendChild(wrap);
         });
       });
       table.classList.add('table-cards');

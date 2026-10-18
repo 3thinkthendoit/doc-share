@@ -829,17 +829,28 @@ mark{background:var(--mark-bg);color:var(--mark-fg,var(--text));padding:0 1px;bo
   }
   .table.table-cards tbody tr:last-child{margin-bottom:0}
   .table.table-cards tbody tr:hover{background:var(--panel)}
+  /* 两列网格：标签 | 值。值在 .table-card-val 内折行（含无空格长串），多行左对齐便于阅读。
+     不用 space-between：同一格多段内容不会被甩到中间。 */
   .table.table-cards tbody tr td{
-    display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
-    padding:8px 0;border-bottom:1px dashed var(--border);white-space:normal;text-align:right
+    display:grid;grid-template-columns:5em minmax(0,1fr);column-gap:12px;align-items:start;
+    padding:8px 0;border-bottom:1px dashed var(--border);white-space:normal;text-align:left;min-width:0
   }
   .table.table-cards tbody tr td:last-child{border-bottom:none}
   .table.table-cards tbody tr td::before{
-    content:attr(data-label);flex:none;max-width:42%;text-align:left;
-    color:var(--muted);font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:.03em;padding-top:2px
+    content:attr(data-label);grid-column:1;min-width:0;text-align:left;overflow-wrap:anywhere;
+    color:var(--muted);font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:.03em
   }
+  .table.table-cards tbody tr td > .table-card-val{
+    grid-column:2;min-width:0;overflow-wrap:anywhere;word-break:break-word;text-align:left
+  }
+  .table.table-cards tbody tr td.cell-title > .table-card-val{
+    display:flex;flex-direction:column;align-items:stretch;gap:4px
+  }
+  .table.table-cards tbody tr td.cell-title .doc-embed-tags{justify-content:flex-start;margin-top:0}
+  .table.table-cards tbody tr td.cell-title .doc-snippet{max-width:none}
   .table.table-cards tbody tr td.col-actions{
-    flex-wrap:wrap;justify-content:flex-start;gap:8px;padding-top:12px;margin-top:4px;border-top:1px solid var(--border);border-bottom:none
+    display:flex;flex-wrap:wrap;justify-content:flex-start;align-items:center;gap:8px;
+    padding-top:12px;margin-top:4px;border-top:1px solid var(--border);border-bottom:none
   }
   .table.table-cards tbody tr td.col-actions::before{display:none}
   .table.table-cards tbody tr td[colspan],

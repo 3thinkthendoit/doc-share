@@ -97,20 +97,25 @@
    ≤700px：docs 卡片模式列缺失修复
    ============================================================ */
 @media (max-width: 700px) {
-  /* style.css 在 ≤1440 隐藏第 7/9/11 列、≤1200 隐藏第 4/5 列，
-     但 .table-cards 卡片模式（ui.js 注入 data-label）需要所有列参与渲染，
-     否则卡片会丢失浏览/权限/更新人/项目/分类信息。 */
-  .docs-main .table.table-cards th:nth-child(4),
+  /* style.css 在 ≤1440 隐藏第 7/9/11 列、≤1200 隐藏第 4/5 列。
+     卡片行是 display:grid（标签 | 值）。这里必须用 grid 把列显示回来；
+     block / flex 都会打乱两列对齐。 */
   .docs-main .table.table-cards td:nth-child(4),
-  .docs-main .table.table-cards th:nth-child(5),
   .docs-main .table.table-cards td:nth-child(5),
-  .docs-main .table.table-cards th:nth-child(7),
   .docs-main .table.table-cards td:nth-child(7),
-  .docs-main .table.table-cards th:nth-child(9),
   .docs-main .table.table-cards td:nth-child(9),
-  .docs-main .table.table-cards th:nth-child(11),
   .docs-main .table.table-cards td:nth-child(11) {
-    display: block;
+    display: grid;
+  }
+  /* 桌面短列限宽 160px。卡片行是块级，这个上限会把整行收成窄带；放开宽度后由值列内折行，不向外溢出。 */
+  .docs-main .table.table-cards td.cell-clip {
+    max-width: none;
+    overflow: hidden;
+    text-overflow: clip;
+  }
+  .docs-main .table.table-cards td.cell-clip > .table-card-val {
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 }
 
