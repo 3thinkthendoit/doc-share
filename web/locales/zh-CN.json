@@ -1146,7 +1146,7 @@
   "chat.genInterrupted": "未收到完整回答（生成可能已中断或仍在后台）。可重新发送或稍后刷新。",
   "chat.edit": "编辑",
   "chat.copy": "复制",
-  "chat.thinking": "短暂思考",
+  "chat.thinking": "思考过程",
   "chat.busy": "模型正在回答，请等待完成或点击停止",
   "chat.resend": "重新发送",
   "chat.working": "正在处理",

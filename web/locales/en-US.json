@@ -1146,7 +1146,7 @@
   "chat.genInterrupted": "No complete reply yet (generation may have stopped or still be running in the background). Resend or refresh later.",
   "chat.edit": "Edit",
   "chat.copy": "Copy",
-  "chat.thinking": "Thought briefly",
+  "chat.thinking": "Reasoning",
   "chat.busy": "The model is still answering — wait or press stop",
   "chat.resend": "Resend",
   "chat.working": "Working",
