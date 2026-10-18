@@ -135,7 +135,8 @@
    ============================================================ */
 @media (max-width: 400px) {
   .topnav { gap: 4px; padding: 0 10px; }
-  .l-nav { gap: 6px; padding: 0 12px; }
+  .l-nav,
+  .l-nav.has-landing-links { gap: 6px; padding: 0 12px; }
   .l-logo { font-size: 14px; max-width: 30vw; }
   .nav-brand a { font-size: 14px; gap: 6px; }
 }

@@ -685,7 +685,7 @@
   "site.11": "Markdown 写作、思维导图、白板与 drawio 流程图；发布、权限、开放 API 一站搞定。模板、静态资源与多语言词典内嵌进单个二进制，一条命令跑在内网。",
   "site.12": "立即开始",
   "site.13": "登录控制台",
-  "site.console": "进入控制台",
+  "site.console": "控制台",
   "nav.settings": "系统设置",
   "set.title": "系统设置",
   "set.navBasic": "基础信息",

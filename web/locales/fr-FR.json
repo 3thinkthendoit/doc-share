@@ -683,7 +683,7 @@
   "site.11": "Rédaction Markdown, cartes mentales, tableaux blancs et diagrammes drawio ; publication, permissions et API ouverte au même endroit. Modèles, ressources statiques et dictionnaires sont embarqués dans un seul binaire, à lancer sur votre intranet en une commande.",
   "site.12": "Commencer",
   "site.13": "Accéder à la console",
-  "site.console": "Ouvrir la console",
+  "site.console": "Console",
   "nav.settings": "Paramètres système",
   "set.title": "Paramètres système",
   "set.navBasic": "Général",

@@ -91,7 +91,8 @@ h1,h2{letter-spacing:-.02em;font-weight:800}
 .muted{color:var(--muted)}
 
 /* nav */
-.topnav{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--nav-bg);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:0 max(56px,calc(50vw - 748px));height:72px;position:sticky;top:0;z-index:10}
+/* 内容列与 1680px 容器对齐：左右内边距 32px，故半宽为 840-32=808；窄于 1728px 时容器贴边，56px = 24px 外边距 + 32px 内边距 */
+.topnav{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--nav-bg);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:0 max(56px,calc(50vw - 808px));height:72px;position:sticky;top:0;z-index:10}
 /* 窄屏汉堡：桌面隐藏 */
 .nav-toggle{display:none;align-items:center;justify-content:center;flex-direction:column;gap:5px;width:36px;height:36px;padding:0;border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;cursor:pointer;flex:none;color:var(--text)}
 .nav-toggle:hover{border-color:var(--border-strong);background:var(--panel)}
@@ -111,7 +112,7 @@ h1,h2{letter-spacing:-.02em;font-weight:800}
 .nav-drawer-links{display:flex;flex-direction:column;padding:10px 12px 20px;gap:2px;overflow:auto}
 .nav-drawer-links a{display:block;padding:11px 14px;border-radius:8px;color:var(--text);font-size:14.5px;font-weight:500;text-decoration:none}
 .nav-drawer-links a:hover{background:var(--bg-soft);text-decoration:none}
-.nav-drawer-links a.active{color:var(--primary-dark);background:var(--primary-soft)}
+.nav-drawer-links a.active{color:var(--l-nav-on, var(--primary-dark));background:var(--l-nav-on-bg, var(--primary-soft))}
 body.nav-drawer-open{overflow:hidden}
 /* 品牌 logo 与首页 .l-logo 同款：渐变方块 D + 文字（或自定义 Logo 图） */
 .nav-brand a{display:inline-flex;align-items:center;gap:9px;font-weight:700;font-size:16px;letter-spacing:-.4px;color:var(--text)}
@@ -122,8 +123,8 @@ body.nav-drawer-open{overflow:hidden}
 .nav-links a{color:var(--muted);font-weight:600;font-size:14px;padding:8px 14px;border-radius:8px;transition:all .15s}
 .nav-links a:hover{color:var(--text);background:var(--bg-soft);text-decoration:none}
 /* 当前页菜单项高亮：与官网 scroll-spy、窄屏抽屉同款背景焦点；类由 ui.js 按 pathname 打（置于 :hover 后保证悬停不被覆盖） */
-.nav-links a.active{color:var(--primary-dark);background:var(--primary-soft);text-decoration:none}
-.nav-links .drop-btn.active{color:var(--primary-dark);background:var(--primary-soft)}
+.nav-links a.active{color:var(--l-nav-on, var(--primary-dark));background:var(--l-nav-on-bg, var(--primary-soft));text-decoration:none}
+.nav-links .drop-btn.active{color:var(--l-nav-on, var(--primary-dark));background:var(--l-nav-on-bg, var(--primary-soft))}
 /* 后台导航右侧工具组：主题 / GitHub / 语言切换，同为 ghost 风格 36px 等高 */
 .nav-right-tools{display:flex;align-items:center;gap:8px}
 .theme-toggle,.nav-gh,.msg-bell{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;padding:0;color:var(--muted);border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;transition:all .15s;cursor:pointer;font:inherit}
@@ -203,6 +204,25 @@ html[data-theme="light"] .theme-toggle .i-moon{display:none}
 .docs-side-label{padding:4px 14px 10px;font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--faint)}
 .docs-side a{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .docs-main{flex:1;min-width:0}
+/* 页头以下小一号：继承字 15→14，已写死的字号各减 1px；不波及 .page-head */
+.docs-layout{font-size:14px}
+.docs-layout .docs-side-label{font-size:10.5px}
+.docs-layout .doc-side a{font-size:12.5px}
+.docs-layout .table th{font-size:11px}
+.docs-layout .btn{font-size:13px}
+.docs-layout .btn-sm{font-size:12px}
+.docs-layout .search-bar input,
+.docs-layout .filter-bar select,
+.docs-layout .filter-bar .xsel-btn{font-size:13px}
+.docs-layout .xsel-opt{font-size:12px}
+.docs-layout .tag{font-size:11px}
+.docs-layout .mono{font-size:11px}
+.docs-layout .doc-snippet{font-size:11px}
+.docs-layout .ops-item{font-size:12px}
+.docs-layout .pager .muted{font-size:12px}
+.docs-layout .pager .pager-size,
+.docs-layout .pager .xsel-btn{font-size:11.5px}
+.docs-wrap .trash-tip{font-size:12px}
 /* 桌面用侧栏选项目：隐藏查询栏的项目下拉（含 skinSelect 外层 .xsel 容器，而非原生 select） */
 .filter-bar .xsel:has(> select.docs-project-mobile){display:none}
 /* 13 寸等窄屏（≤1440 CSS px）：隐藏左侧项目栏让表格占满宽度；项目筛选改用查询栏下拉 */
@@ -282,12 +302,11 @@ body:has(.admin-foot) main.container{flex:1 0 auto;width:100%}
 .btn-link{background:none;border:none;color:var(--primary);cursor:pointer;font-size:13px;padding:0}
 .btn-link:hover{color:var(--primary-dark)}
 
-/* container */
-.container{max-width:min(1560px, calc(100vw - 48px));margin:32px auto;padding:0 32px}
+/* container：与 .topnav 同一内容列（1680px，左右内边距 32px） */
+.container{max-width:min(1680px, calc(100vw - 48px));margin:32px auto;padding:0 32px}
 .container.wide{max-width:min(1680px, calc(100vw - 48px))}
-/* 文档列表 / API 文档：与后台其它页同档流体宽度（略宽于默认亦可） */
 .container.docs-wrap{max-width:min(1680px, calc(100vw - 48px))}
-.container.doc-wrap{max-width:min(1560px, calc(100vw - 48px))}
+.container.doc-wrap{max-width:min(1680px, calc(100vw - 48px))}
 .page-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
 /* 页头左侧：标题 + 项目/分类下拉同排 */
 .head-title{display:flex;align-items:center;gap:18px}

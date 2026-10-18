@@ -97,7 +97,7 @@
         {{range .Langs}}<option value="{{.Code}}" {{if eq .Code $.Lang}}selected{{end}}>{{.Name}}</option>{{end}}
       </select>
     </form>
-    {{if .user}}<a class="l-btn l-btn-primary" href="/console">{{$.T "进入控制台"}}</a>
+    {{if .user}}<a class="l-btn l-btn-primary" href="/console">{{$.T "site.console"}}</a>
     {{else}}<a class="l-btn l-btn-primary" href="/login">{{$.T "登录"}}</a>{{end}}
   </div>
 </nav>

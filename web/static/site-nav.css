@@ -11,6 +11,9 @@
   --l-text: #e8eefb;
   --l-head: #ffffff;
   --l-muted: #9fb0cc;
+  /* 与控制台 .nav-links .active 相同：--primary-dark / --primary-soft */
+  --l-nav-on: #a7ffcf;
+  --l-nav-on-bg: rgba(61, 250, 160, .14);
   --l-panel: #0e1a2e;
   --l-hairline: rgba(255, 255, 255, .04);
   --l-nav-bg: rgba(7, 13, 26, .86);
@@ -31,6 +34,9 @@ html[data-theme="light"] {
   --l-text: #0d1b2e;
   --l-head: #081422;
   --l-muted: #4a5b74;
+  /* 与控制台 .nav-links .active 相同：--primary-dark / --primary-soft */
+  --l-nav-on: #076b4a;
+  --l-nav-on-bg: rgba(10, 138, 95, .1);
   --l-panel: #ffffff;
   --l-hairline: rgba(13, 27, 46, .05);
   --l-nav-bg: rgba(246, 248, 252, .86);
@@ -42,7 +48,7 @@ html[data-theme="light"] {
 .l-nav {
   position: fixed; top: 0; left: 0; right: 0; z-index: 50;
   height: 66px; display: flex; align-items: center; gap: 28px;
-  /* 内容装进与 .l-wrap 同宽的居中栏（1180px + 26px 内边距），logo/CTA 不贴视口边；窄屏回退 26px */
+  /* 登录 / 分享 / 预览：与 .l-wrap（1180px + 26px 内边距）对齐；窄屏回退 26px */
   padding: 0 max(26px, calc(50vw - 564px));
   background: var(--l-nav-bg);
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
@@ -50,6 +56,8 @@ html[data-theme="light"] {
   transition: background .2s;
 }
 .l-nav.l-nav--scrolled { background: var(--l-nav-bg-2); }
+/* 仅首页：与控制台 .topnav 同一内容列（1680px 容器、左右 32px） */
+.l-nav.has-landing-links { padding: 0 max(56px, calc(50vw - 808px)); }
 .l-logo {
   display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 16px;
   letter-spacing: -.4px; color: var(--l-head); text-decoration: none;
@@ -63,13 +71,17 @@ a.l-logo, a.l-logo:hover { color: var(--l-head); text-decoration: none; }
 /* 链接整体右对齐（Orbit 式：logo 左、链接推右紧贴 CTA），而非紧跟 logo 左排 */
 .l-nav-links { display: flex; gap: 6px; flex: 1; justify-content: flex-end; }
 .l-nav-links[hidden] { display: none !important; }
-.l-nav-links a {
+/* .l-site a { color: inherit } 与本规则同优先级且在 landing.css 之后，不加重选择器时首页链接会变成正文色 #0d1b2e，而不是控制台的 --muted */
+.l-nav-links a,
+.l-site .l-nav-links a {
   font-size: 14px; font-weight: 600; color: var(--l-muted); padding: 8px 14px; border-radius: 8px;
   transition: color .15s, background .15s; text-decoration: none;
 }
-.l-nav-links a:hover { color: var(--l-text); background: var(--l-hairline); }
-/* scroll-spy 命中当前区块的菜单项高亮（Orbit 同款）；仅顶部链接，不波及下拉子项 */
-.l-nav-links > a.active { color: var(--l-accent); background: var(--l-accent-soft); }
+.l-nav-links a:hover,
+.l-site .l-nav-links a:hover { color: var(--l-text); background: var(--l-hairline); }
+/* scroll-spy 命中当前区块的菜单项高亮；字色与控制台当前页一致 */
+.l-nav-links > a.active,
+.l-site .l-nav-links > a.active { color: var(--l-nav-on); background: var(--l-nav-on-bg); }
 .l-nav-toggle {
   display: none; align-items: center; justify-content: center; flex-direction: column; gap: 5px;
   width: 38px; height: 38px; padding: 0; border: 1px solid transparent; border-radius: 6px;
@@ -155,11 +167,14 @@ a.l-btn-primary, a.l-btn-primary:hover { color: var(--l-btn-fg); }
   box-shadow: 0 14px 36px rgba(7, 13, 26, .16); z-index: 80;
 }
 .drop.open .drop-menu { display: flex; animation: drop-in .16s ease; }
-.drop-menu a {
+/* 同上：.l-site a { color: inherit } 会盖掉单类选择器 */
+.drop-menu a,
+.l-site .drop-menu a {
   padding: 9px 12px; border-radius: 8px; font-size: 13.5px; font-weight: 500;
   color: var(--l-muted); text-decoration: none; transition: background .12s, color .12s;
 }
-.drop-menu a:hover { background: var(--l-hairline); color: var(--l-text); }
+.drop-menu a:hover,
+.l-site .drop-menu a:hover { background: var(--l-hairline); color: var(--l-text); }
 @keyframes drop-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 
 .l-btn.l-theme {
@@ -191,7 +206,8 @@ html[data-theme-anim] .l-nav { transition: background-color .25s, color .25s, bo
 @media (max-width: 980px) {
   .l-nav.has-landing-links .l-nav-links { display: none; }
   .l-nav.has-landing-links .l-nav-toggle { display: inline-flex; }
-  .l-nav { height: 66px; min-height: 66px; flex-wrap: nowrap; padding: 0 16px; gap: 10px; }
+  .l-nav,
+  .l-nav.has-landing-links { height: 66px; min-height: 66px; flex-wrap: nowrap; padding: 0 16px; gap: 10px; }
   .l-nav-right { margin-left: auto; flex-wrap: nowrap; gap: 8px; }
   .l-logo { font-size: 15px; max-width: 36vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }

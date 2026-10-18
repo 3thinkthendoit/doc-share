@@ -683,7 +683,7 @@
   "site.11": "Markdown 寫作、心智圖、畫板與 drawio 流程圖；發布、權限、開放 API 一站搞定。範本、靜態資源與多語言詞典內嵌於單一執行檔，一行指令即可跑在內網。",
   "site.12": "立即開始",
   "site.13": "登入控制台",
-  "site.console": "進入控制台",
+  "site.console": "控制台",
   "nav.settings": "系統設定",
   "set.title": "系統設定",
   "set.navBasic": "基礎資訊",
