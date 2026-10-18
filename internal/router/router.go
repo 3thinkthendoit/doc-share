@@ -62,7 +62,12 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.POST("/api/settings/test-mail", middleware.RequireAdmin(), app.TestMail)
 		admin.POST("/api/settings/test-rustfs", middleware.RequireAdmin(), app.TestRustFS)
 		admin.POST("/api/settings/test-cos", middleware.RequireAdmin(), app.TestCOS)
-		admin.POST("/api/settings/test-llm", middleware.RequireAdmin(), app.TestLLM)
+		admin.GET("/api/llm-configs", middleware.RequireAdmin(), app.ListLLMConfigs)
+		admin.POST("/api/llm-configs", middleware.RequireAdmin(), app.CreateLLMConfig)
+		admin.POST("/api/llm-configs/test", middleware.RequireAdmin(), app.TestLLMConfig)
+		admin.PUT("/api/llm-configs/:id", middleware.RequireAdmin(), app.UpdateLLMConfig)
+		admin.DELETE("/api/llm-configs/:id", middleware.RequireAdmin(), app.DeleteLLMConfig)
+		admin.POST("/api/llm-configs/:id/default", middleware.RequireAdmin(), app.SetDefaultLLMConfig)
 
 		// 在线体验：AI 对话（登录用户，会话归属个人）
 		admin.GET("/chat", app.ChatPage)

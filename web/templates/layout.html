@@ -116,7 +116,7 @@
 
 {{define "adminfoot"}}
 <footer class="admin-foot">
-  <span>© {{now.Format "2006"}} {{.SiteName}}</span>
+  <span>© {{now.Format "2006"}} <span class="site-name">{{.SiteName}}</span></span>
   <span>Powered by <a href="https://github.com/3thinkthendoit/doc-share" target="_blank" rel="noopener">DocShare</a></span>
 </footer>
 {{end}}
@@ -128,7 +128,7 @@
     <span class="nav-toggle-bar" aria-hidden="true"></span>
     <span class="nav-toggle-bar" aria-hidden="true"></span>
   </button>
-  <div class="nav-brand"><a href="/" title="{{$.T "nav.home"}}">{{if .SiteLogo}}<img class="nav-logo" src="{{.SiteLogo}}" alt="">{{else}}<img class="nav-logo" src="/static/logo-mark.svg" alt="">{{end}}{{.SiteName}}</a></div>
+  <div class="nav-brand"><a href="/" title="{{$.T "nav.home"}}">{{if .SiteLogo}}<img class="nav-logo" src="{{.SiteLogo}}" alt="">{{else}}<img class="nav-logo" src="/static/logo-mark.svg" alt="">{{end}}<span class="site-name">{{.SiteName}}</span></a></div>
   <div class="nav-links" id="navLinks">
     <a href="/console">{{$.T "nav.dashboard"}}</a>
     <a href="/console/docs">{{$.T "nav.docs"}}</a>
@@ -191,7 +191,7 @@
 <div class="nav-drawer-overlay" id="navDrawer" hidden>
   <div class="nav-drawer" role="dialog" aria-modal="true" aria-label="{{$.T "nav.menu"}}">
     <div class="nav-drawer-head">
-      <span class="nav-drawer-title">{{.SiteName}}</span>
+      <span class="nav-drawer-title site-name">{{.SiteName}}</span>
       <button type="button" class="nav-drawer-close" data-close-nav aria-label="{{$.T "common.close"}}">✕</button>
     </div>
     <div class="nav-drawer-links" id="navDrawerLinks"></div>

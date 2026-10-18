@@ -132,8 +132,8 @@ func TestSourceJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(b.SourceJSON(Default)), &def); err != nil {
 		t.Fatalf("默认语言映射非法 JSON：%v", err)
 	}
-	if def["proj.roleView"] == "" {
-		t.Errorf("默认语言映射应包含 key→原文")
+	if def["proj.roleView"] == "" || def["set.llmEdit"] != "编辑 LLM" {
+		t.Errorf("默认语言映射应包含 key→原文，got set.llmEdit=%q", def["set.llmEdit"])
 	}
 
 	var m map[string]string
@@ -144,8 +144,8 @@ func TestSourceJSON(t *testing.T) {
 		t.Fatalf("en-US 映射为空")
 	}
 	// key 写法与中文原文写法都必须能查到
-	if m["proj.roleView"] == "" {
-		t.Errorf("en-US 映射应包含 key→译文")
+	if m["proj.roleView"] == "" || m["set.llmEdit"] == "" || m["set.llmEdit"] == "set.llmEdit" {
+		t.Errorf("en-US 映射应包含 key→译文，got set.llmEdit=%q", m["set.llmEdit"])
 	}
 	// encoding/json 会将 < > & 转义，避免注入的译文提前闭合 <script>
 	got := b.SourceJSON("en-US")

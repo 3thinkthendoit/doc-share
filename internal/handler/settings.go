@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"doc-share/internal/llm"
 	"doc-share/internal/model"
 	"doc-share/internal/storage"
 	"doc-share/internal/util"
@@ -80,9 +79,6 @@ type SiteSettings struct {
 
 	// 有密码分享是否开放「申请查看」（站点级，默认开）
 	AllowShareApply bool
-
-	// LLM 在线体验（OpenAI 兼容接口）
-	LLM llm.Config
 }
 
 // 常用默认值
@@ -112,11 +108,6 @@ const (
 	keyCOSBucket       = "cos_bucket"
 
 	keyAllowShareApply = "allow_share_apply" // 有密码分享是否开放「申请查看」
-
-	keyLLMBaseURL = "llm_base_url"    // OpenAI 兼容接口地址
-	keyLLMAPIKey  = "llm_api_key"     // API Key
-	keyLLMModel   = "llm_model"       // 模型名
-	keyLLMTemp    = "llm_temperature" // 采样温度（0 = 用上游默认）
 )
 
 func boolVal(s string) bool { return s == "1" || s == "true" }
@@ -214,19 +205,6 @@ func (a *App) Settings() SiteSettings {
 			s.COSBucket = strings.TrimSpace(r.Value)
 		case keyAllowShareApply:
 			s.AllowShareApply = boolVal(r.Value)
-		case keyLLMBaseURL:
-			s.LLM.BaseURL = strings.TrimSpace(r.Value)
-		case keyLLMAPIKey:
-			s.LLM.APIKey = strings.TrimSpace(r.Value)
-		case keyLLMModel:
-			s.LLM.Model = strings.TrimSpace(r.Value)
-		case keyLLMTemp:
-			// 空值 = 未设置（不传字段，用上游默认）；填了数字（含 0）= 显式下发
-			if v := strings.TrimSpace(r.Value); v == "" {
-				s.LLM.Temperature = nil
-			} else if t, err := strconv.ParseFloat(v, 64); err == nil && t >= 0 && t <= 2 {
-				s.LLM.Temperature = &t
-			}
 		}
 	}
 
@@ -247,9 +225,12 @@ func (s SiteSettings) MailConfig() util.MailConfig {
 // SettingsPage 系统设置页（仅 admin）
 func (a *App) SettingsPage(c *gin.Context) {
 	s := a.Settings()
+	var llms []model.LLMConfig
+	_ = a.DB.Order("is_default DESC, id ASC").Find(&llms).Error
 	a.render(c, "settings.html", gin.H{
 		"title": a.tr(c, "set.title"),
 		"set":   s,
+		"llms":  llms,
 	})
 }
 
@@ -283,12 +264,7 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		COSSecretID     string `json:"cos_secret_id"`
 		COSSecretKey    string `json:"cos_secret_key"`
 		COSBucket       string `json:"cos_bucket"`
-		AllowShareApply bool   `json:"allow_share_apply"`
-		// LLM
-		LLMBaseURL string `json:"llm_base_url"`
-		LLMAPIKey  string `json:"llm_api_key"`
-		LLMModel   string `json:"llm_model"`
-		LLMTemp    string `json:"llm_temperature"`
+		AllowShareApply bool `json:"allow_share_apply"`
 	}
 	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -424,12 +400,8 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		keyCOSRegion:            cosRegion,
 		keyCOSSecretID:          cosSecretID,
 		keyCOSSecretKey:         cosSecretKey,
-		keyCOSBucket:            cosBucket,
-		keyAllowShareApply:      boolStr(req.AllowShareApply),
-		keyLLMBaseURL:           strings.TrimSpace(req.LLMBaseURL),
-		keyLLMAPIKey:            strings.TrimSpace(req.LLMAPIKey),
-		keyLLMModel:             strings.TrimSpace(req.LLMModel),
-		keyLLMTemp:              strings.TrimSpace(req.LLMTemp),
+		keyCOSBucket:       cosBucket,
+		keyAllowShareApply: boolStr(req.AllowShareApply),
 	}
 	// 单条批量 upsert（INSERT ... ON DUPLICATE KEY UPDATE）：
 	// 一次网络往返写完全部设置。逐条 SELECT+UPDATE 在远程 MySQL 上要 2N 次往返，保存明显变慢
@@ -546,42 +518,6 @@ func (a *App) TestCOS(c *gin.Context) {
 	}
 	ctx := c.Request.Context()
 	if err := backend.Ping(ctx); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
-}
-
-// TestLLM 测试 LLM 连通性（可用表单当前值或已保存配置；API Key 留空沿用已保存值）
-func (a *App) TestLLM(c *gin.Context) {
-	var req struct {
-		LLMBaseURL string `json:"llm_base_url"`
-		LLMAPIKey  string `json:"llm_api_key"`
-		LLMModel   string `json:"llm_model"`
-		LLMTemp    string `json:"llm_temperature"`
-	}
-	if err := c.ShouldBind(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
-		return
-	}
-	saved := a.Settings().LLM
-	temp := saved.Temperature
-	if v := strings.TrimSpace(req.LLMTemp); v != "" {
-		if t, err := strconv.ParseFloat(v, 64); err == nil && t >= 0 && t <= 2 {
-			temp = &t
-		}
-	}
-	cfg := llm.Config{
-		BaseURL:     firstNonEmpty(req.LLMBaseURL, saved.BaseURL),
-		APIKey:      firstNonEmpty(req.LLMAPIKey, saved.APIKey),
-		Model:       firstNonEmpty(req.LLMModel, saved.Model),
-		Temperature: temp,
-	}
-	if !cfg.Valid() {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "请先填写接口地址与模型名"})
-		return
-	}
-	if err := cfg.Ping(c.Request.Context()); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

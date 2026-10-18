@@ -708,7 +708,7 @@ func (a *App) ChatCompletions(c *gin.Context) {
 		plain = content
 	}
 
-	cfg := a.Settings().LLM
+	cfg := a.DefaultLLM()
 	if !cfg.Valid() {
 		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "chat.llmNotConfigured")})
 		return

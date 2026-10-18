@@ -21,7 +21,7 @@
   <div class="docs-main">
   <div class="panel">
     <div class="panel-head"><h2>{{$.T "set.title"}}</h2></div>
-    <form id="settingsForm" class="share-body" novalidate style="padding:22px 22px 22px;max-width:960px">
+    <form id="settingsForm" class="share-body" novalidate style="padding:22px;width:100%;max-width:none;box-sizing:border-box">
       <section id="sec-basic" class="set-sec">
       <label>{{$.T "set.siteName"}}
         <input type="text" name="site_name" required maxlength="64" value="{{.set.SiteName}}" placeholder="DocShare">
@@ -158,28 +158,58 @@
       </section>
 
       <section id="sec-llm" class="set-sec">
-      <div class="settings-section">{{$.T "set.llmTitle"}}</div>
-      <p class="muted" style="font-size:12.5px;margin:4px 0 10px">{{$.T "set.llmTip"}}</p>
-      <label>{{$.T "set.llmBaseURL"}}
-        <input type="text" name="llm_base_url" value="{{.set.LLM.BaseURL}}" placeholder="https://api.deepseek.com" autocomplete="off">
-      </label>
-      <div class="smtp-grid">
-        <label>{{$.T "set.llmAPIKey"}}
-          <input type="password" name="llm_api_key" value="{{.set.LLM.APIKey}}" autocomplete="new-password" placeholder="sk-...">
-        </label>
-        <label>{{$.T "set.llmModel"}}
-          <input type="text" name="llm_model" value="{{.set.LLM.Model}}" placeholder="deepseek-chat" autocomplete="off">
-        </label>
+      <div class="llm-toolbar">
+        <p class="muted">{{$.T "set.llmTip"}}</p>
+        <button type="button" class="btn btn-sm btn-primary" id="llmAddBtn">{{$.T "set.llmAdd"}}</button>
       </div>
-      <label style="max-width:280px">{{$.T "set.llmTemp"}}
-        <input type="number" name="llm_temperature" {{with .set.LLM.Temperature}}value="{{.}}"{{end}} min="0" max="2" step="0.1" placeholder="留空 = 上游默认">
-      </label>
-      <div style="display:flex;align-items:center;gap:12px;margin:14px 0 6px">
-        <button type="button" class="btn btn-sm" id="testLLMBtn">{{$.T "set.testLLM"}}</button>
-      </div>
+      <table class="table llm-table" id="llmTable">
+        <colgroup>
+          <col style="width:16%">
+          <col style="width:24%">
+          <col style="width:34%">
+          <col style="width:10%">
+          <col style="width:16%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>{{$.T "set.llmName"}}</th>
+            <th>{{$.T "set.llmModel"}}</th>
+            <th>{{$.T "set.llmBaseURL"}}</th>
+            <th>{{$.T "set.llmDefault"}}</th>
+            <th>{{$.T "操作"}}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .llms}}
+          <tr data-id="{{.ID}}"
+              data-name="{{.Name}}"
+              data-base-url="{{.BaseURL}}"
+              data-model="{{.Model}}"
+              data-temperature="{{.Temperature}}"
+              data-default="{{if .IsDefault}}1{{else}}0{{end}}">
+            <td>{{.Name}}</td>
+            <td><code>{{.Model}}</code></td>
+            <td class="llm-url" title="{{.BaseURL}}">{{.BaseURL}}</td>
+            <td>{{if .IsDefault}}<span class="badge badge-on">{{$.T "set.llmDefault"}}</span>{{else}}—{{end}}</td>
+            <td class="col-actions">
+              <div class="llm-menu">
+                <button type="button" class="btn btn-sm llm-menu-btn" aria-haspopup="menu" aria-expanded="false">{{$.T "操作"}}</button>
+                <div class="llm-menu-pop" role="menu" hidden>
+                  <button type="button" role="menuitem" data-act="edit">{{$.T "编辑"}}</button>
+                  {{if not .IsDefault}}<button type="button" role="menuitem" data-act="default">{{$.T "set.llmSetDefault"}}</button>{{end}}
+                  {{if gt (len $.llms) 1}}<button type="button" role="menuitem" class="danger" data-act="del">{{$.T "删除"}}</button>{{end}}
+                </div>
+              </div>
+            </td>
+          </tr>
+          {{else}}
+          <tr class="empty-row"><td colspan="5">{{$.T "set.llmEmpty"}}</td></tr>
+          {{end}}
+        </tbody>
+      </table>
       </section>
 
-      <div class="modal-foot" style="border-top:none;background:none;padding:18px 0 0">
+      <div class="modal-foot" id="settingsSaveFoot" style="border-top:none;background:none;padding:18px 0 0">
         <button type="submit" class="btn btn-primary">{{$.T "common.save"}}</button>
       </div>
     </form>
@@ -187,6 +217,44 @@
   </div>
   </div>
 </main>
+
+<div class="modal-overlay" id="llmModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="llmModalTitle">
+    <div class="modal-head">
+      <h2 id="llmModalTitle">{{$.T "set.llmAdd"}}</h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+    </div>
+    <form id="llmForm" novalidate>
+      <input type="hidden" name="id" value="">
+      <div class="modal-body share-body">
+        <div class="smtp-grid">
+          <label>{{$.T "set.llmName"}}
+            <input type="text" name="name" required maxlength="64" placeholder="DeepSeek / Ollama" autocomplete="off">
+          </label>
+          <label>{{$.T "set.llmModel"}}
+            <input type="text" name="model" required maxlength="128" placeholder="deepseek-chat" autocomplete="off">
+          </label>
+        </div>
+        <label>{{$.T "set.llmBaseURL"}}
+          <input type="text" name="base_url" required maxlength="300" placeholder="https://api.deepseek.com" autocomplete="off">
+        </label>
+        <label>{{$.T "set.llmAPIKey"}}
+          <input type="password" name="api_key" maxlength="500" autocomplete="new-password" placeholder="sk-...">
+          <span class="muted" style="font-size:12px" id="llmKeyTip" hidden>{{$.T "set.llmAPIKeyKeep"}}</span>
+        </label>
+        <label style="max-width:280px">{{$.T "set.llmTemp"}}
+          <input type="number" name="temperature" min="0" max="2" step="0.1" placeholder="{{$.T "set.llmTempPlaceholder"}}">
+        </label>
+        <label class="check" id="llmDefaultCheckWrap"><input type="checkbox" name="is_default"> {{$.T "set.llmSetDefault"}}</label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" id="llmTestBtn">{{$.T "set.testLLM"}}</button>
+        <button type="button" class="btn" data-close-modal>{{$.T "取消"}}</button>
+        <button type="submit" class="btn btn-primary">{{$.T "保存"}}</button>
+      </div>
+    </form>
+  </div>
+</div>
 <style>
 /* 设置表单较窄，居中展示与其他页面容器对齐 */
 .panel-form{max-width:720px;margin:0 auto 24px}
@@ -205,15 +273,40 @@
 .set-sec[hidden]{display:none!important}
 /* 桌面端（≥961px）：隐藏手风琴头部，保留原 showSec() Tab 切换逻辑；
    移动端（≤960px）由 mobile.css 接管，.set-sec 全部展开为折叠面板 */
+.llm-toolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:0 0 12px}
+.llm-toolbar p{margin:0;font-size:12.5px;line-height:1.5;flex:1;min-width:0}
+.llm-table{min-width:0;table-layout:fixed}
+.llm-table th,.llm-table td{white-space:normal;overflow:hidden;text-overflow:ellipsis}
+.llm-table .llm-url{color:var(--muted);font-size:12.5px}
+.llm-table .col-actions{white-space:nowrap;overflow:visible}
+.llm-menu{display:inline-block}
+.llm-menu-pop{position:fixed;z-index:80;min-width:140px;padding:4px;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-dropdown)}
+.llm-menu-pop[hidden]{display:none}
+.llm-menu-pop button{display:block;width:100%;text-align:left;padding:8px 10px;border:none;background:none;border-radius:8px;font:inherit;font-size:13px;color:var(--text);cursor:pointer}
+.llm-menu-pop button:hover{background:var(--bg-soft)}
+.llm-menu-pop button.danger{color:var(--danger)}
+.llm-menu-pop button.danger:hover{background:var(--danger-soft)}
 @media (min-width:961px){
   .set-sec-head{display:none}
   .set-sec-body{padding:0}
+  /* 桌面端 LLM 列表自有保存；窄屏各分组同时展开，保存按钮必须留下 */
+  #sec-llm.active ~ #settingsSaveFoot{display:none}
 }
 </style>
 <script>
 (function () {
   var form = document.getElementById('settingsForm');
   if (!form) return;
+
+  function applySiteChrome(name, logo) {
+    document.querySelectorAll('.site-name').forEach(function (el) { el.textContent = name; });
+    var src = logo || '/static/logo-mark.svg';
+    document.querySelectorAll('.nav-logo').forEach(function (img) { img.src = src; });
+    var sep = ' · ';
+    var title = document.title || '';
+    var at = title.lastIndexOf(sep);
+    document.title = at >= 0 ? title.slice(0, at + sep.length) + name : name;
+  }
   var logoInput = document.getElementById('logoInput');
   var logoPreview = document.getElementById('logoPreview');
   var logoFile = document.getElementById('logoFile');
@@ -363,32 +456,232 @@
     }
   });
 
-  document.getElementById('testLLMBtn').addEventListener('click', async function () {
-    var btn = this;
-    btn.disabled = true;
-    try {
-      var res = await fetch('/console/api/settings/test-llm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-        body: JSON.stringify({
-          llm_base_url: form.llm_base_url.value.trim(),
-          llm_api_key: form.llm_api_key.value,
-          llm_model: form.llm_model.value.trim()
-        })
+  /* ---- LLM 列表 CRUD ---- */
+  (function llmList() {
+    var modal = document.getElementById('llmModal');
+    var llmForm = document.getElementById('llmForm');
+    var table = document.getElementById('llmTable');
+    var tbody = table && table.querySelector('tbody');
+    var titleEl = document.getElementById('llmModalTitle');
+    var keyTip = document.getElementById('llmKeyTip');
+    var defWrap = document.getElementById('llmDefaultCheckWrap');
+    if (!modal || !llmForm || !tbody) return;
+    // form.id / form.name 会被 HTMLFormElement 内建属性遮蔽，必须走 elements
+    function lf() { return llmForm.elements; }
+    UI.bindModal(modal);
+
+    function esc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function attr(s) {
+      return esc(s).replace(/\n/g, ' ');
+    }
+
+    function renderRows(rows) {
+      if (!rows || !rows.length) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="5">' + esc(UI.t('set.llmEmpty')) + '</td></tr>';
+        return;
+      }
+      var canDel = rows.length > 1;
+      tbody.innerHTML = rows.map(function (r) {
+        var def = !!r.is_default;
+        var acts = '<div class="llm-menu">'
+          + '<button type="button" class="btn btn-sm llm-menu-btn" aria-haspopup="menu" aria-expanded="false">' + esc(UI.t('操作')) + '</button>'
+          + '<div class="llm-menu-pop" role="menu" hidden>'
+          + '<button type="button" role="menuitem" data-act="edit">' + esc(UI.t('编辑')) + '</button>';
+        if (!def) acts += '<button type="button" role="menuitem" data-act="default">' + esc(UI.t('set.llmSetDefault')) + '</button>';
+        if (canDel) acts += '<button type="button" role="menuitem" class="danger" data-act="del">' + esc(UI.t('删除')) + '</button>';
+        acts += '</div></div>';
+        return '<tr data-id="' + r.id + '"'
+          + ' data-name="' + attr(r.name) + '"'
+          + ' data-base-url="' + attr(r.base_url) + '"'
+          + ' data-model="' + attr(r.model) + '"'
+          + ' data-temperature="' + attr(r.temperature || '') + '"'
+          + ' data-default="' + (def ? '1' : '0') + '">'
+          + '<td>' + esc(r.name) + '</td>'
+          + '<td><code>' + esc(r.model) + '</code></td>'
+          + '<td class="llm-url" title="' + attr(r.base_url) + '">' + esc(r.base_url) + '</td>'
+          + '<td>' + (def ? '<span class="badge badge-on">' + esc(UI.t('set.llmDefault')) + '</span>' : '—') + '</td>'
+          + '<td class="col-actions">' + acts + '</td>'
+          + '</tr>';
+      }).join('');
+    }
+
+    async function refreshList() {
+      var res = await fetch('/console/api/llm-configs', {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
       });
       var data = await res.json();
-      if (!res.ok) { UI.alert((data && data.error) || UI.t('set.testLLMFail')); return; }
-      UI.toast(UI.t('set.testLLMOk'), 'success');
-    } catch (e) {
-      UI.alert(UI.t('set.testLLMFail'));
-    } finally {
-      btn.disabled = false;
+      if (!res.ok) throw new Error((data && data.error) || 'load fail');
+      renderRows(data.data || []);
+      showSec('sec-llm');
+      if (history.replaceState) history.replaceState(null, '', '#sec-llm');
     }
-  });
+
+    function openModal(row) {
+      llmForm.reset();
+      var f = lf();
+      f.id.value = row ? row.id : '';
+      f.name.value = row ? row.name : '';
+      f.base_url.value = row ? row.base_url : '';
+      f.api_key.value = '';
+      f.model.value = row ? row.model : '';
+      f.temperature.value = row && row.temperature ? row.temperature : '';
+      f.is_default.checked = row ? !!row.is_default : false;
+      titleEl.textContent = row ? UI.t('set.llmEdit') : UI.t('set.llmAdd');
+      keyTip.hidden = !row;
+      // 已是默认：隐藏「设为默认」勾选（保持默认不变）
+      if (defWrap) defWrap.hidden = !!(row && row.is_default);
+      UI.openModal(modal);
+    }
+
+    function rowData(tr) {
+      return {
+        id: parseInt(tr.getAttribute('data-id'), 10),
+        name: tr.getAttribute('data-name') || '',
+        base_url: tr.getAttribute('data-base-url') || '',
+        model: tr.getAttribute('data-model') || '',
+        temperature: tr.getAttribute('data-temperature') || '',
+        is_default: tr.getAttribute('data-default') === '1'
+      };
+    }
+
+    document.getElementById('llmAddBtn').addEventListener('click', function () { openModal(null); });
+
+    function closeMenus() {
+      table.querySelectorAll('.llm-menu-pop').forEach(function (pop) {
+        pop.hidden = true;
+        var b = pop.parentNode.querySelector('.llm-menu-btn');
+        if (b) b.setAttribute('aria-expanded', 'false');
+      });
+    }
+    function openMenu(menu) {
+      closeMenus();
+      var btn = menu.querySelector('.llm-menu-btn');
+      var pop = menu.querySelector('.llm-menu-pop');
+      pop.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+      var r = btn.getBoundingClientRect();
+      var w = pop.offsetWidth || 140;
+      pop.style.top = (r.bottom + 4) + 'px';
+      pop.style.left = Math.max(8, r.right - w) + 'px';
+    }
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('.llm-menu')) closeMenus();
+    });
+    window.addEventListener('scroll', closeMenus, true);
+    window.addEventListener('resize', closeMenus);
+
+    table.addEventListener('click', async function (e) {
+      var toggle = e.target.closest('.llm-menu-btn');
+      if (toggle) {
+        var menu = toggle.closest('.llm-menu');
+        var pop = menu.querySelector('.llm-menu-pop');
+        if (pop.hidden) openMenu(menu); else closeMenus();
+        return;
+      }
+      var btn = e.target.closest('[data-act]');
+      if (!btn) return;
+      closeMenus();
+      var tr = btn.closest('tr[data-id]');
+      if (!tr) return;
+      var row = rowData(tr);
+      var act = btn.getAttribute('data-act');
+      if (act === 'edit') { openModal(row); return; }
+      if (act === 'default') {
+        if (!(await UI.confirm(UI.t('set.llmSetDefaultConfirm')))) return;
+        try {
+          var res = await fetch('/console/api/llm-configs/' + row.id + '/default', {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+          });
+          var data = await res.json();
+          if (!res.ok) { UI.alert((data && data.error) || UI.t('操作失败')); return; }
+          UI.toast(UI.t('set.llmSetDefaultOk'), 'success');
+          await refreshList();
+        } catch (err) { UI.alert(UI.t('操作失败')); }
+        return;
+      }
+      if (act === 'del') {
+        if (!(await UI.confirm(UI.t('set.llmDeleteConfirm'), { danger: true }))) return;
+        try {
+          var res2 = await fetch('/console/api/llm-configs/' + row.id, {
+            method: 'DELETE',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+          });
+          var data2 = await res2.json();
+          if (!res2.ok) { UI.alert((data2 && data2.error) || UI.t('删除失败')); return; }
+          UI.toast(UI.t('已删除'), 'success');
+          await refreshList();
+        } catch (err2) { UI.alert(UI.t('删除失败')); }
+      }
+    });
+
+    document.getElementById('llmTestBtn').addEventListener('click', async function () {
+      var btn = this;
+      btn.disabled = true;
+      var f = lf();
+      try {
+        var payload = {
+          id: parseInt(f.id.value, 10) || 0,
+          base_url: f.base_url.value.trim(),
+          api_key: f.api_key.value,
+          model: f.model.value.trim(),
+          temperature: f.temperature.value.trim()
+        };
+        var res = await fetch('/console/api/llm-configs/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+          body: JSON.stringify(payload)
+        });
+        var data = await res.json();
+        if (!res.ok) { UI.alert((data && data.error) || UI.t('set.testLLMFail')); return; }
+        UI.toast(UI.t('set.testLLMOk'), 'success');
+      } catch (e) {
+        UI.alert(UI.t('set.testLLMFail'));
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    llmForm.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      var f = lf();
+      var id = parseInt(f.id.value, 10) || 0;
+      var payload = {
+        name: f.name.value.trim(),
+        base_url: f.base_url.value.trim(),
+        api_key: f.api_key.value,
+        model: f.model.value.trim(),
+        temperature: f.temperature.value.trim(),
+        is_default: !!f.is_default.checked
+      };
+      var btn = llmForm.querySelector('button[type=submit]');
+      btn.disabled = true;
+      try {
+        var res = await fetch(id ? '/console/api/llm-configs/' + id : '/console/api/llm-configs', {
+          method: id ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+          body: JSON.stringify(payload)
+        });
+        var data = await res.json();
+        if (!res.ok) { UI.alert((data && data.error) || UI.t('保存失败')); return; }
+        UI.toast(UI.t('已保存'), 'success');
+        UI.closeModal(modal);
+        await refreshList();
+      } catch (err) {
+        UI.alert(UI.t('保存失败：网络错误或服务不可用'));
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  })();
 
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
-    var saveBtn = form.querySelector('button[type=submit]');
+    var saveBtn = form.querySelector('#settingsSaveFoot button[type=submit]');
     saveBtn.disabled = true;
     var payload = {
       site_name: form.site_name.value.trim(),
@@ -414,11 +707,7 @@
       cos_secret_id: form.cos_secret_id.value.trim(),
       cos_secret_key: form.cos_secret_key.value,
       cos_bucket: form.cos_bucket.value.trim(),
-      allow_share_apply: form.allow_share_apply.checked,
-      llm_base_url: form.llm_base_url.value.trim(),
-      llm_api_key: form.llm_api_key.value,
-      llm_model: form.llm_model.value.trim(),
-      llm_temperature: form.llm_temperature.value.trim()
+      allow_share_apply: form.allow_share_apply.checked
     };
     try {
       var res = await fetch('/console/api/settings', {
@@ -428,8 +717,8 @@
       });
       var data = await res.json();
       if (!res.ok) { UI.alert((data && data.error) || UI.t('保存失败')); return; }
-      UI.toast(UI.t('已保存，刷新页面后全站生效'), 'success');
-      setTimeout(function () { location.reload(); }, 700);
+      applySiteChrome(payload.site_name, payload.site_logo);
+      UI.toast(UI.t('已保存'), 'success');
     } catch (err) { UI.alert(UI.t('保存失败：网络错误或服务不可用')); }
     finally { saveBtn.disabled = false; }
   });
