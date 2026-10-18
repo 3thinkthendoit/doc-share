@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"doc-share/internal/model"
 	"doc-share/internal/search"
 	"doc-share/internal/util"
+	"doc-share/internal/webfetch"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -35,6 +37,8 @@ var aiApprovalTools = map[string]bool{
 	"restore_document": true,
 	"restore_revision": true,
 	"delete_skill":     true,
+	"delete_project":   true,
+	"delete_category":  true,
 }
 
 // aiNeedsApproval 判断一次工具调用是否需要用户确认：
@@ -123,17 +127,108 @@ func (a *App) chatTools(user *model.User) (
 		}},
 		{Type: "function", Function: llm.ToolFunc{
 			Name:        "list_projects",
-			Description: "列出当前用户可见的项目（名称与描述），用于了解平台组织结构。",
+			Description: "列出当前用户可见的项目（自己的，以及作为成员参与的）。创建、修改、删除只能作用于自己的项目。",
 			Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
 		}},
 		{Type: "function", Function: llm.ToolFunc{
-			Name:        "list_documents",
-			Description: "列出当前用户可见的文档（可按项目过滤），返回元数据列表。不确定关键词时用它浏览全部文档。",
+			Name:        "create_project",
+			Description: "创建项目，归属当前用户。",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"project_id": map[string]any{"type": "integer", "description": "只列该项目下的文档（可选）"},
-					"limit":      map[string]any{"type": "integer", "description": "返回条数上限，默认 20，最大 50"},
+					"name":        map[string]any{"type": "string", "description": "项目名称（必填，≤100 字）"},
+					"description": map[string]any{"type": "string", "description": "描述（可选，≤500 字）"},
+				},
+				"required": []string{"name"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "update_project",
+			Description: "修改自己的项目名称和描述（管理员可改全部）。未传 description 则清空描述。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id":          map[string]any{"type": "integer", "description": "项目 ID"},
+					"name":        map[string]any{"type": "string", "description": "项目名称"},
+					"description": map[string]any{"type": "string", "description": "描述（可选）"},
+				},
+				"required": []string{"id", "name"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "delete_project",
+			Description: "删除自己的项目（管理员可删全部）。其下文档回到未分组，不删除文档。执行前需用户确认。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id": map[string]any{"type": "integer", "description": "项目 ID"},
+				},
+				"required": []string{"id"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "list_categories",
+			Description: "列出当前用户自己的分类（与 MCP/OpenAPI 一致，不含他人分类），含排序值。",
+			Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "create_category",
+			Description: "创建分类，名称在当前用户的分类中必须唯一。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{"type": "string", "description": "分类名称（必填，≤50 字）"},
+					"sort": map[string]any{"type": "integer", "description": "排序值，越小越靠前（可选，默认 0）"},
+				},
+				"required": []string{"name"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "update_category",
+			Description: "修改自己的分类名称或排序（管理员可改全部）。未传 sort 则保持原排序。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id":   map[string]any{"type": "integer", "description": "分类 ID"},
+					"name": map[string]any{"type": "string", "description": "分类名称"},
+					"sort": map[string]any{"type": "integer", "description": "排序值（可选，不传则不改）"},
+				},
+				"required": []string{"id", "name"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "delete_category",
+			Description: "删除自己的分类（管理员可删全部）。其下文档变为未分类，不删除文档。执行前需用户确认。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id": map[string]any{"type": "integer", "description": "分类 ID"},
+				},
+				"required": []string{"id"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "read_webpage",
+			Description: "读取一个公网 http(s) 页面的可见正文（去掉脚本和样式）。拒绝内网、本机和保留地址。长页面用 offset/length 分页。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"url":    map[string]any{"type": "string", "description": "以 http:// 或 https:// 开头的公网地址"},
+					"offset": map[string]any{"type": "integer", "description": "起始字符偏移（按字符计，默认 0）"},
+					"length": map[string]any{"type": "integer", "description": "本次读取字符数（默认/上限 8000）"},
+				},
+				"required": []string{"url"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "list_documents",
+			Description: "列出当前用户可见的文档（可按项目或分类过滤），返回元数据列表。不确定关键词时用它浏览全部文档。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"project_id":  map[string]any{"type": "integer", "description": "只列该项目下的文档（可选）"},
+					"category_id": map[string]any{"type": "integer", "description": "只列该分类下的文档（可选）"},
+					"limit":       map[string]any{"type": "integer", "description": "返回条数上限，默认 20，最大 50"},
 				},
 			},
 		}},
@@ -234,7 +329,7 @@ func (a *App) chatTools(user *model.User) (
 		}},
 		{Type: "function", Function: llm.ToolFunc{
 			Name:        "update_document",
-			Description: "整体覆盖当前用户有编辑权限的文档的标题和/或正文（Markdown）。修改正文必须传 base_version（取自 read_document 返回），版本不匹配会被拒绝；只改标题时无需 base_version。局部修改请改用 replace_section，仅新建场景或整体重构时才用本工具。",
+			Description: "整体覆盖当前用户有编辑权限的文档的标题和/或正文（Markdown）；文档属主还可改 project_id / category_id（同事务写入）。修改正文必须传 base_version（取自 read_document 返回），版本不匹配会被拒绝；只改标题或归属时无需 base_version。project_id / category_id 传 0 表示清空，且只能挂到自己的项目或分类。局部修改请改用 replace_section。",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -242,6 +337,8 @@ func (a *App) chatTools(user *model.User) (
 					"title":        map[string]any{"type": "string", "description": "新标题（可选）"},
 					"content":      map[string]any{"type": "string", "description": "新的完整 Markdown 正文（可选；必须给出完整内容，不是增量）"},
 					"base_version": map[string]any{"type": "integer", "description": "修改正文时必填：read_document 返回的 content_version，防止凭记忆覆盖丢失内容"},
+					"project_id":   map[string]any{"type": "integer", "description": "归属项目 ID（可选，0=未分组，必须是自己的项目）"},
+					"category_id":  map[string]any{"type": "integer", "description": "归属分类 ID（可选，0=未分类，必须是自己的分类）"},
 				},
 				"required": []string{"id"},
 			},
@@ -262,13 +359,14 @@ func (a *App) chatTools(user *model.User) (
 		}},
 		{Type: "function", Function: llm.ToolFunc{
 			Name:        "create_document",
-			Description: "创建一篇 Markdown 文档。project_id 可选，且必须是当前用户自己的项目（无法写入他人项目）。",
+			Description: "创建一篇 Markdown 文档。project_id / category_id 可选，且必须是当前用户自己的项目或分类。",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"title":      map[string]any{"type": "string", "description": "文档标题"},
-					"content":    map[string]any{"type": "string", "description": "Markdown 正文"},
-					"project_id": map[string]any{"type": "integer", "description": "归属项目 ID（可选，必须是自己的项目）"},
+					"title":       map[string]any{"type": "string", "description": "文档标题"},
+					"content":     map[string]any{"type": "string", "description": "Markdown 正文"},
+					"project_id":  map[string]any{"type": "integer", "description": "归属项目 ID（可选，必须是自己的项目）"},
+					"category_id": map[string]any{"type": "integer", "description": "归属分类 ID（可选，必须是自己的分类）"},
 				},
 				"required": []string{"title"},
 			},
@@ -338,6 +436,18 @@ func (a *App) chatTools(user *model.User) (
 			return def
 		}
 		argStr := func(key string) string { s, _ := args[key].(string); return strings.TrimSpace(s) }
+		// 区分「未传」和 0：归属字段用 0 表示清空。
+		argUintOpt := func(key string) (uint, bool, error) {
+			v, ok := args[key]
+			if !ok || v == nil {
+				return 0, false, nil
+			}
+			f, ok := v.(float64)
+			if !ok || f < 0 || f != float64(uint(f)) {
+				return 0, true, fmt.Errorf("%s 必须是非负整数", key)
+			}
+			return uint(f), true, nil
+		}
 
 		switch name {
 		case "search_documents":
@@ -450,6 +560,148 @@ func (a *App) chatTools(user *model.User) (
 			}
 			return clip(strings.Join(out, "\n")), nil
 
+		case "create_project":
+			name, desc, errMsg := checkProjectReq(&projectReq{Name: argStr("name"), Description: argStr("description")})
+			if errMsg != "" {
+				return "", fmt.Errorf("%s", errMsg)
+			}
+			project := model.Project{Name: name, Description: desc, OwnerID: user.ID}
+			if err := a.DB.Create(&project).Error; err != nil {
+				return "", fmt.Errorf("创建失败: %v", err)
+			}
+			return fmt.Sprintf("项目已创建：id=%d %s", project.ID, project.Name), nil
+
+		case "update_project":
+			p, err := a.aiManagedProject(user, uint(argInt("id", 0)))
+			if err != nil {
+				return "", err
+			}
+			name, desc, errMsg := checkProjectReq(&projectReq{Name: argStr("name"), Description: argStr("description")})
+			if errMsg != "" {
+				return "", fmt.Errorf("%s", errMsg)
+			}
+			p.Name = name
+			p.Description = desc
+			if err := a.DB.Save(p).Error; err != nil {
+				return "", fmt.Errorf("更新失败: %v", err)
+			}
+			return fmt.Sprintf("项目已更新：id=%d %s", p.ID, p.Name), nil
+
+		case "delete_project":
+			p, err := a.aiManagedProject(user, uint(argInt("id", 0)))
+			if err != nil {
+				return "", err
+			}
+			name := p.Name
+			id := p.ID
+			if err := a.purgeProject(p); err != nil {
+				return "", fmt.Errorf("删除失败: %v", err)
+			}
+			return fmt.Sprintf("项目已删除：id=%d %s。其下文档已回到未分组。", id, name), nil
+
+		case "list_categories":
+			// 与 MCP OpenListCategories 一致：只列密钥/会话用户自己的分类
+			var cats []model.Category
+			if err := a.DB.Model(&model.Category{}).Where("owner_id = ?", user.ID).
+				Order("sort asc, id asc").Limit(100).Find(&cats).Error; err != nil {
+				return "", fmt.Errorf("查询失败: %v", err)
+			}
+			if len(cats) == 0 {
+				return "当前没有分类。", nil
+			}
+			out := make([]string, 0, len(cats))
+			for _, c := range cats {
+				out = append(out, fmt.Sprintf("- id=%d %s（sort=%d）", c.ID, c.Name, c.Sort))
+			}
+			return clip(strings.Join(out, "\n")), nil
+
+		case "create_category":
+			name, errMsg := checkCategoryReq(argStr("name"))
+			if errMsg != "" {
+				return "", fmt.Errorf("%s", errMsg)
+			}
+			sort := 0
+			if v, ok, err := argUintOpt("sort"); err != nil {
+				return "", err
+			} else if ok {
+				sort = int(v)
+			}
+			cat := model.Category{Name: name, Sort: sort, OwnerID: user.ID}
+			if err := a.DB.Create(&cat).Error; err != nil {
+				return "", fmt.Errorf("创建失败，你的分类名已存在")
+			}
+			return fmt.Sprintf("分类已创建：id=%d %s", cat.ID, cat.Name), nil
+
+		case "update_category":
+			cat, err := a.aiManagedCategory(user, uint(argInt("id", 0)))
+			if err != nil {
+				return "", err
+			}
+			name, errMsg := checkCategoryReq(argStr("name"))
+			if errMsg != "" {
+				return "", fmt.Errorf("%s", errMsg)
+			}
+			cat.Name = name
+			if v, ok, err := argUintOpt("sort"); err != nil {
+				return "", err
+			} else if ok {
+				cat.Sort = int(v)
+			}
+			if err := a.DB.Save(cat).Error; err != nil {
+				return "", fmt.Errorf("更新失败，你的分类名已存在")
+			}
+			return fmt.Sprintf("分类已更新：id=%d %s（sort=%d）", cat.ID, cat.Name, cat.Sort), nil
+
+		case "delete_category":
+			cat, err := a.aiManagedCategory(user, uint(argInt("id", 0)))
+			if err != nil {
+				return "", err
+			}
+			name := cat.Name
+			id := cat.ID
+			if err := a.purgeCategory(cat); err != nil {
+				return "", fmt.Errorf("删除失败: %v", err)
+			}
+			return fmt.Sprintf("分类已删除：id=%d %s。其下文档已变为未分类。", id, name), nil
+
+		case "read_webpage":
+			rawURL := argStr("url")
+			if rawURL == "" {
+				return "", fmt.Errorf("url 不能为空")
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			page, err := webfetch.Read(ctx, rawURL)
+			cancel()
+			if err != nil {
+				return "", err
+			}
+			runes := []rune(page.Text)
+			total := len(runes)
+			off := 0
+			if v, ok, err := argUintOpt("offset"); err != nil {
+				return "", err
+			} else if ok {
+				off = int(v)
+			}
+			length := aiToolMaxResult
+			if v, ok, err := argUintOpt("length"); err != nil {
+				return "", err
+			} else if ok && v > 0 && int(v) < length {
+				length = int(v)
+			}
+			if off > total {
+				off = total
+			}
+			end := off + length
+			if end > total {
+				end = total
+			}
+			head := fmt.Sprintf("网页《%s》%s（全文 %d 字符）第 %d-%d 字符：\n\n", page.Title, page.FinalURL, total, off, end)
+			if end < total {
+				head += fmt.Sprintf("（未读完，还有 %d 字符，请用 offset=%d 继续读取）\n\n", total-end, end)
+			}
+			return clip(head + string(runes[off:end])), nil
+
 		case "list_documents":
 			limit := argInt("limit", 20)
 			if limit > 50 {
@@ -458,6 +710,9 @@ func (a *App) chatTools(user *model.User) (
 			tx := scope().Select("id, title, slug, version, type, project_id, updated_at")
 			if pid := argInt("project_id", 0); pid > 0 {
 				tx = tx.Where("project_id = ?", pid)
+			}
+			if cid := argInt("category_id", 0); cid > 0 {
+				tx = tx.Where("category_id = ?", cid)
 			}
 			var docs []model.Document
 			if err := tx.Order("updated_at desc").Limit(int(limit)).Find(&docs).Error; err != nil {
@@ -552,7 +807,7 @@ func (a *App) chatTools(user *model.User) (
 			if err := a.DB.Where("id = ? AND document_id = ?", rid, doc.ID).First(&rev).Error; err != nil {
 				return "", fmt.Errorf("修订不存在（revision_id=%d）", rid)
 			}
-			if _, err := a.aiApplyDocUpdate(user, &doc, doc.Title, doc.Title, rev.Content, true); err != nil {
+			if _, err := a.aiApplyDocUpdate(user, &doc, doc.Title, doc.Title, rev.Content, true, nil, nil); err != nil {
 				return "", fmt.Errorf("恢复失败: %v", err)
 			}
 			return clip(fmt.Sprintf("已把《%s》恢复到修订 %d 的内容（当前内容已存为新修订，当前版本 %s）。预览：{{doc:%d}}", doc.Title, rid, doc.Version, doc.ID)), nil
@@ -770,8 +1025,16 @@ func (a *App) chatTools(user *model.User) (
 			}
 			newTitle, hasTitle := args["title"]
 			newContent, hasContent := args["content"]
-			if !hasTitle && !hasContent {
-				return "", fmt.Errorf("title 和 content 至少提供一个")
+			projID, hasProject, err := argUintOpt("project_id")
+			if err != nil {
+				return "", err
+			}
+			catID, hasCategory, err := argUintOpt("category_id")
+			if err != nil {
+				return "", err
+			}
+			if !hasTitle && !hasContent && !hasProject && !hasCategory {
+				return "", fmt.Errorf("title、content、project_id、category_id 至少提供一个")
 			}
 			var doc model.Document
 			if err := scope().Where("type <> ?", model.DocTypeHTML).First(&doc, id).Error; err != nil {
@@ -813,16 +1076,39 @@ func (a *App) chatTools(user *model.User) (
 					return "", fmt.Errorf("content 为空白或非字符串，疑似输出被截断；请分段调用或改用 replace_section 做局部修改")
 				}
 			}
-			changed, err := a.aiApplyDocUpdate(user, &doc, oldTitle, newTitleVal, content, hasContentChange)
+			var setProject, setCategory *uint
+			if hasProject || hasCategory {
+				if doc.OwnerID != user.ID && !user.IsAdmin() {
+					return "", fmt.Errorf("只有文档属主可以修改项目或分类归属")
+				}
+				if hasProject {
+					if err := a.aiOwnedProject(user, projID); err != nil {
+						return "", err
+					}
+					setProject = &projID
+				}
+				if hasCategory {
+					if err := a.aiOwnedCategory(user, catID); err != nil {
+						return "", err
+					}
+					setCategory = &catID
+				}
+			}
+			changed, err := a.aiApplyDocUpdate(user, &doc, oldTitle, newTitleVal, content, hasContentChange, setProject, setCategory)
 			if err != nil {
 				return "", fmt.Errorf("保存失败: %v", err)
 			}
 			ver := doc.Version
-			saved := "正文已更新。"
-			if !changed {
-				saved = "正文与当前版本相同，未做修改（仅可能更新了标题）。"
-			} else if hasContentChange && strings.TrimSpace(content) != "" {
+			saved := "已保存。"
+			switch {
+			case !changed:
+				saved = "没有实际变更。"
+			case hasContentChange && strings.TrimSpace(content) != "":
 				saved = "正文已更新。校验通过：content_version 已递增且正文非空。"
+			case hasProject || hasCategory:
+				saved = "归属已更新。"
+			default:
+				saved = "标题已更新。"
 			}
 			return fmt.Sprintf("文档已保存：{{doc:%d}}（id=%d，版本 %s）%s", doc.ID, doc.ID, ver, saved), nil
 
@@ -878,7 +1164,7 @@ func (a *App) chatTools(user *model.User) (
 			if newContent == doc.Content {
 				return "old_text 与 new_text 相同，正文未变化。", nil
 			}
-			if _, err := a.aiApplyDocUpdate(user, &doc, doc.Title, doc.Title, newContent, true); err != nil {
+			if _, err := a.aiApplyDocUpdate(user, &doc, doc.Title, doc.Title, newContent, true, nil, nil); err != nil {
 				return "", fmt.Errorf("保存失败: %v", err)
 			}
 			check := verifyReplaceResult(newContent, oldText, newText)
@@ -911,12 +1197,21 @@ func (a *App) chatTools(user *model.User) (
 				Content: contentAI, OwnerID: user.ID,
 				UpdatedByID: user.ID, UpdatedVia: "ai",
 			}
-			if pid := argInt("project_id", 0); pid > 0 {
-				var p model.Project
-				if err := a.DB.First(&p, pid).Error; err != nil || p.OwnerID != user.ID {
-					return "", fmt.Errorf("项目不存在或不属于你（project_id=%d）", pid)
+			if pid, ok, err := argUintOpt("project_id"); err != nil {
+				return "", err
+			} else if ok && pid > 0 {
+				if err := a.aiOwnedProject(user, pid); err != nil {
+					return "", err
 				}
-				doc.ProjectID = uint(pid)
+				doc.ProjectID = pid
+			}
+			if cid, ok, err := argUintOpt("category_id"); err != nil {
+				return "", err
+			} else if ok && cid > 0 {
+				if err := a.aiOwnedCategory(user, cid); err != nil {
+					return "", err
+				}
+				doc.CategoryID = cid
 			}
 			for i := 0; i < 5; i++ {
 				var n int64
@@ -1042,16 +1337,24 @@ func (a *App) chatTools(user *model.User) (
 // aiApplyDocUpdate AI 通道的文档保存：与 UpdateDoc 相同的乐观锁 + 修订快照 + 版本派生，
 // updated_via 记为 "ai" 以便审计区分。oldTitle 为加载时的标题，newTitle 为期望的新标题。
 // 返回 changed 表示是否有实际变更落库（false = 内容相同且标题未变，调用方应如实告知模型）。
-func (a *App) aiApplyDocUpdate(user *model.User, doc *model.Document, oldTitle, newTitle, newContent string, hasContent bool) (bool, error) {
+func (a *App) aiApplyDocUpdate(user *model.User, doc *model.Document, oldTitle, newTitle, newContent string, hasContent bool, projectID, categoryID *uint) (bool, error) {
 	changed := false
 	err := a.DB.Transaction(func(tx *gorm.DB) error {
 		var fresh model.Document
-		if err := tx.Select("id", "content", "content_version").First(&fresh, doc.ID).Error; err != nil {
+		if err := tx.Select("id", "content", "content_version", "project_id", "category_id").First(&fresh, doc.ID).Error; err != nil {
 			return err
 		}
 		updates := map[string]any{"updated_by_id": user.ID, "updated_via": "ai"}
 		if newTitle != oldTitle {
 			updates["title"] = newTitle
+		}
+		if projectID != nil && *projectID != fresh.ProjectID {
+			updates["project_id"] = *projectID
+			doc.ProjectID = *projectID
+		}
+		if categoryID != nil && *categoryID != fresh.CategoryID {
+			updates["category_id"] = *categoryID
+			doc.CategoryID = *categoryID
 		}
 		if hasContent && newContent != fresh.Content {
 			updates["content"] = newContent
@@ -1093,4 +1396,54 @@ func (a *App) aiApplyDocUpdate(user *model.User, doc *model.Document, oldTitle, 
 		a.reindexDocAsync(doc.ID) // AI 通道内容/标题变更后写时双写
 	}
 	return changed, err
+}
+
+func (a *App) aiManagedProject(user *model.User, id uint) (*model.Project, error) {
+	if id == 0 {
+		return nil, fmt.Errorf("id 不能为空")
+	}
+	var p model.Project
+	if err := a.DB.First(&p, id).Error; err != nil {
+		return nil, fmt.Errorf("项目不存在（id=%d）", id)
+	}
+	if !user.IsAdmin() && p.OwnerID != user.ID {
+		return nil, fmt.Errorf("无权操作他人的项目（id=%d）", id)
+	}
+	return &p, nil
+}
+
+func (a *App) aiManagedCategory(user *model.User, id uint) (*model.Category, error) {
+	if id == 0 {
+		return nil, fmt.Errorf("id 不能为空")
+	}
+	var c model.Category
+	if err := a.DB.First(&c, id).Error; err != nil {
+		return nil, fmt.Errorf("分类不存在（id=%d）", id)
+	}
+	if !user.IsAdmin() && c.OwnerID != user.ID {
+		return nil, fmt.Errorf("无权操作他人的分类（id=%d）", id)
+	}
+	return &c, nil
+}
+
+func (a *App) aiOwnedProject(user *model.User, id uint) error {
+	if id == 0 {
+		return nil
+	}
+	var p model.Project
+	if err := a.DB.First(&p, id).Error; err != nil || p.OwnerID != user.ID {
+		return fmt.Errorf("项目不存在或不属于你（project_id=%d）", id)
+	}
+	return nil
+}
+
+func (a *App) aiOwnedCategory(user *model.User, id uint) error {
+	if id == 0 {
+		return nil
+	}
+	var c model.Category
+	if err := a.DB.First(&c, id).Error; err != nil || c.OwnerID != user.ID {
+		return fmt.Errorf("分类不存在或不属于你（category_id=%d）", id)
+	}
+	return nil
 }

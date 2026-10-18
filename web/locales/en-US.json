@@ -1159,6 +1159,8 @@
   "chat.apprRevision": "Roll back to a previous revision (current content saved first)",
   "chat.apprShare": "Enable public sharing (anyone with the link can access)",
   "chat.apprDeleteSkill": "Delete this custom skill; /name will stop working",
+  "chat.apprDeleteProject": "Delete this project; its documents become ungrouped and are not deleted",
+  "chat.apprDeleteCategory": "Delete this category; its documents become uncategorized and are not deleted",
   "chat.apprBatch": "Run the following {n} sensitive actions",
   "chat.trustSensitive": "Trust sensitive actions in this chat",
   "chat.trustTip": "When on, delete/restore/share no longer ask each time (toggle anytime; actions are audited)",

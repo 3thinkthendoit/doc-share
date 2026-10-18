@@ -269,6 +269,16 @@ func (a *App) DeleteProject(c *gin.Context) {
 	if project == nil {
 		return
 	}
+	if err := a.purgeProject(project); err != nil {
+		log.Printf("[project] 删除项目失败 project=%d: %v", project.ID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// purgeProject 删除项目并把其下文档（含回收站）退回未分组，同时清成员、项目分享与访问申请。
+func (a *App) purgeProject(project *model.Project) error {
 	var affectedDocIDs []uint
 	err := a.DB.Transaction(func(tx *gorm.DB) error {
 		// 先取出受影响的文档 id（含回收站），事务成功后批量 reindex，避免 ES 副本残留旧 project_id
@@ -296,15 +306,12 @@ func (a *App) DeleteProject(c *gin.Context) {
 		return tx.Delete(&model.Project{}, project.ID).Error
 	})
 	if err != nil {
-		log.Printf("[project] 删除项目失败 project=%d: %v", project.ID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
-		return
+		return err
 	}
-	// project_id 已改，写时双写同步进 ES（否则 ES 副本仍指向已删项目，「未分组」筛选会搜不到）
 	for _, id := range affectedDocIDs {
 		a.reindexDocAsync(id)
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	return nil
 }
 
 // LeaveProject 成员退出项目：DELETE /console/api/projects/:id/members/me

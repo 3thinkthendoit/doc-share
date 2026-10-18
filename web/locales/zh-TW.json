@@ -1156,6 +1156,8 @@
   "chat.apprRevision": "將回滾到歷史修訂（目前內容會先存為新修訂）",
   "chat.apprShare": "將開啟公開分享連結（持有連結者可存取）",
   "chat.apprDeleteSkill": "將刪除該自訂 skill，刪除後無法用 /name 呼叫",
+  "chat.apprDeleteProject": "將刪除該項目，其下文件回到未分組（文件不刪除）",
+  "chat.apprDeleteCategory": "將刪除該分類，其下文件變為未分類（文件不刪除）",
   "chat.apprBatch": "將執行以下 {n} 項敏感操作",
   "chat.artifacts": "產物",
   "chat.artifactsEmpty": "工具改寫文件後，產物會出現在這裡",

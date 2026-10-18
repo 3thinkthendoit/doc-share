@@ -160,6 +160,15 @@ func (a *App) DeleteCategory(c *gin.Context) {
 	if category == nil {
 		return
 	}
+	if err := a.purgeCategory(category); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// purgeCategory 删除分类并把其下文档（含回收站）退回未分类。
+func (a *App) purgeCategory(category *model.Category) error {
 	var affectedDocIDs []uint
 	err := a.DB.Transaction(func(tx *gorm.DB) error {
 		// 先取出受影响的文档 id（含回收站），事务成功后批量 reindex，避免 ES 副本残留旧 category_id
@@ -176,12 +185,10 @@ func (a *App) DeleteCategory(c *gin.Context) {
 		return tx.Delete(&model.Category{}, category.ID).Error
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
-		return
+		return err
 	}
-	// category_id 已改，写时双写同步进 ES
 	for _, id := range affectedDocIDs {
 		a.reindexDocAsync(id)
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	return nil
 }
