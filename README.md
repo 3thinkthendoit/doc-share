@@ -56,7 +56,7 @@ A lightweight self-hosted documentation sharing platform built with Go and Gin. 
 - **Dashboard** — counts for documents, shares, users (admin), linked projects; recent documents
 - **Pending access requests** — badge + modal list to approve/reject
 - **System settings** (admin) — site name, logo, public domain, drawio editor URL; allow access requests; registration method; SMTP (with test mail); storage local / RustFS (with connectivity test)
-- **i18n** — English, 简体中文, 繁體中文, 日本語, Français
+- **i18n** — English, 简体中文, 繁體中文
 
 ### Integrations
 
@@ -160,7 +160,7 @@ internal/
 web/
   templates/            HTML templates
   static/               CSS / JS
-  locales/              en-US, zh-CN, zh-TW, ja-JP, fr-FR
+  locales/              en-US, zh-CN, zh-TW
 mcp/
   mcp-server.js         zero-dependency MCP server (Node, stdio) wrapping the Open API
 .github/

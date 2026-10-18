@@ -45,7 +45,7 @@ func TestLocaleParity(t *testing.T) {
 			sort.Strings(missing)
 			t.Errorf("%s 词典与基准不一致：%v", l.Code, missing)
 		}
-		if l.Code == "en-US" || l.Code == "fr-FR" {
+		if l.Code == "en-US" {
 			for k, v := range dict {
 				if cjk.MatchString(v) {
 					t.Errorf("%s.%s 残留 CJK 文案：%s", l.Code, k, v)
@@ -74,7 +74,7 @@ func TestTZ(t *testing.T) {
 		t.Errorf("按 key 的占位符未生效：%q", got)
 	}
 	// 未收录文案降级为原文
-	if got := b.TZ("ja-JP", "未收录的提示"); got != "未收录的提示" {
+	if got := b.TZ("en-US", "未收录的提示"); got != "未收录的提示" {
 		t.Errorf("未收录文案应原样返回：%q", got)
 	}
 }
@@ -105,7 +105,7 @@ func TestTZKeyOnDefault(t *testing.T) {
 
 // TestResolve 校验语言协商优先级
 func TestResolve(t *testing.T) {
-	if got := Resolve("fr-FR", "ja,en;q=0.9"); got != "fr-FR" {
+	if got := Resolve("en-US", "zh-CN,zh;q=0.9"); got != "en-US" {
 		t.Errorf("cookie 应优先于 Accept-Language：%q", got)
 	}
 	if got := Resolve("", "zh-TW,zh;q=0.9,en;q=0.8"); got != "zh-TW" {
@@ -114,11 +114,20 @@ func TestResolve(t *testing.T) {
 	if got := Resolve("", "zh_Hant_HK"); got != "zh-TW" {
 		t.Errorf("区域变体归一：%q", got)
 	}
-	if got := Resolve("bogus", ""); got != Default {
-		t.Errorf("非法值应回落到默认语言：%q", got)
+	if got := Resolve("", ""); got != Default {
+		t.Errorf("没有语言信号应回落到简体中文：%q", got)
 	}
-	if got := Resolve("xx", "de,fr;q=0.9"); got != "fr-FR" {
-		t.Errorf("cookie 非法时应继续看 Accept-Language：%q", got)
+	if got := Resolve("ja-JP", "zh-CN"); got != "zh-CN" {
+		t.Errorf("已移除的 cookie 应继续看 Accept-Language：%q", got)
+	}
+	if got := Resolve("xx", "de,fr;q=0.9"); got != Unrecognized {
+		t.Errorf("无法识别的语言应落到英文：%q", got)
+	}
+	if got := Resolve("", "ja"); got != Unrecognized {
+		t.Errorf("仅有未知语言标签应落到英文：%q", got)
+	}
+	if got := Resolve("", "de,en;q=0.8"); got != "en-US" {
+		t.Errorf("未知标签之后的可识别语言仍应生效：%q", got)
 	}
 }
 

@@ -19,13 +19,14 @@ type Lang struct {
 var Supported = []Lang{
 	{"zh-CN", "简体中文"},
 	{"zh-TW", "繁體中文"},
-	{"ja-JP", "日本語"},
 	{"en-US", "English"},
-	{"fr-FR", "Français"},
 }
 
-// Default 缺省语言，也是其他语言缺失键的回退源
+// Default 缺省语言：缺失键的回退源，也是没有任何语言信号时的界面语言
 const Default = "zh-CN"
+
+// Unrecognized 请求里出现了语言标签、但都不在支持列表中时的界面语言
+const Unrecognized = "en-US"
 
 // CookieName 用户语言偏好 cookie
 const CookieName = "ds_lang"
@@ -184,16 +185,25 @@ func (b *Bundle) SourceJSON(locale string) string {
 	return string(j)
 }
 
-// Resolve 依优先级确定语言：cookie 偏好 > Accept-Language > 默认
+// Resolve 依优先级确定语言：cookie 偏好 > Accept-Language 中首个可识别标签 >
+// 出现了语言标签但都无法识别时用 Unrecognized（英文）> 完全没有语言信号时用 Default（简体中文）
 func Resolve(cookie, accept string) string {
 	if l := normalize(cookie); l != "" {
 		return l
 	}
+	unknown := strings.TrimSpace(cookie) != ""
 	for _, part := range strings.Split(accept, ",") {
 		tag := strings.TrimSpace(strings.Split(part, ";")[0])
+		if tag == "" {
+			continue
+		}
 		if l := normalize(tag); l != "" {
 			return l
 		}
+		unknown = true
+	}
+	if unknown {
+		return Unrecognized
 	}
 	return Default
 }
@@ -215,10 +225,6 @@ func normalize(tag string) string {
 		return "zh-TW"
 	case lt == "zh", strings.HasPrefix(lt, "zh-cn"), strings.HasPrefix(lt, "zh-hans"):
 		return "zh-CN"
-	case strings.HasPrefix(lt, "ja"):
-		return "ja-JP"
-	case strings.HasPrefix(lt, "fr"):
-		return "fr-FR"
 	case strings.HasPrefix(lt, "en"):
 		return "en-US"
 	}

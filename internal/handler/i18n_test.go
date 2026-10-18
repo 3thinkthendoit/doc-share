@@ -164,9 +164,9 @@ func TestPagesRender(t *testing.T) {
 		}},
 	}
 
-	for _, lang := range []string{"zh-CN", "zh-TW", "ja-JP", "en-US", "fr-FR"} {
+	for _, lang := range []string{"zh-CN", "zh-TW", "en-US"} {
 		han := regexp.MustCompile(`[\p{Han}\p{Hiragana}\p{Katakana}]`)
-		// 语言下拉里的语言自称故意用本族语书写（简体中文/日本語…），不计入残留
+		// 语言下拉里的语言自称故意用本族语书写（简体中文/繁體中文…），不计入残留
 		switcher := regexp.MustCompile(`(?s)<form class="(lang-switch|l-lang)".*?</form>`)
 		// 脚本不参与检查：内联 JS 的中文字面量由 UI.t 按注入的译文表在运行时翻译
 		scripts := regexp.MustCompile(`(?s)<script.*?</script>`)
@@ -192,8 +192,7 @@ func TestPagesRender(t *testing.T) {
 					break
 				}
 			}
-			if lang == "en-US" || lang == "fr-FR" {
-				// 只要求欧语系页面无 CJK；ja-JP 正常使用汉字，不能规入残留
+			if lang == "en-US" {
 				if loc := han.FindStringIndex(out); loc != nil {
 					lo := max(0, loc[0]-30)
 					t.Errorf("%s/%s 页面残留中文：%q", lang, c.name, truncate(out[lo:min(len(out), loc[1]+30)]))
@@ -205,7 +204,7 @@ func TestPagesRender(t *testing.T) {
 
 // TestTemplateStringsResolve 扫描所有模板里的 {{$.T "中文"}} 文案，逐条确认已收录进词典，
 // 且欧语系译文不残留汉字。渲染测试只会报出第一个残留点，靠它一条一条试太慢，这里一次性列出全部漏网词条。
-// 注意：不能拿「TZ 返回值 == 原文」当未收录，zh-TW/ja-JP 里“操作”“取消”“保存”这类词本来就与原文同形。
+// 注意：不能拿「TZ 返回值 == 原文」当未收录，zh-TW 里“操作”“取消”“保存”这类词本来就与原文同形。
 func TestTemplateStringsResolve(t *testing.T) {
 	b := newBundle(t)
 	literal := regexp.MustCompile(`\{\{\$\.TH?\s+"([^"]+)"`)
@@ -231,7 +230,7 @@ func TestTemplateStringsResolve(t *testing.T) {
 				t.Errorf("%s 的文案 %q 未收录进 zh-CN 词典，非中文页面会原样输出中文", filepath.Base(f), truncate(s))
 				continue
 			}
-			for _, lang := range []string{"en-US", "fr-FR"} {
+			for _, lang := range []string{"en-US"} {
 				if got := b.TZ(lang, s); han.MatchString(got) {
 					t.Errorf("%s 的文案 %q 在 %s 译文仍含中文：%q", filepath.Base(f), truncate(s), lang, truncate(got))
 				}

@@ -56,7 +56,8 @@ func (w *bodyCapture) Release() (*bytes.Buffer, gin.ResponseWriter) {
 }
 
 // I18n 语言协商 + API 消息翻译。
-// 语言优先级：cookie 偏好 > Accept-Language > 默认。默认语言零开销直通。
+// 语言优先级：cookie 偏好 > Accept-Language 中可识别的语言 > 无法识别时英文 > 无信号时简体中文。
+// 简体中文零开销直通。
 func I18n(b *i18n.Bundle) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cookie, _ := c.Cookie(i18n.CookieName)

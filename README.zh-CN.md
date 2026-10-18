@@ -56,7 +56,7 @@
 - **仪表盘** — 文档数、分享数、用户数（管理员）、关联项目数；最近更新文档
 - **待审申请** — 未处理的查看申请统计与弹窗列表，可直接通过/拒绝
 - **系统设置**（管理员）— 站点名称、Logo、对外域名、drawio 编辑器地址；开放「申请查看」；注册方式；SMTP（可测发信）；文件存储本地 / RustFS（可测连通）
-- **多语言** — 简体中文、繁體中文、English、日本語、Français
+- **多语言** — 简体中文、繁體中文、English
 
 ### 开放能力
 
@@ -164,7 +164,7 @@ internal/
 web/
   templates/            HTML 模板
   static/               CSS / JS
-  locales/              en-US, zh-CN, zh-TW, ja-JP, fr-FR
+  locales/              en-US, zh-CN, zh-TW
 mcp/
   mcp-server.js         零依赖 MCP 服务器（Node，stdio），包装开放 API 供 AI 客户端调用
 .github/
