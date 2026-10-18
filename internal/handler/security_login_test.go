@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"bytes"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -259,6 +261,80 @@ func TestTOTPEnrollVerifyAndReset(t *testing.T) {
 	}.Encode())
 	a.LoginTOTP(c)
 	assertCode(t, w, http.StatusBadRequest)
+}
+
+// browserForm 按浏览器 FormData 提交：multipart，并把字段里的换行规范成 CRLF。
+func browserForm(method, path string, fields map[string]string) (*httptest.ResponseRecorder, *gin.Context) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	for k, v := range fields {
+		v = strings.ReplaceAll(v, "\r\n", "\n")
+		v = strings.ReplaceAll(v, "\n", "\r\n")
+		if err := w.WriteField(k, v); err != nil {
+			panic(err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		panic(err)
+	}
+	rec, c := newCtx()
+	c.Request = httptest.NewRequest(method, path, &buf)
+	c.Request.Header.Set("Content-Type", w.FormDataContentType())
+	c.Request.Header.Set("X-Requested-With", "XMLHttpRequest")
+	c.Request.Header.Set("Accept", "application/json")
+	return rec, c
+}
+
+func TestTOTPEnrollViaBrowserForm(t *testing.T) {
+	a := securityLoginApp(t)
+	putSetting(t, a, keyTOTPEnabled, "1")
+	seedLoginUser(t, a, "browseruser", "secret1")
+	captchaOK(t, "cid-browser", "7777")
+
+	w, c := browserForm(http.MethodPost, "/login", map[string]string{
+		"username": "browseruser", "password": "secret1",
+		"captcha_id": "cid-browser", "captcha": "7777",
+	})
+	a.Login(c)
+	assertCode(t, w, http.StatusOK)
+	m := decodeJSON(t, w)
+	if m["step"] != "totp_enroll" {
+		t.Fatalf("step=%v body=%s", m["step"], w.Body.String())
+	}
+	pending, _ := m["pending"].(string)
+	secret, _ := m["secret"].(string)
+	if pending == "" || secret == "" || strings.ContainsAny(pending, "\r\n") {
+		t.Fatalf("pending/secret missing or pending has newline: pending=%q", pending)
+	}
+	code, err := totp.GenerateCode(secret, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, c = browserForm(http.MethodPost, "/login/totp", map[string]string{
+		"pending": pending, "code": code,
+	})
+	a.LoginTOTP(c)
+	assertCode(t, w, http.StatusOK)
+	if cookieValue(w, middleware.CookieSession) == "" {
+		t.Fatal("browser enroll did not set session")
+	}
+	if decodeJSON(t, w)["redirect"] != "/console" {
+		t.Fatalf("body=%s", w.Body.String())
+	}
+}
+
+func TestTOTPPendingSurvivesFormNewlineNormalization(t *testing.T) {
+	a := securityLoginApp(t)
+	token := a.signTOTPPending(9, "enroll", "NZHRRCMYCAIIO2BOVP7C5323JI7YV437", 0)
+	if strings.ContainsAny(token, "\r\n") {
+		t.Fatal("pending token must not contain newlines; browsers rewrite them to CRLF and break the signature")
+	}
+	// 模拟浏览器把换行规范成 CRLF 后再提交
+	mangled := strings.ReplaceAll(token, "\n", "\r\n")
+	uid, mode, secret, epoch, ok := a.parseTOTPPending(mangled)
+	if !ok || uid != 9 || mode != "enroll" || secret != "NZHRRCMYCAIIO2BOVP7C5323JI7YV437" || epoch != 0 {
+		t.Fatalf("parse after CRLF: ok=%v uid=%d mode=%s secret=%s epoch=%d", ok, uid, mode, secret, epoch)
+	}
 }
 
 func TestTOTPTryCapBlocksEvenCorrectCode(t *testing.T) {

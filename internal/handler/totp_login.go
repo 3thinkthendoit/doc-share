@@ -81,7 +81,8 @@ func (a *App) openTOTPSecret(sealed string) (string, error) {
 
 func (a *App) signTOTPPending(uid uint, mode, secret string, epoch int) string {
 	exp := time.Now().Add(totpPendingTTL).Unix()
-	payload := fmt.Sprintf("totp\n%d\n%d\n%s\n%s\n%d", uid, exp, mode, secret, epoch)
+	// 用 | 分段。表单提交会把字段里的换行规范成 CRLF，换行一变 HMAC 就对不上，登录会被判成过期。
+	payload := fmt.Sprintf("totp|%d|%d|%s|%s|%d", uid, exp, mode, secret, epoch)
 	return a.Signer.Sign(payload)
 }
 
@@ -93,7 +94,7 @@ func (a *App) parseTOTPPending(token string) (uid uint, mode, secret string, epo
 	if !valid {
 		return 0, "", "", 0, false
 	}
-	parts := strings.Split(payload, "\n")
+	parts := strings.Split(payload, "|")
 	if len(parts) != 6 || parts[0] != "totp" {
 		return 0, "", "", 0, false
 	}
