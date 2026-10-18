@@ -1094,13 +1094,22 @@ func (a *App) chatTools(user *model.User) (
 			if !canEditDoc(&doc) {
 				return "", fmt.Errorf("没有该文档的编辑权限（id=%d）", id)
 			}
-			if err := a.DB.Delete(&model.Document{}, doc.ID).Error; err != nil {
+			// 软删、停用分享、清访问申请、关掉 is_shared 同一事务；失败则整单回滚。
+			// is_shared 必须 Unscoped：软删后默认查询会跳过该行。
+			if err := a.DB.Transaction(func(tx *gorm.DB) error {
+				if err := tx.Delete(&model.Document{}, doc.ID).Error; err != nil {
+					return err
+				}
+				if err := tx.Where("document_id = ?", doc.ID).Delete(&model.Share{}).Error; err != nil {
+					return err
+				}
+				if err := tx.Where("document_id = ?", doc.ID).Delete(&model.ShareAccessRequest{}).Error; err != nil {
+					return err
+				}
+				return tx.Unscoped().Model(&model.Document{}).Where("id = ?", doc.ID).Update("is_shared", false).Error
+			}); err != nil {
 				return "", fmt.Errorf("删除失败: %v", err)
 			}
-			// 与回收站页面语义一致：软删除时同步停用分享，恢复后需重新开启
-			a.DB.Where("document_id = ?", doc.ID).Delete(&model.Share{})
-			a.DB.Where("document_id = ?", doc.ID).Delete(&model.ShareAccessRequest{})
-			a.DB.Model(&model.Document{}).Where("id = ?", doc.ID).Update("is_shared", false)
 			a.reindexDocAsync(doc.ID) // 软删后重索（带 deleted 标记）
 			return fmt.Sprintf("《%s》（id=%d）已移入回收站，可在回收站恢复。", doc.Title, doc.ID), nil
 
@@ -1371,11 +1380,19 @@ func (a *App) chatTools(user *model.User) (
 			var share model.Share
 			found := a.DB.Where("document_id = ?", doc.ID).First(&share).Error == nil
 			if !enabled {
-				if found {
-					a.DB.Delete(&share)
-					a.DB.Where("document_id = ?", doc.ID).Delete(&model.ShareAccessRequest{})
+				if err := a.DB.Transaction(func(tx *gorm.DB) error {
+					if found {
+						if err := tx.Delete(&share).Error; err != nil {
+							return err
+						}
+						if err := tx.Where("document_id = ?", doc.ID).Delete(&model.ShareAccessRequest{}).Error; err != nil {
+							return err
+						}
+					}
+					return tx.Model(&model.Document{}).Where("id = ?", doc.ID).Update("is_shared", false).Error
+				}); err != nil {
+					return "", fmt.Errorf("关闭分享失败: %v", err)
 				}
-				a.DB.Model(&doc).Update("is_shared", false)
 				a.reindexDocAsync(doc.ID)
 				return "分享已关闭。", nil
 			}
@@ -1397,10 +1414,14 @@ func (a *App) chatTools(user *model.User) (
 				return "", err
 			}
 			share.ExpireAt = exp
-			if err := a.DB.Save(&share).Error; err != nil {
+			if err := a.DB.Transaction(func(tx *gorm.DB) error {
+				if err := tx.Save(&share).Error; err != nil {
+					return err
+				}
+				return tx.Model(&model.Document{}).Where("id = ?", doc.ID).Update("is_shared", true).Error
+			}); err != nil {
 				return "", fmt.Errorf("分享设置失败: %v", err)
 			}
-			a.DB.Model(&doc).Update("is_shared", true)
 			a.reindexDocAsync(doc.ID)
 			note := ""
 			if share.Password != "" {
@@ -1840,22 +1861,20 @@ func (a *App) chatTools(user *model.User) (
 				return "", fmt.Errorf("没有该文档的编辑权限（id=%d）", id)
 			}
 			parentID := uint(argInt("parent_id", 0))
+			var parent *model.Comment
 			if parentID > 0 {
-				var parent model.Comment
-				if err := a.DB.Where("id = ? AND document_id = ? AND parent_id = 0", parentID, doc.ID).First(&parent).Error; err != nil {
+				var p model.Comment
+				if err := a.DB.Where("id = ? AND document_id = ? AND parent_id = 0", parentID, doc.ID).First(&p).Error; err != nil {
 					return "", fmt.Errorf("只能回复顶层评论（parent_id=%d）", parentID)
 				}
+				if p.UserID == user.ID {
+					return "", fmt.Errorf("不能回复自己的评论")
+				}
+				parent = &p
 			}
 			cm := model.Comment{DocumentID: doc.ID, ParentID: parentID, UserID: user.ID, Content: content}
 			if err := a.DB.Create(&cm).Error; err != nil {
 				return "", fmt.Errorf("发表失败: %v", err)
-			}
-			var parent *model.Comment
-			if parentID > 0 {
-				var p model.Comment
-				if a.DB.First(&p, parentID).Error == nil {
-					parent = &p
-				}
 			}
 			a.notifyNewComment(&doc, &cm, user.DisplayName(), parent)
 			return fmt.Sprintf("评论已发表：comment_id=%d（文档 {{doc:%d}}）", cm.ID, doc.ID), nil
@@ -1873,11 +1892,22 @@ func (a *App) chatTools(user *model.User) (
 			if !user.IsAdmin() && doc.OwnerID != user.ID {
 				return "", fmt.Errorf("只有文档属主可以删除评论")
 			}
-			res := a.DB.Where("id = ? AND document_id = ?", cid, doc.ID).Delete(&model.Comment{})
-			if res.Error != nil || res.RowsAffected == 0 {
-				return "", fmt.Errorf("评论不存在（comment_id=%d）", cid)
+			err := a.DB.Transaction(func(tx *gorm.DB) error {
+				res := tx.Where("id = ? AND document_id = ?", cid, doc.ID).Delete(&model.Comment{})
+				if res.Error != nil {
+					return res.Error
+				}
+				if res.RowsAffected == 0 {
+					return fmt.Errorf("评论不存在（comment_id=%d）", cid)
+				}
+				return tx.Where("parent_id = ?", cid).Delete(&model.Comment{}).Error
+			})
+			if err != nil {
+				if strings.Contains(err.Error(), "评论不存在") {
+					return "", err
+				}
+				return "", fmt.Errorf("删除失败: %v", err)
 			}
-			a.DB.Where("parent_id = ?", cid).Delete(&model.Comment{})
 			return fmt.Sprintf("已删除评论 %d 及其回复。", cid), nil
 
 		case "list_project_members":
@@ -2014,8 +2044,14 @@ func (a *App) chatTools(user *model.User) (
 			found := a.DB.Where("project_id = ?", p.ID).First(&ps).Error == nil
 			if !enabled {
 				if found {
-					a.DB.Delete(&ps)
-					a.DB.Where("project_id = ?", p.ID).Delete(&model.ShareAccessRequest{})
+					if err := a.DB.Transaction(func(tx *gorm.DB) error {
+						if err := tx.Delete(&ps).Error; err != nil {
+							return err
+						}
+						return tx.Where("project_id = ?", p.ID).Delete(&model.ShareAccessRequest{}).Error
+					}); err != nil {
+						return "", fmt.Errorf("关闭分享失败: %v", err)
+					}
 				}
 				return fmt.Sprintf("已关闭项目 id=%d 的分享。", p.ID), nil
 			}

@@ -216,3 +216,142 @@ func TestCommentDuplicatePurgeAndApprovals(t *testing.T) {
 		t.Fatal("canvas update must reject non-JSON")
 	}
 }
+
+func TestAgentAtomicShareCommentAndGuards(t *testing.T) {
+	app, owner, other := newExtraApp(t)
+	id := func(v uint) string { return strconv.FormatUint(uint64(v), 10) }
+	_, exec, _ := app.chatTools(owner)
+
+	if _, err := exec("create_project", `{"name":"归属"}`); err != nil {
+		t.Fatal(err)
+	}
+	var proj model.Project
+	if err := app.DB.Where("name = ?", "归属").First(&proj).Error; err != nil {
+		t.Fatal(err)
+	}
+	cat := model.Category{Name: "属主分类", OwnerID: owner.ID}
+	if err := app.DB.Create(&cat).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := exec("create_template", `{"name":"项目模板","content":"正文","project_id":`+id(proj.ID)+`,"category_id":`+id(cat.ID)+`}`); err != nil {
+		t.Fatal(err)
+	}
+	var tpl model.DocTemplate
+	if err := app.DB.Where("name = ?", "项目模板").First(&tpl).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := exec("add_project_member", `{"project_id":`+id(proj.ID)+`,"username":"other2","role":"view"}`); err != nil {
+		t.Fatal(err)
+	}
+	_, memberExec, _ := app.chatTools(other)
+	if _, err := memberExec("get_project_share", `{"project_id":`+id(proj.ID)+`}`); err == nil {
+		t.Fatal("member must not read project share")
+	}
+	if _, err := memberExec("list_access_requests", `{"project_id":`+id(proj.ID)+`}`); err == nil {
+		t.Fatal("member must not list access requests")
+	}
+	applied, err := memberExec("apply_template", `{"template_id":`+id(tpl.ID)+`}`)
+	if err != nil {
+		t.Fatal(err, applied)
+	}
+	if !strings.Contains(applied, "未分组") || !strings.Contains(applied, "未分类") {
+		t.Fatalf("dropped binding not reported: %s", applied)
+	}
+	var dropped model.Document
+	if err := app.DB.Where("owner_id = ? AND title = ?", other.ID, "项目模板").First(&dropped).Error; err != nil {
+		t.Fatal(err)
+	}
+	if dropped.ProjectID != 0 || dropped.CategoryID != 0 {
+		t.Fatalf("binding kept: project=%d category=%d", dropped.ProjectID, dropped.CategoryID)
+	}
+
+	if _, err := exec("create_document", `{"title":"可分享","content":"正文"}`); err != nil {
+		t.Fatal(err)
+	}
+	var doc model.Document
+	if err := app.DB.Where("title = ?", "可分享").First(&doc).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := exec("set_share", `{"id":`+id(doc.ID)+`,"enabled":true}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.DB.First(&doc, doc.ID).Error; err != nil || !doc.IsShared {
+		t.Fatalf("share flag: %+v %v", doc, err)
+	}
+	var shareN int64
+	app.DB.Model(&model.Share{}).Where("document_id = ?", doc.ID).Count(&shareN)
+	if shareN != 1 {
+		t.Fatalf("share rows=%d", shareN)
+	}
+	req := model.ShareAccessRequest{DocumentID: doc.ID, UserID: other.ID, GuestName: "访客", RequestToken: "tokentokentokentokentokentokentok2", Status: model.AccessPending}
+	if err := app.DB.Create(&req).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := exec("delete_document", `{"id":`+id(doc.ID)+`}`); err != nil {
+		t.Fatal(err)
+	}
+	var trashed model.Document
+	if err := app.DB.Unscoped().First(&trashed, doc.ID).Error; err != nil || !trashed.DeletedAt.Valid || trashed.IsShared {
+		t.Fatalf("trash state: %+v %v", trashed, err)
+	}
+	app.DB.Model(&model.Share{}).Where("document_id = ?", doc.ID).Count(&shareN)
+	var reqN int64
+	app.DB.Model(&model.ShareAccessRequest{}).Where("document_id = ?", doc.ID).Count(&reqN)
+	if shareN != 0 || reqN != 0 {
+		t.Fatalf("share=%d requests=%d", shareN, reqN)
+	}
+
+	if _, err := exec("create_document", `{"title":"评论稿","content":"正文"}`); err != nil {
+		t.Fatal(err)
+	}
+	var commented model.Document
+	if err := app.DB.Where("title = ?", "评论稿").First(&commented).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := exec("add_comment", `{"id":`+id(commented.ID)+`,"content":"楼主"}`); err != nil {
+		t.Fatal(err)
+	}
+	var top model.Comment
+	if err := app.DB.Where("document_id = ? AND parent_id = 0", commented.ID).First(&top).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := exec("add_comment", `{"id":`+id(commented.ID)+`,"parent_id":`+id(top.ID)+`,"content":"自回复"}`); err == nil {
+		t.Fatal("self reply must be rejected")
+	}
+	reply := model.Comment{DocumentID: commented.ID, ParentID: top.ID, UserID: other.ID, Content: "他人回复"}
+	if err := app.DB.Create(&reply).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := exec("delete_comment", `{"id":`+id(commented.ID)+`,"comment_id":`+id(top.ID)+`}`); err != nil {
+		t.Fatal(err)
+	}
+	var cmN int64
+	app.DB.Model(&model.Comment{}).Where("document_id = ?", commented.ID).Count(&cmN)
+	if cmN != 0 {
+		t.Fatalf("comments left: %d", cmN)
+	}
+
+	htmlDoc := model.Document{Title: "站点", Slug: "htmlsite01", Type: model.DocTypeHTML, Content: "<html></html>", OwnerID: owner.ID}
+	if err := app.DB.Create(&htmlDoc).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := exec("duplicate_document", `{"id":`+id(htmlDoc.ID)+`}`); err == nil {
+		t.Fatal("html duplicate must be refused")
+	}
+
+	_, limited, _ := app.chatTools(owner)
+	for i := 0; i < 3; i++ {
+		if _, err := limited("create_document", `{"title":"配额`+strconv.Itoa(i)+`","content":"x"}`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := limited("create_document", `{"title":"超额","content":"x"}`); err == nil {
+		t.Fatal("4th create must hit per-request quota")
+	}
+	if _, err := limited("duplicate_document", `{"id":`+id(commented.ID)+`}`); err == nil {
+		t.Fatal("duplicate must share the create quota")
+	}
+	if _, err := limited("apply_template", `{"template_id":`+id(tpl.ID)+`}`); err == nil {
+		t.Fatal("apply_template must share the create quota")
+	}
+}
