@@ -800,6 +800,7 @@
   "docs.originAll": "All sources",
   "docs.originMine": "Created by me",
   "docs.originShared": "Shared via projects",
+  "docs.linked": "Linked",
   "err.roleBad": "Invalid role",
   "err.userBad": "User not found or disabled",
   "err.memberDup": "User is already a member",

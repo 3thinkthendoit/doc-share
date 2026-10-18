@@ -802,6 +802,7 @@
   "docs.originAll": "全部来源",
   "docs.originMine": "我创建的",
   "docs.originShared": "项目共享",
+  "docs.linked": "关联",
   "err.roleBad": "角色非法",
   "err.userBad": "用户不存在或已禁用",
   "err.memberDup": "该用户已是项目成员",

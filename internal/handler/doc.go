@@ -155,11 +155,21 @@ func (a *App) DocsPage(c *gin.Context) {
 	}
 
 	projects, categories := a.filterOptions(c)
-	// 项目筛选下拉补上参与的项目（他人项目仅用于筛选，不进入新建/导入的归属下拉）
+	// 项目筛选补上参与的项目（他人项目仅用于筛选，不进入新建/导入的归属下拉）
+	linked := map[uint]bool{}
 	if user != nil && !user.IsAdmin() && len(memberPids) > 0 {
 		var extra []model.Project
 		a.DB.Where("id IN ? AND owner_id <> ?", memberPids, user.ID).Order("name asc").Find(&extra)
+		for i := range extra {
+			extra[i].Linked = true
+			linked[extra[i].ID] = true
+		}
 		projects = append(projects, extra...)
+	}
+	for _, d := range docs {
+		if d.Project != nil && linked[d.Project.ID] {
+			d.Project.Linked = true
+		}
 	}
 	extra := ""
 	if q != "" {

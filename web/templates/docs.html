@@ -25,7 +25,9 @@
       <a href="/console/docs?{{.sideQS}}" class="{{if eq .project ""}}active{{end}}">{{$.T "docs.sideAll"}}</a>
       <a href="/console/docs?project=0&amp;{{.sideQS}}" class="{{if eq .project "0"}}active{{end}}">{{$.T "未分组"}}</a>
       {{range .projects}}
-      <a href="/console/docs?project={{.ID}}&amp;{{$.sideQS}}" class="{{if eq $.project (print .ID)}}active{{end}}" title="{{.Name}}">{{.Name}}</a>
+      <a href="/console/docs?project={{.ID}}&amp;{{$.sideQS}}" class="{{if eq $.project (print .ID)}}active{{end}}" title="{{.Name}}">
+        <span class="side-name">{{.Name}}</span>{{if .Linked}}<span class="tag">{{$.T "docs.linked"}}</span>{{end}}
+      </a>
       {{end}}
     </aside>
 
@@ -36,7 +38,7 @@
         <select name="project" class="docs-project-mobile">
           <option value="">{{$.T "全部项目"}}</option>
           <option value="0" {{if eq .project "0"}}selected{{end}}>{{$.T "未分组"}}</option>
-          {{range .projects}}<option value="{{.ID}}" {{if eq $.project (print .ID)}}selected{{end}}>{{.Name}}</option>{{end}}
+          {{range .projects}}<option value="{{.ID}}" {{if eq $.project (print .ID)}}selected{{end}}>{{.Name}}{{if .Linked}} · {{$.T "docs.linked"}}{{end}}</option>{{end}}
         </select>
         <input type="text" name="q" placeholder="{{$.T "搜索标题 / slug / 正文"}}" value="{{.q}}">
         <select name="category">
@@ -69,7 +71,7 @@
             {{if eq .Type "html"}}<span class="tag tag-embed">HTML</span>{{else if eq .Type "mindmap"}}<span class="tag tag-embed">{{$.T "docs.tagMindmap"}}</span>{{else if eq .Type "board"}}<span class="tag tag-embed">{{$.T "docs.tagBoard"}}</span>{{else if eq .Type "drawio"}}<span class="tag tag-embed">{{$.T "docs.tagDrawio"}}</span>{{end}}
           </div>
           {{with index $.snippets .ID}}<div class="sr-snippet">{{.}}</div>{{end}}
-          <div class="sr-meta muted">{{if .Project}}{{.Project.Name}} · {{end}}{{if .Category}}{{.Category.Name}} · {{end}}{{if .Version}}{{.Version}} · {{end}}{{if $.trash}}<span data-ts="{{.DeletedAt.Time.Unix}}">{{.DeletedAt.Time.Format "2006-01-02 15:04"}}</span>{{else}}<span data-ts="{{.UpdatedAt.Unix}}">{{.UpdatedAt.Format "2006-01-02 15:04"}}</span>{{end}}</div>
+          <div class="sr-meta muted">{{if .Project}}{{.Project.Name}}{{if .Project.Linked}} <span class="tag">{{$.T "docs.linked"}}</span>{{end}} · {{end}}{{if .Category}}{{.Category.Name}} · {{end}}{{if .Version}}{{.Version}} · {{end}}{{if $.trash}}<span data-ts="{{.DeletedAt.Time.Unix}}">{{.DeletedAt.Time.Format "2006-01-02 15:04"}}</span>{{else}}<span data-ts="{{.UpdatedAt.Unix}}">{{.UpdatedAt.Format "2006-01-02 15:04"}}</span>{{end}}</div>
           {{/* 搜索态保留行操作：回收站可还原/彻底删除，普通视图可分享/编辑/删除（JS 委托在 .ops-item / [data-trash-op]） */}}
           <div class="sr-ops">
             {{if $.trash}}
@@ -112,7 +114,7 @@
               </td>
               <td>{{if eq .Type "html"}}<span class="tag tag-embed">HTML</span>{{else if eq .Type "mindmap"}}<span class="tag tag-embed">{{$.T "docs.tagMindmap"}}</span>{{else if eq .Type "board"}}<span class="tag tag-embed">{{$.T "docs.tagBoard"}}</span>{{else if eq .Type "drawio"}}<span class="tag tag-embed">{{$.T "docs.tagDrawio"}}</span>{{else}}<span class="muted">Markdown</span>{{end}}</td>
               <td>{{if .Version}}<span class="tag">{{.Version}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
-              <td class="cell-clip" {{if .Project}}title="{{.Project.Name}}"{{end}}>{{if .Project}}{{.Project.Name}}{{else}}<span class="muted">—</span>{{end}}</td>
+              <td class="cell-clip" {{if .Project}}title="{{.Project.Name}}"{{end}}>{{if .Project}}{{.Project.Name}}{{if .Project.Linked}} <span class="tag">{{$.T "docs.linked"}}</span>{{end}}{{else}}<span class="muted">—</span>{{end}}</td>
               <td class="cell-clip" {{if .Category}}title="{{.Category.Name}}"{{end}}>{{if .Category}}{{.Category.Name}}{{else}}<span class="muted">—</span>{{end}}</td>
               <td class="cell-clip">{{if .Owner.ID}}{{if and $.user (eq .OwnerID $.user.ID)}}<span class="me-badge"><svg class="me-ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg>{{$.T "docs.me"}}</span>{{else}}<span class="owner-link" title="{{.Owner.DisplayName}}" data-name="{{.Owner.DisplayName}}" data-username="{{.Owner.Username}}" data-avatar="{{.Owner.Avatar}}" data-email="{{.Owner.MaskedEmail}}" data-phone="{{.Owner.MaskedPhone}}" data-active="{{if .Owner.LastActiveAt}}{{.Owner.LastActiveAt.Format "2006-01-02 15:04"}}{{end}}">{{.Owner.DisplayName}}</span>{{end}}{{else}}<span class="muted">—</span>{{end}}</td>
               <td>{{.ViewCount}}</td>
@@ -189,7 +191,7 @@
         <label class="import-field">{{$.T "项目"}}
           <select id="importProject">
             <option value="0">{{$.T "未分组"}}</option>
-            {{range .projects}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+            {{range .projects}}{{if not .Linked}}<option value="{{.ID}}">{{.Name}}</option>{{end}}{{end}}
           </select>
         </label>
         <label class="import-field">{{$.T "分类"}}
@@ -243,7 +245,7 @@
         <label class="import-field">{{$.T "项目"}}
           <select id="htmlProject">
             <option value="0">{{$.T "未分组"}}</option>
-            {{range .projects}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+            {{range .projects}}{{if not .Linked}}<option value="{{.ID}}">{{.Name}}</option>{{end}}{{end}}
           </select>
         </label>
         <label class="import-field">{{$.T "分类"}}

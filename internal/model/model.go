@@ -98,6 +98,7 @@ type Project struct {
 	DocCount    int64     `gorm:"-" json:"doc_count"`      // 子查询统计，非数据库列
 	MemberCount int64     `gorm:"-" json:"member_count"`   // 成员数统计，非数据库列
 	Role        string    `gorm:"-" json:"role,omitempty"` // 当前用户在该项目中的成员角色（列表回填，空=属主/无关联）
+	Linked      bool      `gorm:"-" json:"-"`              // 文档列表回填：当前用户不是项目属主（被拉进的关联项目）
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }

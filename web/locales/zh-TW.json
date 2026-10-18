@@ -800,6 +800,7 @@
   "docs.originAll": "全部來源",
   "docs.originMine": "我建立的",
   "docs.originShared": "專案共享",
+  "docs.linked": "關聯",
   "err.roleBad": "角色非法",
   "err.userBad": "使用者不存在或已停用",
   "err.memberDup": "該使用者已是專案成員",
