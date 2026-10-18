@@ -118,15 +118,16 @@ body.nav-drawer-open{overflow:hidden}
 .nav-brand a{display:inline-flex;align-items:center;gap:9px;font-weight:700;font-size:16px;letter-spacing:-.4px;color:var(--text)}
 .nav-brand a b{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:var(--grad);color:var(--grad-fg);font-size:13px;letter-spacing:0}
 .nav-brand a img.nav-logo{width:36px;height:36px;border-radius:9px;object-fit:cover;display:block}
-/* 链接右对齐（Orbit 式：品牌左、链接推右紧贴工具组），与落地页顶栏同构 */
-.nav-links{display:flex;gap:6px;flex:1;justify-content:flex-end}
+/* 链接相对顶栏水平居中（脱离文档流，避免被左右不等宽的品牌/工具组挤偏）；与落地页顶栏同构 */
+.nav-brand{position:relative;z-index:2;flex:none}
+.nav-links{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:1;display:flex;gap:6px;justify-content:center;white-space:nowrap}
 .nav-links a{color:var(--muted);font-weight:600;font-size:14px;padding:8px 14px;border-radius:8px;transition:all .15s}
 .nav-links a:hover{color:var(--text);background:var(--bg-soft);text-decoration:none}
 /* 当前页菜单项高亮：与官网 scroll-spy、窄屏抽屉同款背景焦点；类由 ui.js 按 pathname 打（置于 :hover 后保证悬停不被覆盖） */
 .nav-links a.active{color:var(--l-nav-on, var(--primary-dark));background:var(--l-nav-on-bg, var(--primary-soft));text-decoration:none}
 .nav-links .drop-btn.active{color:var(--l-nav-on, var(--primary-dark));background:var(--l-nav-on-bg, var(--primary-soft))}
 /* 后台导航右侧工具组：主题 / GitHub / 语言切换，同为 ghost 风格 36px 等高 */
-.nav-right-tools{display:flex;align-items:center;gap:8px}
+.nav-right-tools{display:flex;align-items:center;gap:8px;margin-left:auto;position:relative;z-index:2;flex:none}
 .theme-toggle,.nav-gh,.msg-bell{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;padding:0;color:var(--muted);border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;transition:all .15s;cursor:pointer;font:inherit}
 .theme-toggle:hover,.nav-gh:hover,.msg-bell:hover{color:var(--text);border-color:var(--border-strong);background:var(--panel)}
 .msg-menu{position:relative}
@@ -149,7 +150,7 @@ html[data-theme="light"] .theme-toggle .i-moon{display:none}
 .topnav .lang-switch select{height:36px;padding:0 10px;border-color:transparent;background:transparent;color:var(--muted)}
 .topnav .lang-switch select:hover{border-color:var(--border-strong);background:var(--panel);color:var(--text)}
 .nav-user{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:13px}
-.user-menu{position:relative}
+.user-menu{position:relative;z-index:2;flex:none}
 .user-chip{display:flex;align-items:center;gap:8px;padding:4px 14px 4px 6px;border:1px solid var(--border);background:var(--panel);border-radius:6px;cursor:pointer;font-size:13px;color:var(--text);font-family:inherit;transition:all .15s}
 .user-chip:hover{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
 .user-avatar{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;background:var(--grad);color:var(--grad-fg);font-size:12px;font-weight:600;flex:none;overflow:hidden}
@@ -307,6 +308,26 @@ body:has(.admin-foot) main.container{flex:1 0 auto;width:100%}
 .container.wide{max-width:min(1680px, calc(100vw - 48px))}
 .container.docs-wrap{max-width:min(1680px, calc(100vw - 48px))}
 .container.doc-wrap{max-width:min(1680px, calc(100vw - 48px))}
+/* 控制台内容区小一号：继承字 15→14，已写死的字号各减 1px；顶栏不受影响；.page-head 标题保持原尺度 */
+main.container{font-size:14px}
+main.container .page-head{font-size:15px}
+/* 仪表盘裸 h1 与 .page-head h1 同尺度（15px×2em），不随内容区缩小 */
+main.container > h1{font-size:30px;font-weight:800;letter-spacing:-.02em}
+main.container .panel-head h2{font-size:16px}
+main.container .stat-num{font-size:30px}
+main.container .stat-label{font-size:12px}
+main.container .table th{font-size:11px}
+main.container .btn{font-size:13px}
+main.container .btn-sm{font-size:12px}
+main.container .tag{font-size:11px}
+main.container .mono{font-size:11px}
+main.container .search-bar input,
+main.container .filter-bar select,
+main.container .filter-bar .xsel-btn{font-size:13px}
+main.container .xsel-opt{font-size:12px}
+main.container .pager .muted{font-size:12px}
+main.container .pager .pager-size,
+main.container .pager .xsel-btn{font-size:11.5px}
 .page-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
 /* 页头左侧：标题 + 项目/分类下拉同排 */
 .head-title{display:flex;align-items:center;gap:18px}

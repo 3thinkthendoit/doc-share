@@ -71,7 +71,7 @@
     <a href="#quotes">{{$.T "nav.quotes"}}</a>
     <a href="#faq">{{$.T "常见问题"}}</a>
     <div class="drop">
-      <button type="button" class="drop-btn" aria-haspopup="true" aria-expanded="false">{{$.T "nav.dev"}}<svg class="drop-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+      <button type="button" class="drop-btn" aria-haspopup="true" aria-expanded="false">{{$.T "openapi.name"}}<svg class="drop-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
       <div class="drop-menu" role="menu">
         {{/* 密钥管理属登录后才能操作的页面：未登录不提供入口 */}}
         {{if .user}}<a role="menuitem" href="/console/apikeys">{{$.T "key.manage"}}</a>{{end}}

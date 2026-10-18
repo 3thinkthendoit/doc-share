@@ -59,6 +59,7 @@ html[data-theme="light"] {
 /* 仅首页：与控制台 .topnav 同一内容列（1680px 容器、左右 32px） */
 .l-nav.has-landing-links { padding: 0 max(56px, calc(50vw - 808px)); }
 .l-logo {
+  position: relative; z-index: 2; flex: none;
   display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 16px;
   letter-spacing: -.4px; color: var(--l-head); text-decoration: none;
 }
@@ -68,8 +69,8 @@ a.l-logo, a.l-logo:hover { color: var(--l-head); text-decoration: none; }
   background: linear-gradient(135deg, var(--l-grad-a), var(--l-grad-b));
   color: var(--l-btn-fg); font-size: 13px;
 }
-/* 链接整体右对齐（Orbit 式：logo 左、链接推右紧贴 CTA），而非紧跟 logo 左排 */
-.l-nav-links { display: flex; gap: 6px; flex: 1; justify-content: flex-end; }
+/* 链接相对顶栏水平居中（脱离文档流，避免被左右不等宽的 logo / 右侧按钮挤偏） */
+.l-nav-links { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 1; display: flex; gap: 6px; justify-content: center; white-space: nowrap; }
 .l-nav-links[hidden] { display: none !important; }
 /* .l-site a { color: inherit } 与本规则同优先级且在 landing.css 之后，不加重选择器时首页链接会变成正文色 #0d1b2e，而不是控制台的 --muted */
 .l-nav-links a,
@@ -120,7 +121,7 @@ a.l-logo, a.l-logo:hover { color: var(--l-head); text-decoration: none; }
 }
 .l-nav-drawer-links a:hover { background: var(--l-hairline); color: var(--l-accent); }
 body.l-nav-open { overflow: hidden; }
-.l-nav-right { display: flex; align-items: center; gap: 10px; margin-left: auto; --ctl-h: 38px; }
+.l-nav-right { display: flex; align-items: center; gap: 10px; margin-left: auto; position: relative; z-index: 2; flex: none; --ctl-h: 38px; }
 .l-nav-right > .l-btn,
 .l-nav-right .l-lang select { height: var(--ctl-h); box-sizing: border-box; line-height: 1; }
 .l-lang { display: inline-flex; align-items: center; }
