@@ -48,6 +48,9 @@ VOLUME ["/app/uploads"]
 
 EXPOSE 8080
 
+# 日志：进程只写 stdout（含访问日志与 [boot]/[llm] 等），用 docker logs -f <容器> 查看；
+# 勿再挂文件日志卷。连库卡住时会先看到 "[boot] 连接数据库…"，便于区分「没日志」和「卡在 MySQL」。
+#
 # 必需环境变量（config.yaml 中 session_secret 为裸 ${VAR} 占位，未设置会拒绝启动）：
 #   DOC_SHARE_SESSION_SECRET      —— 随机长字符串（>=32 位），生产必填
 #   DOC_SHARE_DB_DSN              —— MySQL DSN，如 user:pass@tcp(host:3306)/doc_share?charset=utf8mb4&parseTime=True&loc=Local
@@ -56,5 +59,6 @@ EXPOSE 8080
 #   DOC_SHARE_ADMIN_USER/_PASSWORD —— 首次启动创建的默认管理员
 #   DOC_SHARE_DEV                 —— 前端热载，生产保持 false
 #   DOC_SHARE_FONT_DIR            —— PDF 导出中文字体目录（镜像默认已含 Noto Sans SC）
+#   DOC_SHARE_DB_LOG              —— true 时输出 GORM SQL（默认关闭）
 ENTRYPOINT ["/app/main"]
 CMD ["-config", "/etc/doc-share/config.yaml"]

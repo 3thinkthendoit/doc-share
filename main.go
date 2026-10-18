@@ -27,9 +27,18 @@ var staticFS embed.FS
 var localesFS embed.FS
 
 func main() {
+	// Docker/K8s 惯例：业务与访问日志统一打 stdout。
+	// 标准库 log 默认走 stderr，部分面板/采集只收 stdout，容器里会像「没有日志」。
+	log.SetOutput(os.Stdout)
+	log.SetFlags(log.LstdFlags)
+	gin.DefaultWriter = os.Stdout
+	gin.DefaultErrorWriter = os.Stdout
+	gin.DisableConsoleColor()
+
 	configPath := flag.String("config", "config.yaml", "配置文件路径")
 	flag.Parse()
 
+	log.Printf("[boot] 加载配置 %s", *configPath)
 	cfg, issues, err := config.Load(*configPath)
 	for _, is := range issues {
 		log.Printf("[config] %s (${%s}): %s", is.Key, is.Env, is.Reason)
@@ -43,10 +52,12 @@ func main() {
 		log.Fatalf("创建上传目录失败: %v", err)
 	}
 
+	log.Printf("[boot] 连接数据库…")
 	db, err := database.Init(cfg)
 	if err != nil {
 		log.Fatalf("初始化数据库失败: %v", err)
 	}
+	log.Printf("[boot] 数据库就绪")
 
 	tmplRoot, err := fs.Sub(templatesFS, "web/templates")
 	if err != nil {
@@ -88,7 +99,7 @@ func main() {
 	gin.SetMode(gin.ReleaseMode)
 	engine := router.New(app, staticRoot)
 
-	log.Printf("DocShare 服务已启动: http://localhost%s", cfg.Server.Port)
+	log.Printf("[boot] DocShare 已监听 http://0.0.0.0%s （docker logs / 采集 stdout）", cfg.Server.Port)
 	if err := engine.Run(cfg.Server.Port); err != nil {
 		log.Fatalf("服务启动失败: %v", err)
 	}
