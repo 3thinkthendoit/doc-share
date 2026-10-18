@@ -317,18 +317,24 @@ func (a *App) ReviewChatApproval(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-// bindChatGen 登记本会话当前生成的取消函数；若已有进行中的生成则先取消（同会话不并行烧两轮）
-func (a *App) bindChatGen(sessionID uint, cancel context.CancelFunc) {
-	if prev, ok := a.chatGens.Swap(sessionID, cancel); ok {
-		if old, ok := prev.(context.CancelFunc); ok && old != nil {
-			old()
+// chatGenToken 一次生成的取消句柄。
+// 值必须可比较：sync.Map.CompareAndDelete 用 == 比对，context.CancelFunc 不可比较，直接存会 panic。
+type chatGenToken struct {
+	cancel context.CancelFunc
+}
+
+// bindChatGen 登记本会话当前生成；若已有进行中的生成则先取消（同会话不并行烧两轮）
+func (a *App) bindChatGen(sessionID uint, token *chatGenToken) {
+	if prev, ok := a.chatGens.Swap(sessionID, token); ok {
+		if old, ok := prev.(*chatGenToken); ok && old != nil && old.cancel != nil {
+			old.cancel()
 		}
 	}
 }
 
-// unbindChatGen 仅当仍是本次 cancel 时移除，避免误清后来者的登记
-func (a *App) unbindChatGen(sessionID uint, cancel context.CancelFunc) {
-	a.chatGens.CompareAndDelete(sessionID, cancel)
+// unbindChatGen 仅当仍是本次 token 时移除，避免误清后来者的登记
+func (a *App) unbindChatGen(sessionID uint, token *chatGenToken) {
+	a.chatGens.CompareAndDelete(sessionID, token)
 }
 
 // cancelChatGen 显式停止该会话正在进行的生成（停止按钮）
@@ -337,8 +343,8 @@ func (a *App) cancelChatGen(sessionID uint) bool {
 	if !ok {
 		return false
 	}
-	if cancel, ok := v.(context.CancelFunc); ok && cancel != nil {
-		cancel()
+	if token, ok := v.(*chatGenToken); ok && token != nil && token.cancel != nil {
+		token.cancel()
 		return true
 	}
 	return false
@@ -868,10 +874,11 @@ func (a *App) ChatCompletions(c *gin.Context) {
 	// 生成上下文与 HTTP 请求解耦：刷新/关页只断 SSE，后台仍跑完并落库；
 	// 只有「停止」接口或同会话新请求会 cancelChatGen。
 	genCtx, genCancel := context.WithCancel(context.Background())
-	a.bindChatGen(s.ID, genCancel)
+	token := &chatGenToken{cancel: genCancel}
+	a.bindChatGen(s.ID, token)
 	defer func() {
 		genCancel()
-		a.unbindChatGen(s.ID, genCancel)
+		a.unbindChatGen(s.ID, token)
 	}()
 	clientAlive := func() bool { return c.Request.Context().Err() == nil }
 

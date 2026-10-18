@@ -878,9 +878,20 @@
     stopStatusAnim(target);
     if (target.waitPill) { target.waitPill.remove(); target.waitPill = null; }
   }
+  function clearWorkingPlaceholder(target) {
+    var el = contentEl(target);
+    if (!el) return;
+    var nodes = el.querySelectorAll('.chat-working');
+    for (var i = 0; i < nodes.length; i++) nodes[i].remove();
+  }
   function ensureWaitingPill(target, label) {
     if (!target || !sending) return;
-    if (target.runPill) return; // 工具进行中已有动画 pill
+    if (target.runPill) {
+      clearWorkingPlaceholder(target);
+      return; // 工具进行中已有动画 pill
+    }
+    // 状态只留在轨迹 pill；正文里的「正在处理」占位一并去掉，避免叠两行
+    clearWorkingPlaceholder(target);
     var trail = ensureTrail(target);
     var base = label || UI.t('chat.working');
     if (!target.waitPill) {
@@ -949,6 +960,7 @@
       target.runPill = document.createElement('div');
       target.runPill.className = 'chat-trail-pill run';
       trail.appendChild(target.runPill);
+      clearWorkingPlaceholder(target);
       var dots = 0;
       var base = step.tools || UI.t('chat.working');
       var render = function () {
@@ -1293,7 +1305,7 @@
             ai.gotDelta = false;
             if (ai.status) { stopStatusAnim(ai); ai.status.remove(); ai.status = null; }
             disarmWaiting(ai);
-            contentEl(ai).innerHTML = workingHtml();
+            contentEl(ai).textContent = '';
             armWaiting(ai, true);
           }
           if (payload.tool) { showToolStatus(ai, payload.tool); }
