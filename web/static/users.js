@@ -102,6 +102,59 @@
 
 function rowEl(id) { return document.querySelector('tr[data-id="' + id + '"]'); }
 
+(function () {
+  var table = document.querySelector('main .table');
+  if (!table) return;
+  function closeMenus() {
+    table.querySelectorAll('.row-menu-pop').forEach(function (pop) {
+      pop.hidden = true;
+      var b = pop.parentNode.querySelector('.row-menu-btn');
+      if (b) b.setAttribute('aria-expanded', 'false');
+    });
+  }
+  function openMenu(menu) {
+    closeMenus();
+    var btn = menu.querySelector('.row-menu-btn');
+    var pop = menu.querySelector('.row-menu-pop');
+    pop.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    var r = btn.getBoundingClientRect();
+    var w = pop.offsetWidth || 148;
+    var left = Math.max(8, r.right - w);
+    var top = r.bottom + 4;
+    if (top + pop.offsetHeight > window.innerHeight - 8) top = Math.max(8, r.top - pop.offsetHeight - 4);
+    pop.style.top = top + 'px';
+    pop.style.left = left + 'px';
+  }
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('.row-menu')) closeMenus();
+  });
+  window.addEventListener('scroll', closeMenus, true);
+  window.addEventListener('resize', closeMenus);
+  table.addEventListener('click', function (e) {
+    var toggle = e.target.closest('.row-menu-btn');
+    if (toggle) {
+      var menu = toggle.closest('.row-menu');
+      var pop = menu.querySelector('.row-menu-pop');
+      if (pop.hidden) openMenu(menu); else closeMenus();
+      return;
+    }
+    var btn = e.target.closest('[data-act]');
+    if (!btn || !btn.closest('.row-menu')) return;
+    closeMenus();
+    var tr = btn.closest('tr[data-id]');
+    if (!tr) return;
+    var id = tr.getAttribute('data-id');
+    var act = btn.getAttribute('data-act');
+    if (act === 'edit') {
+      editUser(id, tr.getAttribute('data-username'), tr.getAttribute('data-nickname'), tr.getAttribute('data-role'), tr.getAttribute('data-status'), tr.getAttribute('data-avatar'), tr.getAttribute('data-email'), tr.getAttribute('data-phone'));
+    } else if (act === 'pwd') resetPwd(id);
+    else if (act === 'unlock') unlockUser(id);
+    else if (act === 'totp') resetTOTP(id);
+    else if (act === 'del') delUser(id);
+  });
+})();
+
 async function resetPwd(id) {
   var pwd = await UI.prompt('输入新密码（至少 6 位）', 'password', '新密码');
   if (!pwd) return;

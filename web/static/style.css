@@ -382,6 +382,13 @@ button.stat-card:focus-visible{outline:2px solid var(--primary);outline-offset:2
 .table tr:last-child td{border-bottom:none}
 .col-actions{white-space:nowrap;text-align:right}
 .col-actions .btn{margin-left:6px}
+.row-menu{display:inline-block;text-align:left}
+.row-menu-pop{position:fixed;z-index:80;min-width:148px;padding:4px;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-dropdown)}
+.row-menu-pop[hidden]{display:none}
+.row-menu-pop button{display:block;width:100%;text-align:left;padding:8px 10px;border:none;background:none;border-radius:8px;font:inherit;font-size:13px;color:var(--text);cursor:pointer}
+.row-menu-pop button:hover{background:var(--bg-soft)}
+.row-menu-pop button.danger{color:var(--danger)}
+.row-menu-pop button.danger:hover{background:var(--danger-soft)}
 .table td.cell-muted{color:var(--muted)}
 .table td.empty,.table .empty-row td{white-space:normal;text-align:center;color:var(--faint);padding:40px 16px}
 /* API 文档说明表仍需换行 */

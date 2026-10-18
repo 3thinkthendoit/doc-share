@@ -15,21 +15,30 @@
       <thead><tr><th>ID</th><th>{{$.T "头像"}}</th><th>{{$.T "用户名"}}</th><th>{{$.T "昵称"}}</th><th>{{$.T "角色"}}</th><th>{{$.T "状态"}}</th><th>{{$.T "创建时间"}}</th><th>{{$.T "最近活跃"}}</th><th class="col-actions">{{$.T "操作"}}</th></tr></thead>
       <tbody>
       {{range .users}}
-        <tr data-id="{{.ID}}">
+        <tr data-id="{{.ID}}" data-username="{{.Username}}" data-nickname="{{.Nickname}}" data-role="{{.Role}}" data-status="{{.Status}}" data-avatar="{{.Avatar}}" data-email="{{.Email}}" data-phone="{{.Phone}}">
           <td>{{.ID}}</td>
           <td><span class="user-avatar user-avatar-sm">{{if .Avatar}}<img src="{{.Avatar}}" alt="{{$.T "头像"}}">{{else}}{{avatar .Nickname .Username}}{{end}}</span></td>
           <td class="mono">{{.Username}}</td>
           <td>{{.Nickname}}</td>
           <td class="mono">{{.Role}}</td>
-          <td>{{if eq .Status 1}}<span class="badge badge-on">{{$.T "启用"}}</span>{{else}}<span class="badge badge-off">{{$.T "禁用"}}</span>{{end}}{{if .Locked}} <span class="badge badge-off">{{$.T "user.locked"}}</span>{{end}}</td>
+          <td>
+            {{if eq .Status 1}}<span class="badge badge-on">{{$.T "启用"}}</span>{{else}}<span class="badge badge-off">{{$.T "禁用"}}</span>{{end}}
+            {{if .Locked}} <span class="badge badge-off">{{$.T "user.locked"}}</span>{{end}}
+            {{if .TOTPBound}} <span class="badge badge-on">{{$.T "user.totpBound"}}</span>{{end}}
+          </td>
           <td>{{.CreatedAt.Format "2006-01-02"}}</td>
           <td>{{if .LastActiveAt}}{{.LastActiveAt.Format "2006-01-02 15:04"}}{{else}}—{{end}}</td>
           <td class="col-actions">
-            <button class="btn btn-sm" onclick="editUser({{.ID}}, {{.Username}}, {{.Nickname}}, {{.Role}}, {{.Status}}, {{.Avatar}}, {{.Email}}, {{.Phone}})">{{$.T "编辑"}}</button>
-            <button class="btn btn-sm" onclick="resetPwd({{.ID}})">{{$.T "重置密码"}}</button>
-            {{if .Locked}}<button class="btn btn-sm" onclick="unlockUser({{.ID}})">{{$.T "user.unlock"}}</button>{{end}}
-            {{if and $.totpOn .TOTPBound}}<button class="btn btn-sm" onclick="resetTOTP({{.ID}})">{{$.T "user.resetTotp"}}</button>{{end}}
-            <button class="btn btn-sm btn-danger" onclick="delUser({{.ID}})">{{$.T "删除"}}</button>
+            <div class="row-menu">
+              <button type="button" class="btn btn-sm row-menu-btn" aria-haspopup="menu" aria-expanded="false">{{$.T "操作"}}</button>
+              <div class="row-menu-pop" role="menu" hidden>
+                <button type="button" role="menuitem" data-act="edit">{{$.T "编辑"}}</button>
+                <button type="button" role="menuitem" data-act="pwd">{{$.T "重置密码"}}</button>
+                <button type="button" role="menuitem" data-act="unlock">{{$.T "user.unlock"}}</button>
+                <button type="button" role="menuitem" data-act="totp">{{$.T "user.resetTotp"}}</button>
+                <button type="button" role="menuitem" class="danger" data-act="del">{{$.T "删除"}}</button>
+              </div>
+            </div>
           </td>
         </tr>
       {{end}}
