@@ -11,6 +11,7 @@ import (
 	"doc-share/internal/export"
 	"doc-share/internal/middleware"
 	"doc-share/internal/model"
+	"doc-share/internal/storage"
 
 	"github.com/gin-gonic/gin"
 )
@@ -71,12 +72,8 @@ func (a *App) writeDocExport(c *gin.Context, doc *model.Document, limitKey strin
 		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "share.exportBadFormat")})
 		return
 	}
-	if err := export.Available(format); err != nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": a.tr(c, "share.exportUnavailable")})
-		return
-	}
 
-	// 按 IP（或登录用户）限流 + 全局并发槽，避免导出打满 CPU
+	// 先限流再探测字体，避免 Available 的字体探测被未限流请求打满
 	limitID := c.ClientIP()
 	if u := a.sessionUser(c); u != nil {
 		limitID = fmt.Sprintf("u:%d", u.ID)
@@ -93,15 +90,21 @@ func (a *App) writeDocExport(c *gin.Context, doc *model.Document, limitKey strin
 	defer export.Release()
 	exportRateLimiter.Fail(limitID, exportLimit)
 
+	if err := export.Available(format); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": a.tr(c, "share.exportUnavailable")})
+		return
+	}
+
 	uploadDir := ""
 	if a.Cfg != nil {
 		uploadDir = a.Cfg.Upload.Dir
 	}
 	data, ctype, err := export.Export(c.Request.Context(), format, export.Options{
-		Title:     doc.Title,
-		Markdown:  doc.Content,
-		BaseURL:   a.siteBaseURL(c),
-		UploadDir: uploadDir,
+		Title:      doc.Title,
+		Markdown:   doc.Content,
+		BaseURL:    a.siteBaseURL(c),
+		UploadDir:  uploadDir,
+		ImageHosts: a.exportImageHosts(c),
 	})
 	if err != nil {
 		log.Printf("export doc=%d format=%s: %v", doc.ID, format, err)
@@ -114,6 +117,23 @@ func (a *App) writeDocExport(c *gin.Context, doc *model.Document, limitKey strin
 	c.Header("Content-Disposition", contentDisposition(name))
 	c.Header("Cache-Control", "no-store")
 	c.Data(http.StatusOK, ctype, data)
+}
+
+// exportImageHosts 导出时可拉取远程图片的主机白名单：站点域名 + 对象存储 endpoint。
+func (a *App) exportImageHosts(c *gin.Context) []string {
+	hosts := []string{a.siteBaseURL(c)}
+	s := a.Settings()
+	switch s.StorageDriver {
+	case storage.DriverRustFS:
+		if ep := strings.TrimSpace(s.RustFSEndpoint); ep != "" {
+			hosts = append(hosts, ep)
+		}
+	case storage.DriverCOS:
+		if ep := strings.TrimSpace(s.COSEndpoint); ep != "" {
+			hosts = append(hosts, ep)
+		}
+	}
+	return hosts
 }
 
 // contentDisposition 同时给出 ASCII fallback 与 RFC 5987 filename*（支持中文标题）。

@@ -11,6 +11,7 @@
 - **Markdown 编辑器** — 工具栏（加粗/列表/代码/链接/图片/表格等）、实时预览、XSS 净化渲染
 - **图片上传** — 粘贴或拖拽上传；存储可选本地磁盘（`/uploads`）或 RustFS（S3 兼容）
 - **文档导入** — `PDF` / `doc` / `docx` 纯内存转为 Markdown，不落盘临时文件
+- **文档导出** — Markdown 导出为 `PDF` / `DOCX`（纯 Go，无需 Chromium / Pandoc）；PDF 需中文字体（官方 Docker 镜像已内置 Noto Sans SC）
 - **列表与筛选** — 按标题搜索，按项目、分类、分享状态、归属（我的 / 项目共享）过滤；分页浏览
 - **预览** — 管理端以读者视图预览，不计浏览数
 - **编辑占用提示** — 心跳检测他人正在编辑同一文档
@@ -107,6 +108,7 @@ CREATE DATABASE doc_share DEFAULT CHARSET utf8mb4;
 | `DOC_SHARE_ES_PASSWORD` | 否 | ES HTTP Basic 密码 |
 | `DOC_SHARE_ES_TIMEOUT_MS` | 否 | 单次 ES 查询超时毫秒（默认 `2000`），超时/报错即回退 MySQL |
 | `DOC_SHARE_ES_SYNC_MINUTES` | 否 | 后台增量索引同步间隔分钟（默认 `5`） |
+| `DOC_SHARE_FONT_DIR` | 否 | PDF 导出用中文字体目录（需含 `NotoSansSC-Regular.ttf` / `NotoSansSC-Bold.ttf`）。官方镜像默认 `/usr/share/fonts/noto-sc`；本机未配置时 PDF 导出不可用，DOCX 不受影响 |
 
 > **搜索后端**：设置 `DOC_SHARE_ES_URL` 后，应用会把全部文档索引进 ES（编辑时双写 + 启动全量重建 + 定时增量同步）并由 ES 提供检索；若 ES 未配置/不可达/报错，则透明回退 MySQL。MySQL 始终是权限真相源（ES 结果回表时会再按 MySQL 权限过滤一次）。随附的 `Dockerfile.es` 预装了 [analysis-ik](https://github.com/infinilabs/analysis-ik) 中文分词插件，应用会自动探测（未装则回退标准分析器）。
 
@@ -160,6 +162,7 @@ internal/
   storage/              本地 / RustFS 存储
   i18n/                 多语言词典加载
   convert/              PDF / doc / docx → Markdown 转换器
+  export/               Markdown → PDF / DOCX 导出（纯 Go）
   util/                 工具函数
 web/
   templates/            HTML 模板

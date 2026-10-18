@@ -1,14 +1,10 @@
-// Package export 将已保存的 Markdown 导出为 PDF（Chromium 打印）与 DOCX（Pandoc）。
+// Package export 将已保存的 Markdown 导出为 PDF / DOCX（纯 Go，无外部二进制）。
 package export
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
-	"net/url"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -21,13 +17,13 @@ const (
 	FormatDOCX = "docx"
 
 	defaultTimeout = 90 * time.Second
-	maxConcurrent  = 2 // 全局同时导出上限，防止 Chromium/Pandoc 打满 CPU
+	maxConcurrent  = 2 // 全局同时导出上限，防止渲染打满 CPU
 )
 
 // 站内相对链接，允许可选 title：](/uploads/a.png "x")
 var relLinkRe = regexp.MustCompile(`\]\((/(?:uploads|static)/[^)\s]+)(\s+"[^"]*"|\s+'[^']*')?\)`)
 
-// 危险协议：导出前剥离，避免 Chromium/Pandoc 读本地或执行脚本
+// 危险协议：导出前剥离，避免渲染器读本地或执行脚本
 var mdDangerLinkRe = regexp.MustCompile(`(?i)\]\((?:file|filesystem|data|javascript|vbscript):[^)]*\)`)
 var htmlDangerSrcDQ = regexp.MustCompile(`(?i)\b(src|href)\s*=\s*"\s*(?:file|filesystem|data|javascript|vbscript):[^"]*"`)
 var htmlDangerSrcSQ = regexp.MustCompile(`(?i)\b(src|href)\s*=\s*'\s*(?:file|filesystem|data|javascript|vbscript):[^']*'`)
@@ -35,56 +31,14 @@ var htmlDangerSrcSQ = regexp.MustCompile(`(?i)\b(src|href)\s*=\s*'\s*(?:file|fil
 // 全局导出槽：非阻塞申请，满则调用方返回忙碌
 var exportSlots = make(chan struct{}, maxConcurrent)
 
-// Tools 运行时依赖路径；空字段表示在 PATH 中查找默认名。
-type Tools struct {
-	Pandoc   string // 默认 pandoc
-	Chromium string // 默认 chromium / chromium-browser / google-chrome
-}
-
-func (t Tools) pandocBin() string {
-	if t.Pandoc != "" {
-		return t.Pandoc
-	}
-	return "pandoc"
-}
-
-func (t Tools) chromiumBin() (string, error) {
-	if t.Chromium != "" {
-		return t.Chromium, nil
-	}
-	if env := strings.TrimSpace(os.Getenv("CHROME_PATH")); env != "" {
-		if p, err := exec.LookPath(env); err == nil {
-			return p, nil
-		}
-		if _, err := os.Stat(env); err == nil {
-			return env, nil
-		}
-	}
-	for _, name := range []string{"chromium", "chromium-browser", "google-chrome", "google-chrome-stable"} {
-		if p, err := exec.LookPath(name); err == nil {
-			return p, nil
-		}
-	}
-	return "", fmt.Errorf("未找到 Chromium/Chrome，无法导出 PDF")
-}
-
-// Available 检查导出所需外部工具是否可用（DOCX 需 Pandoc；PDF 另需 Chromium）。
+// Available 检查导出是否可用（DOCX 恒可用；PDF 需中文字体）。
 func Available(format string) error {
 	switch strings.ToLower(strings.TrimSpace(format)) {
 	case FormatDOCX:
-		if _, err := exec.LookPath("pandoc"); err != nil {
-			return fmt.Errorf("未找到 Pandoc，无法导出 DOCX")
-		}
 		return nil
 	case FormatPDF:
-		if _, err := exec.LookPath("pandoc"); err != nil {
-			return fmt.Errorf("未找到 Pandoc，无法导出 PDF")
-		}
-		var t Tools
-		if _, err := t.chromiumBin(); err != nil {
-			return err
-		}
-		return nil
+		_, err := resolveFonts()
+		return err
 	default:
 		return fmt.Errorf("不支持的导出格式")
 	}
@@ -113,12 +67,12 @@ func Release() {
 
 // Options 单次导出参数
 type Options struct {
-	Title     string
-	Markdown  string
-	BaseURL   string // 站点绝对前缀，用于解析相对链接
-	UploadDir string // 本地上传目录；安全校验后把图片拷入临时目录供渲染
-	Tools     Tools
-	Timeout   time.Duration
+	Title      string
+	Markdown   string
+	BaseURL    string   // 站点绝对前缀，用于解析相对链接
+	UploadDir  string   // 本地上传目录；安全校验后把图片拷入临时目录供渲染
+	ImageHosts []string // 允许拉取远程图片的主机名（站点域名、对象存储等）；空则不拉取
+	Timeout    time.Duration
 }
 
 // Export 按 format 导出；返回文件字节与建议 Content-Type。
@@ -144,20 +98,76 @@ func Export(ctx context.Context, format string, opt Options) (data []byte, conte
 	md := SanitizeMarkdown(opt.Markdown)
 	md = MaterializeMarkdown(md, opt.BaseURL, opt.UploadDir, filepath.Join(work, "media"))
 	md = EnsureTitleHeading(md, title)
+	hosts := opt.ImageHosts
+	if len(hosts) == 0 {
+		hosts = hostsFromBaseURL(opt.BaseURL)
+	}
+	seq := countMediaFiles(filepath.Join(work, "media"))
+	// 行内 http(s) 图：白名单拉取，其余剥离
+	md, err = localizeRemoteImages(ctx, work, md, hosts, seq)
+	if err != nil {
+		return nil, "", err
+	}
+	seq = countMediaFiles(filepath.Join(work, "media"))
+	// 参考定义 [id]: http…：白名单拉取到 media/，否则改为 #，堵住 webFs SSRF
+	md, _, err = localizeOrNeutralizeRefs(ctx, work, md, hosts, seq)
+	if err != nil {
+		return nil, "", err
+	}
+	// 兜底：残留行内 http(s) 图一律降级
+	md = blockRemoteImagesKeepLocal(md)
 
 	switch format {
 	case FormatDOCX:
-		data, err = toDOCX(ctx, opt.Tools, work, md, title)
-		return data, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", err
+		var out []byte
+		err = runWithContext(ctx, func() error {
+			var e error
+			out, e = toDOCX(ctx, work, md, title)
+			return e
+		})
+		return out, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", err
 	case FormatPDF:
-		data, err = toPDF(ctx, opt.Tools, work, md, title)
-		return data, "application/pdf", err
+		var out []byte
+		err = runWithContext(ctx, func() error {
+			var e error
+			out, e = toPDF(ctx, work, md, title)
+			return e
+		})
+		return out, "application/pdf", err
 	default:
 		return nil, "", fmt.Errorf("不支持的导出格式")
 	}
 }
 
-// SanitizeMetaTitle 清洗传入 Pandoc --metadata 的标题：去掉换行/控制字符，避免 metadata 注入。
+func hostsFromBaseURL(base string) []string {
+	base = strings.TrimSpace(base)
+	if base == "" {
+		return nil
+	}
+	// 复用 fetch 的主机规范化
+	set := normalizeHostSet([]string{base})
+	out := make([]string, 0, len(set))
+	for h := range set {
+		out = append(out, h)
+	}
+	return out
+}
+
+func countMediaFiles(dir string) int {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			n++
+		}
+	}
+	return n
+}
+
+// SanitizeMetaTitle 清洗文档标题：去掉换行/控制字符。
 func SanitizeMetaTitle(title string) string {
 	title = strings.TrimSpace(title)
 	if title == "" {
@@ -189,6 +199,7 @@ func SanitizeMetaTitle(title string) string {
 }
 
 // SanitizeMarkdown 剥离可导致本地文件读取或脚本执行的链接协议。
+// 注意：会去掉 data: 链接；DOCX 导出在物化后再自行嵌入 media 为 data URI。
 func SanitizeMarkdown(md string) string {
 	md = mdDangerLinkRe.ReplaceAllString(md, "](#)")
 	md = htmlDangerSrcDQ.ReplaceAllString(md, `$1="#"`)
@@ -209,8 +220,8 @@ func EnsureTitleHeading(md, title string) string {
 	return "# " + title + "\n\n" + md
 }
 
-// MaterializeMarkdown 将安全的 /uploads 图片拷入 mediaDir，其余站内路径改为绝对 http(s) URL。
-// 不产出指向上传根目录外的 file://，供 Chromium 仅用临时目录相对路径渲染。
+// MaterializeMarkdown 将安全的 /uploads 图片拷入 mediaDir（必要时转为 PNG），
+// 其余站内路径改为绝对 http(s) URL（随后由 localizeRemoteImages 按白名单拉取或剥离）。
 func MaterializeMarkdown(md, baseURL, uploadDir, mediaDir string) string {
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	uploadDir = strings.TrimSpace(uploadDir)
@@ -226,23 +237,15 @@ func MaterializeMarkdown(md, baseURL, uploadDir, mediaDir string) string {
 			titleSuffix = sub[2]
 		}
 		if abs, ok := resolveSafeUpload(uploadDir, urlPath); ok {
-			if err := os.MkdirAll(mediaDir, 0o700); err == nil {
-				n++
-				ext := filepath.Ext(abs)
-				if len(ext) > 8 {
-					ext = ""
-				}
-				name := fmt.Sprintf("%03d%s", n, ext)
-				dst := filepath.Join(mediaDir, name)
-				if copyFile(abs, dst) == nil {
-					return "](media/" + name + titleSuffix + ")"
-				}
+			n++
+			if rel, err := copyImageForExport(abs, mediaDir, n); err == nil {
+				return "](" + rel + titleSuffix + ")"
 			}
+			n-- // 拷贝失败则回退序号
 		}
 		if baseURL == "" {
 			return m
 		}
-		// html/ 等不安全本地路径：仅走 http(s)；路由本身不公开 html/，导出也不落 file://
 		return "](" + baseURL + urlPath + titleSuffix + ")"
 	})
 }
@@ -254,7 +257,6 @@ func PrepareMarkdown(md, baseURL, uploadDir string) string {
 	if uploadDir == "" {
 		return MaterializeMarkdown(md, baseURL, "", "")
 	}
-	// 无媒体目录时不拷贝，只做安全校验后的 http(s) 绝对化（避免 file://）
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	return relLinkRe.ReplaceAllStringFunc(md, func(m string) string {
 		sub := relLinkRe.FindStringSubmatch(m)
@@ -279,7 +281,6 @@ func resolveSafeUpload(uploadDir, urlPath string) (string, bool) {
 		return "", false
 	}
 	rel := strings.TrimPrefix(urlPath, "/uploads/")
-	// URL 路径清洗，去掉 .. 与多余斜杠
 	rel = path.Clean("/" + rel)
 	rel = strings.TrimPrefix(rel, "/")
 	if rel == "" || rel == "." {
@@ -290,7 +291,6 @@ func resolveSafeUpload(uploadDir, urlPath string) (string, bool) {
 			return "", false
 		}
 	}
-	// 与公开 /uploads 策略一致：整站 html/ 不可经旁路读出
 	if rel == "html" || strings.HasPrefix(rel, "html/") {
 		return "", false
 	}
@@ -308,180 +308,6 @@ func resolveSafeUpload(uploadDir, urlPath string) (string, bool) {
 		return "", false
 	}
 	return abs, true
-}
-
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	_, err = io.Copy(out, in)
-	return err
-}
-
-func toDOCX(ctx context.Context, tools Tools, work, md, title string) ([]byte, error) {
-	in := filepath.Join(work, "in.md")
-	out := filepath.Join(work, "out.docx")
-	if err := os.WriteFile(in, []byte(md), 0o600); err != nil {
-		return nil, err
-	}
-	cmd := exec.CommandContext(ctx, tools.pandocBin(),
-		in, "-f", "markdown", "-t", "docx", "-o", out,
-		"--resource-path="+work,
-		"--metadata", "title="+title,
-	)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = err.Error()
-		}
-		return nil, fmt.Errorf("Pandoc 导出 DOCX 失败: %s", msg)
-	}
-	return os.ReadFile(out)
-}
-
-func toPDF(ctx context.Context, tools Tools, work, md, title string) ([]byte, error) {
-	in := filepath.Join(work, "in.md")
-	htmlPath := filepath.Join(work, "out.html")
-	pdfPath := filepath.Join(work, "out.pdf")
-	if err := os.WriteFile(in, []byte(md), 0o600); err != nil {
-		return nil, err
-	}
-
-	cmd := exec.CommandContext(ctx, tools.pandocBin(),
-		in, "-f", "markdown", "-t", "html5", "-s",
-		"--resource-path="+work,
-		"--metadata", "title="+title,
-		"-o", htmlPath,
-	)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = err.Error()
-		}
-		return nil, fmt.Errorf("Pandoc 生成 HTML 失败: %s", msg)
-	}
-
-	raw, err := os.ReadFile(htmlPath)
-	if err != nil {
-		return nil, err
-	}
-	styled := injectPrintChrome(string(raw))
-	if err := os.WriteFile(htmlPath, []byte(styled), 0o600); err != nil {
-		return nil, err
-	}
-
-	chrome, err := tools.chromiumBin()
-	if err != nil {
-		return nil, err
-	}
-	// 仅打开临时目录内 HTML；图片为同目录相对路径 media/*，无需 --allow-file-access-from-files
-	htmlURL := fileURL(htmlPath)
-	baseArgs := []string{
-		"--disable-gpu",
-		"--no-sandbox",
-		"--disable-dev-shm-usage",
-		"--print-to-pdf=" + pdfPath,
-		htmlURL,
-	}
-	attempts := [][]string{
-		append([]string{"--headless=new", "--no-pdf-header-footer"}, baseArgs...),
-		append([]string{"--headless=new"}, baseArgs...),
-		append([]string{"--headless"}, baseArgs...),
-	}
-	var lastMsg string
-	ok := false
-	for _, args := range attempts {
-		_ = os.Remove(pdfPath)
-		cCmd := exec.CommandContext(ctx, chrome, args...)
-		var cErr bytes.Buffer
-		cCmd.Stderr = &cErr
-		cCmd.Stdout = &cErr
-		if err := cCmd.Run(); err != nil {
-			lastMsg = strings.TrimSpace(cErr.String())
-			if lastMsg == "" {
-				lastMsg = err.Error()
-			}
-			continue
-		}
-		if st, err := os.Stat(pdfPath); err == nil && st.Size() > 0 {
-			ok = true
-			break
-		}
-		lastMsg = "未生成 PDF 文件"
-	}
-	if !ok {
-		return nil, fmt.Errorf("Chromium 导出 PDF 失败: %s", lastMsg)
-	}
-	data, err := os.ReadFile(pdfPath)
-	if err != nil {
-		return nil, fmt.Errorf("读取 PDF 失败: %w", err)
-	}
-	if len(data) == 0 {
-		return nil, fmt.Errorf("Chromium 未生成 PDF")
-	}
-	return data, nil
-}
-
-func fileURL(abs string) string {
-	abs = filepath.Clean(abs)
-	u := url.URL{Scheme: "file"}
-	p := filepath.ToSlash(abs)
-	if !strings.HasPrefix(p, "/") {
-		p = "/" + p
-	}
-	u.Path = p
-	return u.String()
-}
-
-func injectPrintChrome(docHTML string) string {
-	style := `
-<style>
-  @page { size: A4; margin: 18mm 16mm; }
-  html, body {
-    font-family: "Noto Sans CJK SC", "Noto Sans CJK", "Source Han Sans SC",
-      "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
-    font-size: 11.5pt; line-height: 1.7; color: #1a1a1a; background: #fff;
-  }
-  body { max-width: 720px; margin: 0 auto; padding: 8px 0 24px; }
-  h1 { font-size: 1.55em; letter-spacing: -.02em; margin: 0 0 .8em;
-    padding-bottom: .35em; border-bottom: 1px solid #e5e7eb; }
-  h2 { font-size: 1.25em; margin: 1.15em 0 .45em; }
-  h3 { font-size: 1.1em; margin: 1em 0 .4em; }
-  img { max-width: 100%; }
-  pre {
-    background: #f6f8fa; border: 1px solid #e5e7eb; padding: 12px 14px;
-    border-radius: 8px; overflow: auto; font-size: .9em; white-space: pre-wrap;
-  }
-  code {
-    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
-    font-size: 85%;
-  }
-  :not(pre) > code { background: #eef6ff; padding: 1px 5px; border-radius: 4px; }
-  blockquote {
-    margin: 1em 0; padding: .5em 1em; color: #4b5563;
-    border-left: 3px solid #0a8a5f; background: #f8fafc;
-  }
-  table { border-collapse: collapse; width: 100%; }
-  th, td { border: 1px solid #d1d5db; padding: 8px 10px; }
-  th { background: #f3f4f6; }
-  a { color: #0a6b4a; }
-  hr { border: none; border-top: 1px solid #e5e7eb; margin: 1.5em 0; }
-</style>`
-	if idx := strings.Index(strings.ToLower(docHTML), "</head>"); idx >= 0 {
-		return docHTML[:idx] + style + docHTML[idx:]
-	}
-	return style + docHTML
 }
 
 // SafeFilename 生成适合 Content-Disposition 的文件名（不含扩展名）。

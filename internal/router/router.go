@@ -175,7 +175,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		// 文档转换：pdf / doc / docx → Markdown
 		admin.POST("/api/convert", app.Convert)
 
-		// Markdown 导出：pdf（Chromium）/ docx（Pandoc）；权限同预览
+		// Markdown 导出：pdf / docx（纯 Go）；权限同预览
 		admin.GET("/api/docs/:id/export", app.PreviewExport)
 
 		// 修改自己的密码（任意登录用户）

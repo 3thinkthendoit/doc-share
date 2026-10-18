@@ -16,15 +16,22 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o main .
 FROM alpine
 
 # ca-certificates：外链图片/HTTPS 必需；tzdata：日志时间用东八区
-# pandoc + chromium：Markdown → DOCX / 打印版 PDF；Noto CJK：中日韩正文可印
-# font-noto-cjk 在 Alpine community 源（官方 alpine 镜像默认已启用）
-RUN apk add --no-cache \
-    ca-certificates tzdata \
-    pandoc \
-    chromium nss freetype harfbuzz ttf-freefont font-noto-cjk
+# Noto Sans SC（fontsource 简体子集）：纯 Go PDF 导出中文；体积远小于 chromium + 全量 CJK
+ARG NOTO_SC_VER=5.2.5
+RUN apk add --no-cache ca-certificates tzdata wget \
+    && mkdir -p /usr/share/fonts/noto-sc \
+    && (wget -q -O /usr/share/fonts/noto-sc/NotoSansSC-Regular.ttf \
+          "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-sc@${NOTO_SC_VER}/chinese-simplified-400-normal.ttf" \
+        || wget -q -O /usr/share/fonts/noto-sc/NotoSansSC-Regular.ttf \
+          "https://raw.githubusercontent.com/jsntn/webfonts/master/NotoSansSC-Regular.ttf") \
+    && (wget -q -O /usr/share/fonts/noto-sc/NotoSansSC-Bold.ttf \
+          "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-sc@${NOTO_SC_VER}/chinese-simplified-700-normal.ttf" \
+        || cp /usr/share/fonts/noto-sc/NotoSansSC-Regular.ttf /usr/share/fonts/noto-sc/NotoSansSC-Bold.ttf) \
+    && test -s /usr/share/fonts/noto-sc/NotoSansSC-Regular.ttf \
+    && test -s /usr/share/fonts/noto-sc/NotoSansSC-Bold.ttf \
+    && apk del wget
 ENV TZ=Asia/Shanghai
-# Alpine chromium 包二进制一般为 /usr/bin/chromium
-ENV CHROME_PATH=/usr/bin/chromium
+ENV DOC_SHARE_FONT_DIR=/usr/share/fonts/noto-sc
 
 WORKDIR /app
 COPY --from=builder /build/main /app/main
@@ -48,5 +55,6 @@ EXPOSE 8080
 #   DOC_SHARE_PORT                —— 监听端口（默认 :8080）
 #   DOC_SHARE_ADMIN_USER/_PASSWORD —— 首次启动创建的默认管理员
 #   DOC_SHARE_DEV                 —— 前端热载，生产保持 false
+#   DOC_SHARE_FONT_DIR            —— PDF 导出中文字体目录（镜像默认已含 Noto Sans SC）
 ENTRYPOINT ["/app/main"]
 CMD ["-config", "/etc/doc-share/config.yaml"]

@@ -18,6 +18,9 @@ logs/
 # 用户上传文件（运行时数据，路径由 DOC_SHARE_UPLOAD_DIR 配置）
 /uploads/
 
+# 本机 PDF 导出字体（体积大，Docker 镜像构建时另行下载）
+/fonts/
+
 # 本地环境
 .env
 .env.local
