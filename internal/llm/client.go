@@ -284,8 +284,8 @@ func (c Config) Ping(ctx context.Context) error {
 	return nil
 }
 
-// streamTimeout 单次对话整体超时（长回答给足时间）
-const streamTimeout = 5 * time.Minute
+// streamTimeout 单次对话整体超时（长回答 / 慢推理模型给足时间）
+const streamTimeout = 10 * time.Minute
 
 // StreamChat 流式对话：增量文本通过 onDelta 回调返回（保证按序、在返回前回调）；
 // onThink 可为 nil，非 nil 时接收推理模型的思考内容增量（reasoning_content）。
