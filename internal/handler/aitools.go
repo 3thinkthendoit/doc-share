@@ -33,12 +33,17 @@ const (
 
 // aiApprovalTools 执行前必须经用户在会话中确认的敏感工具
 var aiApprovalTools = map[string]bool{
-	"delete_document":  true,
-	"restore_document": true,
-	"restore_revision": true,
-	"delete_skill":     true,
-	"delete_project":   true,
-	"delete_category":  true,
+	"delete_document":       true,
+	"restore_document":      true,
+	"restore_revision":      true,
+	"delete_skill":          true,
+	"delete_project":        true,
+	"delete_category":       true,
+	"remove_project_member": true,
+	"delete_template":       true,
+	"delete_comment":        true,
+	"purge_document":        true,
+	"review_access_request": true,
 }
 
 // aiNeedsApproval 判断一次工具调用是否需要用户确认：
@@ -47,12 +52,19 @@ func aiNeedsApproval(tc llm.ToolCallMsg) bool {
 	if aiApprovalTools[tc.Function.Name] {
 		return true
 	}
-	if tc.Function.Name == "set_share" {
+	if tc.Function.Name == "set_share" || tc.Function.Name == "set_project_share" {
 		var args struct {
 			Enabled bool `json:"enabled"`
 		}
 		_ = json.Unmarshal([]byte(tc.Function.Arguments), &args)
 		return args.Enabled
+	}
+	if tc.Function.Name == "add_project_member" || tc.Function.Name == "update_project_member" {
+		var args struct {
+			Role string `json:"role"`
+		}
+		_ = json.Unmarshal([]byte(tc.Function.Arguments), &args)
+		return strings.TrimSpace(args.Role) == model.MemberRoleEdit
 	}
 	return false
 }
@@ -254,7 +266,7 @@ func (a *App) chatTools(user *model.User) (
 					"can_edit":        map[string]any{"type": "boolean", "description": "登录用户通过分享链接是否可编辑（可选，不传保留原设置）"},
 					"password":        map[string]any{"type": "string", "description": "访问密码（可选，明文传入后服务端 bcrypt 存储）"},
 					"remove_password": map[string]any{"type": "boolean", "description": "true 表示清除已设密码（可选）"},
-					"expire_days":     map[string]any{"type": "integer", "description": "有效期天数（可选，不传或 0 = 永不过期）"},
+					"expire_days":     map[string]any{"type": "integer", "description": "有效期天数（可选；不传保持原值，0=永不过期）"},
 				},
 				"required": []string{"id", "enabled"},
 			},
@@ -315,14 +327,68 @@ func (a *App) chatTools(user *model.User) (
 			Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
 		}},
 		{Type: "function", Function: llm.ToolFunc{
+			Name:        "get_template",
+			Description: "读取可用模板的完整内容（markdown / 画布 JSON / drawio XML），可作为创建文档的范例。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id": map[string]any{"type": "integer", "description": "模板 ID"},
+				},
+				"required": []string{"id"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "create_template",
+			Description: "创建文档模板。type 支持 markdown / mindmap / board / drawio。" + aiCanvasDocHint,
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name":        map[string]any{"type": "string", "description": "模板名称（≤100 字）"},
+					"type":        map[string]any{"type": "string", "description": "markdown（默认）/ mindmap / board / drawio"},
+					"content":     map[string]any{"type": "string", "description": "模板内容"},
+					"project_id":  map[string]any{"type": "integer", "description": "绑定项目后成员可共用（可选，须自己拥有或参与）"},
+					"category_id": map[string]any{"type": "integer", "description": "绑定分类（可选，须自己的）"},
+				},
+				"required": []string{"name"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "update_template",
+			Description: "更新自己的模板（管理员可改全部）。未传字段不修改；project_id / category_id 传 0 解除绑定。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id":          map[string]any{"type": "integer", "description": "模板 ID"},
+					"name":        map[string]any{"type": "string", "description": "模板名称"},
+					"type":        map[string]any{"type": "string", "description": "markdown / mindmap / board / drawio"},
+					"content":     map[string]any{"type": "string", "description": "模板内容"},
+					"project_id":  map[string]any{"type": "integer", "description": "绑定项目（0=个人私有）"},
+					"category_id": map[string]any{"type": "integer", "description": "绑定分类（0=不绑定）"},
+				},
+				"required": []string{"id"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "delete_template",
+			Description: "删除自己的模板（不影响已用模板创建的文档）。执行前需用户确认。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id": map[string]any{"type": "integer", "description": "模板 ID"},
+				},
+				"required": []string{"id"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
 			Name:        "apply_template",
-			Description: "按模板创建一篇新文档（非覆盖操作，直接执行）。",
+			Description: "按模板创建一篇新文档（支持 markdown / mindmap / board / drawio；非覆盖，直接执行）。",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"template_id": map[string]any{"type": "integer", "description": "list_templates 返回的模板 ID"},
 					"title":       map[string]any{"type": "string", "description": "新文档标题（可选，默认用模板名）"},
 					"project_id":  map[string]any{"type": "integer", "description": "归属项目 ID（可选，默认归属模板原项目或个人）"},
+					"category_id": map[string]any{"type": "integer", "description": "归属分类 ID（可选）"},
 				},
 				"required": []string{"template_id"},
 			},
@@ -359,16 +425,191 @@ func (a *App) chatTools(user *model.User) (
 		}},
 		{Type: "function", Function: llm.ToolFunc{
 			Name:        "create_document",
-			Description: "创建一篇 Markdown 文档。project_id / category_id 可选，且必须是当前用户自己的项目或分类。",
+			Description: "创建文档。type 默认 markdown，也可 mindmap / board / drawio。project_id / category_id 可选且必须是自己的。" + aiCanvasDocHint,
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"title":       map[string]any{"type": "string", "description": "文档标题"},
-					"content":     map[string]any{"type": "string", "description": "Markdown 正文"},
+					"type":        map[string]any{"type": "string", "description": "markdown（默认）/ mindmap / board / drawio；html 整站不支持"},
+					"content":     map[string]any{"type": "string", "description": "markdown 正文 / 画布 JSON / drawio XML"},
 					"project_id":  map[string]any{"type": "integer", "description": "归属项目 ID（可选，必须是自己的项目）"},
 					"category_id": map[string]any{"type": "integer", "description": "归属分类 ID（可选，必须是自己的分类）"},
 				},
 				"required": []string{"title"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "duplicate_document",
+			Description: "复制一篇可见且有编辑权限的文档（含画布）。HTML 整站请在页面上复制。不复制分享。计入与 create_document 相同的创建配额。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id": map[string]any{"type": "integer", "description": "源文档 ID"},
+				},
+				"required": []string{"id"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "purge_document",
+			Description: "从回收站彻底删除文档（不可恢复）。执行前需用户确认。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id": map[string]any{"type": "integer", "description": "回收站中的文档 ID"},
+				},
+				"required": []string{"id"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "label_revision",
+			Description: "给文档历史修订打版本标签与说明（如 v1.0.1）；空 label 表示取消标签。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id":          map[string]any{"type": "integer", "description": "文档 ID"},
+					"revision_id": map[string]any{"type": "integer", "description": "revisions_history 返回的修订 ID"},
+					"label":       map[string]any{"type": "string", "description": "版本标签（≤32 字，空=取消）"},
+					"note":        map[string]any{"type": "string", "description": "说明（≤500 字，可选）"},
+				},
+				"required": []string{"id", "revision_id"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "list_comments",
+			Description: "列出文档评论（含回复关系）。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id": map[string]any{"type": "integer", "description": "文档 ID"},
+				},
+				"required": []string{"id"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "add_comment",
+			Description: "在文档下发表评论（需编辑权限）；可回复顶层评论。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id":        map[string]any{"type": "integer", "description": "文档 ID"},
+					"content":   map[string]any{"type": "string", "description": "评论正文（≤1000 字）"},
+					"parent_id": map[string]any{"type": "integer", "description": "回复的顶层评论 ID（可选）"},
+				},
+				"required": []string{"id", "content"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "delete_comment",
+			Description: "删除文档评论及其回复（仅文档属主/管理员）。执行前需用户确认。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id":         map[string]any{"type": "integer", "description": "文档 ID"},
+					"comment_id": map[string]any{"type": "integer", "description": "评论 ID"},
+				},
+				"required": []string{"id", "comment_id"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "list_project_members",
+			Description: "列出项目成员（含属主）。属主/管理员/成员可读。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"project_id": map[string]any{"type": "integer", "description": "项目 ID"},
+				},
+				"required": []string{"project_id"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "add_project_member",
+			Description: "把用户加入自己的项目（管理员可操作全部项目）。role=view 或 edit；设为 edit 需用户确认。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"project_id": map[string]any{"type": "integer", "description": "项目 ID"},
+					"username":   map[string]any{"type": "string", "description": "用户名（与 user_id 二选一）"},
+					"user_id":    map[string]any{"type": "integer", "description": "用户 ID（与 username 二选一）"},
+					"role":       map[string]any{"type": "string", "description": "view（默认）或 edit"},
+				},
+				"required": []string{"project_id"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "update_project_member",
+			Description: "修改项目成员角色（仅项目属主/管理员）。改为 edit 需用户确认。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"project_id": map[string]any{"type": "integer", "description": "项目 ID"},
+					"user_id":    map[string]any{"type": "integer", "description": "成员用户 ID"},
+					"role":       map[string]any{"type": "string", "description": "view 或 edit"},
+				},
+				"required": []string{"project_id", "user_id", "role"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "remove_project_member",
+			Description: "移除项目成员（仅项目属主/管理员）。执行前需用户确认。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"project_id": map[string]any{"type": "integer", "description": "项目 ID"},
+					"user_id":    map[string]any{"type": "integer", "description": "成员用户 ID"},
+				},
+				"required": []string{"project_id", "user_id"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "get_project_share",
+			Description: "查看项目分享是否开启及权限设置（不含原始 token；链接用占位符）。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"project_id": map[string]any{"type": "integer", "description": "项目 ID"},
+				},
+				"required": []string{"project_id"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "set_project_share",
+			Description: "开启或关闭项目公开分享（仅项目属主/管理员）。开启时需用户确认。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"project_id":      map[string]any{"type": "integer", "description": "项目 ID"},
+					"enabled":         map[string]any{"type": "boolean", "description": "true 开启，false 关闭"},
+					"can_edit":        map[string]any{"type": "boolean", "description": "登录用户是否可编辑（可选）"},
+					"password":        map[string]any{"type": "string", "description": "访问密码（可选）"},
+					"remove_password": map[string]any{"type": "boolean", "description": "true 清除已设密码"},
+					"expire_days":     map[string]any{"type": "integer", "description": "有效期天数（不传保持原值，0=永久）"},
+				},
+				"required": []string{"project_id", "enabled"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "list_access_requests",
+			Description: "列出文档或项目的分享访问申请。传 document_id 或 project_id 之一。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"document_id": map[string]any{"type": "integer", "description": "文档 ID"},
+					"project_id":  map[string]any{"type": "integer", "description": "项目 ID"},
+				},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "review_access_request",
+			Description: "审批分享访问申请（approve/reject）。传 document_id 或 project_id 指明范围。执行前需用户确认。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"request_id":  map[string]any{"type": "integer", "description": "申请 ID"},
+					"action":      map[string]any{"type": "string", "description": "approve 或 reject"},
+					"document_id": map[string]any{"type": "integer", "description": "文档申请时必填"},
+					"project_id":  map[string]any{"type": "integer", "description": "项目申请时必填"},
+				},
+				"required": []string{"request_id", "action"},
 			},
 		}},
 		{Type: "function", Function: llm.ToolFunc{
@@ -447,6 +688,35 @@ func (a *App) chatTools(user *model.User) (
 				return 0, true, fmt.Errorf("%s 必须是非负整数", key)
 			}
 			return uint(f), true, nil
+		}
+		// 未传 expire_days 保持原值；传 0 清空为永久。
+		applyExpire := func(current *time.Time) (*time.Time, error) {
+			days, ok, err := argUintOpt("expire_days")
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				return current, nil
+			}
+			if days == 0 {
+				return nil, nil
+			}
+			t := time.Now().Add(time.Duration(days) * 24 * time.Hour)
+			return &t, nil
+		}
+		reserveCreate := func() error {
+			creates++
+			if creates > aiMaxCreatesPerReq {
+				return fmt.Errorf("单次对话最多创建 %d 篇文档，已达到上限；请先确认已有文档是否满足需求", aiMaxCreatesPerReq)
+			}
+			var createdToday int64
+			now := time.Now()
+			startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+			a.DB.Model(&model.Document{}).Where("owner_id = ? AND updated_via = ? AND created_at >= ?", user.ID, "ai", startOfDay).Count(&createdToday)
+			if createdToday >= aiMaxCreatesPerDay {
+				return fmt.Errorf("你今天通过 AI 创建的文档已达 %d 篇上限，请明天再试或手动创建", aiMaxCreatesPerDay)
+			}
+			return nil
 		}
 
 		switch name {
@@ -902,46 +1172,166 @@ func (a *App) chatTools(user *model.User) (
 			}
 			return clip(strings.Join(out, "\n")), nil
 
+		case "get_template":
+			tpl, err := a.aiUsableTemplate(user, memberPids, uint(argInt("id", 0)))
+			if err != nil {
+				return "", err
+			}
+			return clip(fmt.Sprintf("template_id=%d [%s] %s\nproject_id=%d category_id=%d\n\n%s",
+				tpl.ID, tpl.Type, tpl.Name, tpl.ProjectID, tpl.CategoryID, tpl.Content)), nil
+
+		case "create_template":
+			name, tplType, errMsg := validateTemplateReq(argStr("name"), argStr("type"), nil)
+			if errMsg != "" {
+				if argStr("type") == "" {
+					name, tplType, errMsg = validateTemplateReq(argStr("name"), model.DocTypeMarkdown, nil)
+				}
+			}
+			if errMsg != "" {
+				return "", fmt.Errorf("%s", errMsg)
+			}
+			content := argStr("content")
+			if content != "" {
+				c := content
+				if _, _, errMsg = validateTemplateReq(name, tplType, &c); errMsg != "" {
+					return "", fmt.Errorf("%s", errMsg)
+				}
+			}
+			tpl := model.DocTemplate{Name: name, Type: tplType, Content: content, OwnerID: user.ID}
+			if pid, ok, err := argUintOpt("project_id"); err != nil {
+				return "", err
+			} else if ok {
+				if err := a.aiTemplateProjectOK(user, memberPids, pid); err != nil {
+					return "", err
+				}
+				tpl.ProjectID = pid
+			}
+			if cid, ok, err := argUintOpt("category_id"); err != nil {
+				return "", err
+			} else if ok {
+				if err := a.aiOwnedCategory(user, cid); err != nil {
+					return "", err
+				}
+				tpl.CategoryID = cid
+			}
+			if err := a.DB.Create(&tpl).Error; err != nil {
+				return "", fmt.Errorf("创建失败: %v", err)
+			}
+			return fmt.Sprintf("模板已创建：template_id=%d [%s] %s", tpl.ID, tpl.Type, tpl.Name), nil
+
+		case "update_template":
+			tpl, err := a.aiOwnedTemplate(user, uint(argInt("id", 0)))
+			if err != nil {
+				return "", err
+			}
+			name := argStr("name")
+			if name == "" {
+				name = tpl.Name
+			}
+			tplType := argStr("type")
+			if tplType == "" {
+				tplType = tpl.Type
+			}
+			var contentPtr *string
+			if _, has := args["content"]; has {
+				c := argStr("content")
+				contentPtr = &c
+			}
+			name, tplType, errMsg := validateTemplateReq(name, tplType, contentPtr)
+			if errMsg != "" {
+				return "", fmt.Errorf("%s", errMsg)
+			}
+			tpl.Name, tpl.Type = name, tplType
+			if contentPtr != nil {
+				tpl.Content = *contentPtr
+			}
+			if pid, ok, err := argUintOpt("project_id"); err != nil {
+				return "", err
+			} else if ok {
+				if err := a.aiTemplateProjectOK(user, memberPids, pid); err != nil {
+					return "", err
+				}
+				tpl.ProjectID = pid
+			}
+			if cid, ok, err := argUintOpt("category_id"); err != nil {
+				return "", err
+			} else if ok {
+				if err := a.aiOwnedCategory(user, cid); err != nil {
+					return "", err
+				}
+				tpl.CategoryID = cid
+			}
+			if err := a.DB.Save(tpl).Error; err != nil {
+				return "", fmt.Errorf("更新失败: %v", err)
+			}
+			return fmt.Sprintf("模板已更新：template_id=%d [%s] %s", tpl.ID, tpl.Type, tpl.Name), nil
+
+		case "delete_template":
+			tpl, err := a.aiOwnedTemplate(user, uint(argInt("id", 0)))
+			if err != nil {
+				return "", err
+			}
+			name, id := tpl.Name, tpl.ID
+			if err := a.DB.Delete(tpl).Error; err != nil {
+				return "", fmt.Errorf("删除失败: %v", err)
+			}
+			return fmt.Sprintf("模板已删除：template_id=%d %s（已创建的文档不受影响）", id, name), nil
+
 		case "apply_template":
 			tid := argInt("template_id", 0)
 			if tid == 0 {
 				return "", fmt.Errorf("template_id 不能为空")
 			}
-			var tpl model.DocTemplate
-			tx := a.DB
-			if !user.IsAdmin() {
-				if len(memberPids) == 0 {
-					tx = tx.Where("owner_id = ?", user.ID)
-				} else {
-					tx = tx.Where("owner_id = ? OR (project_id IS NOT NULL AND project_id IN ?)", user.ID, memberPids)
-				}
+			tpl, err := a.aiUsableTemplate(user, memberPids, uint(tid))
+			if err != nil {
+				return "", err
 			}
-			if err := tx.First(&tpl, tid).Error; err != nil {
-				return "", fmt.Errorf("模板不存在或不可用（template_id=%d）", tid)
-			}
-			if tpl.Type != model.DocTypeMarkdown {
-				return "", fmt.Errorf("当前仅支持 Markdown 模板（该模板类型为 %s）", tpl.Type)
+			switch tpl.Type {
+			case model.DocTypeMarkdown, model.DocTypeMindmap, model.DocTypeBoard, model.DocTypeDrawio:
+			default:
+				return "", fmt.Errorf("不支持的模板类型：%s", tpl.Type)
 			}
 			title := argStr("title")
 			if title == "" {
 				title = tpl.Name
 			}
-			pid := argInt("project_id", 0)
-			if pid == 0 && tpl.ProjectID > 0 {
-				pid = int64(tpl.ProjectID)
+			if err := reserveCreate(); err != nil {
+				return "", err
 			}
 			doc := model.Document{
 				Title: title, Version: derivedDocVersion(0),
-				Slug: util.RandomSlug(8), Type: model.DocTypeMarkdown,
+				Slug: util.RandomSlug(8), Type: tpl.Type,
 				Content: tpl.Content, OwnerID: user.ID,
 				UpdatedByID: user.ID, UpdatedVia: "ai",
 			}
-			if pid > 0 {
-				var p model.Project
-				if err := a.DB.First(&p, pid).Error; err != nil || p.OwnerID != user.ID {
-					return "", fmt.Errorf("项目不存在或不属于你（project_id=%d）", pid)
+			var dropped []string
+			if pid, ok, err := argUintOpt("project_id"); err != nil {
+				return "", err
+			} else if ok && pid > 0 {
+				if err := a.aiOwnedProject(user, pid); err != nil {
+					return "", err
 				}
-				doc.ProjectID = uint(pid)
+				doc.ProjectID = pid
+			} else if !ok && tpl.ProjectID > 0 {
+				if err := a.aiOwnedProject(user, tpl.ProjectID); err == nil {
+					doc.ProjectID = tpl.ProjectID
+				} else {
+					dropped = append(dropped, "模板绑定的项目不属于你，新文档未分组")
+				}
+			}
+			if cid, ok, err := argUintOpt("category_id"); err != nil {
+				return "", err
+			} else if ok && cid > 0 {
+				if err := a.aiOwnedCategory(user, cid); err != nil {
+					return "", err
+				}
+				doc.CategoryID = cid
+			} else if !ok && tpl.CategoryID > 0 {
+				if err := a.aiOwnedCategory(user, tpl.CategoryID); err == nil {
+					doc.CategoryID = tpl.CategoryID
+				} else {
+					dropped = append(dropped, "模板绑定的分类不属于你，新文档未分类")
+				}
 			}
 			for i := 0; i < 5; i++ {
 				var n int64
@@ -955,7 +1345,11 @@ func (a *App) chatTools(user *model.User) (
 				return "", fmt.Errorf("创建失败: %v", err)
 			}
 			a.reindexDocAsync(doc.ID)
-			return clip(fmt.Sprintf("已按模板《%s》创建文档：{{doc:%d}}（id=%d）", tpl.Name, doc.ID, doc.ID)), nil
+			msg := fmt.Sprintf("已按模板《%s》创建 [%s] 文档：{{doc:%d}}（id=%d）", tpl.Name, doc.Type, doc.ID, doc.ID)
+			if len(dropped) > 0 {
+				msg += "\n" + strings.Join(dropped, "\n")
+			}
+			return clip(msg), nil
 
 		case "set_share":
 			// 与页面 UpsertShare 相同的语义；权限：属主或管理员
@@ -998,12 +1392,11 @@ func (a *App) chatTools(user *model.User) (
 				hash, _ := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
 				share.Password = string(hash)
 			}
-			if days := argInt("expire_days", 0); days > 0 {
-				t := time.Now().Add(time.Duration(days) * 24 * time.Hour)
-				share.ExpireAt = &t
-			} else {
-				share.ExpireAt = nil
+			exp, err := applyExpire(share.ExpireAt)
+			if err != nil {
+				return "", err
 			}
+			share.ExpireAt = exp
 			if err := a.DB.Save(&share).Error; err != nil {
 				return "", fmt.Errorf("分享设置失败: %v", err)
 			}
@@ -1069,6 +1462,9 @@ func (a *App) chatTools(user *model.User) (
 					if len(s) > aiMaxContentBytes {
 						return "", fmt.Errorf("content 超过 %dKB 上限（当前 %dKB），请只提交需要修改的部分或用 replace_section", aiMaxContentBytes>>10, len(s)>>10)
 					}
+					if err := validateAIDocContent(doc.Type, s); err != nil {
+						return "", err
+					}
 					content = s
 					hasContentChange = true
 				} else {
@@ -1132,6 +1528,9 @@ func (a *App) chatTools(user *model.User) (
 			if !canEditDoc(&doc) {
 				return "", fmt.Errorf("没有该文档的编辑权限（id=%d）", id)
 			}
+			if doc.Type != model.DocTypeMarkdown {
+				return "", fmt.Errorf("画布文档请用 update_document 整体更新，不要用 replace_section")
+			}
 			n := strings.Count(doc.Content, oldText)
 			if n == 0 {
 				return "", fmt.Errorf("old_text 在正文中未找到，请先 read_document 核对原文（注意空格与标点需逐字一致）后再重试")
@@ -1171,21 +1570,23 @@ func (a *App) chatTools(user *model.User) (
 			return fmt.Sprintf("已完成局部替换（id=%d，版本 %s）。%s 预览：{{doc:%d}}", doc.ID, doc.Version, check, doc.ID), nil
 
 		case "create_document":
-			creates++
-			if creates > aiMaxCreatesPerReq {
-				return "", fmt.Errorf("单次对话最多创建 %d 篇文档，已达到上限；请先确认已有文档是否满足需求", aiMaxCreatesPerReq)
-			}
-			var createdToday int64
-			// 按本地时区的自然日零点计算，避免 UTC 截断导致配额按错天重置
-			now := time.Now()
-			startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-			a.DB.Model(&model.Document{}).Where("owner_id = ? AND updated_via = ? AND created_at >= ?", user.ID, "ai", startOfDay).Count(&createdToday)
-			if createdToday >= aiMaxCreatesPerDay {
-				return "", fmt.Errorf("你今天通过 AI 创建的文档已达 %d 篇上限，请明天再试或手动创建", aiMaxCreatesPerDay)
+			if err := reserveCreate(); err != nil {
+				return "", err
 			}
 			title := argStr("title")
 			if title == "" {
 				return "", fmt.Errorf("title 不能为空")
+			}
+			docType := argStr("type")
+			if docType == "" {
+				docType = model.DocTypeMarkdown
+			}
+			switch docType {
+			case model.DocTypeMarkdown, model.DocTypeMindmap, model.DocTypeBoard, model.DocTypeDrawio:
+			case model.DocTypeHTML:
+				return "", fmt.Errorf("html 整站请走上传接口，智能体不支持创建")
+			default:
+				return "", fmt.Errorf("不支持的文档类型：%s", docType)
 			}
 			contentAI := argStr("content")
 			if len(contentAI) > aiMaxContentBytes {
@@ -1193,7 +1594,7 @@ func (a *App) chatTools(user *model.User) (
 			}
 			doc := model.Document{
 				Title: title, Version: derivedDocVersion(0),
-				Slug: util.RandomSlug(8), Type: model.DocTypeMarkdown,
+				Slug: util.RandomSlug(8), Type: docType,
 				Content: contentAI, OwnerID: user.ID,
 				UpdatedByID: user.ID, UpdatedVia: "ai",
 			}
@@ -1225,7 +1626,7 @@ func (a *App) chatTools(user *model.User) (
 				return "", fmt.Errorf("创建失败: %v", err)
 			}
 			a.reindexDocAsync(doc.ID)
-			return fmt.Sprintf("文档已创建：{{doc:%d}}（id=%d）", doc.ID, doc.ID), nil
+			return fmt.Sprintf("文档已创建：{{doc:%d}}（id=%d，type=%s）", doc.ID, doc.ID, doc.Type), nil
 
 		case "list_skills":
 			var skills []model.ChatSkill
@@ -1310,6 +1711,441 @@ func (a *App) chatTools(user *model.User) (
 				return "", fmt.Errorf("skill 不存在：/%s", name)
 			}
 			return fmt.Sprintf("已删除 skill：/%s", name), nil
+
+		case "duplicate_document":
+			id := argInt("id", 0)
+			if id == 0 {
+				return "", fmt.Errorf("id 不能为空")
+			}
+			var doc model.Document
+			if err := scope().First(&doc, id).Error; err != nil {
+				return "", fmt.Errorf("文档不存在或无权访问（id=%d）", id)
+			}
+			if !canEditDoc(&doc) {
+				return "", fmt.Errorf("没有该文档的编辑权限（id=%d）", id)
+			}
+			if doc.Type == model.DocTypeHTML {
+				return "", fmt.Errorf("HTML 整站请在页面上复制；智能体通道暂不复制站点文件")
+			}
+			if err := reserveCreate(); err != nil {
+				return "", err
+			}
+			newDoc, err := a.aiDuplicateDoc(user, &doc)
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("已复制为：{{doc:%d}}（id=%d，《%s》）", newDoc.ID, newDoc.ID, newDoc.Title), nil
+
+		case "purge_document":
+			id := argInt("id", 0)
+			if id == 0 {
+				return "", fmt.Errorf("id 不能为空")
+			}
+			tx := a.DB.Unscoped().Where("deleted_at IS NOT NULL")
+			if !user.IsAdmin() {
+				tx = tx.Where("owner_id = ?", user.ID)
+			}
+			var doc model.Document
+			if err := tx.First(&doc, id).Error; err != nil {
+				return "", fmt.Errorf("回收站中不存在该文档（id=%d）", id)
+			}
+			if !canEditDoc(&doc) {
+				return "", fmt.Errorf("没有该文档的编辑权限（id=%d）", id)
+			}
+			title := doc.Title
+			if err := a.purgeDoc(&doc); err != nil {
+				return "", fmt.Errorf("彻底删除失败: %v", err)
+			}
+			return fmt.Sprintf("已彻底删除《%s》（id=%d），不可恢复。", title, id), nil
+
+		case "label_revision":
+			id := argInt("id", 0)
+			rid := argInt("revision_id", 0)
+			if id == 0 || rid == 0 {
+				return "", fmt.Errorf("id 和 revision_id 不能为空")
+			}
+			var doc model.Document
+			if err := scope().First(&doc, id).Error; err != nil {
+				return "", fmt.Errorf("文档不存在或无权访问（id=%d）", id)
+			}
+			if !canEditDoc(&doc) {
+				return "", fmt.Errorf("没有该文档的编辑权限（id=%d）", id)
+			}
+			var rev model.DocumentRevision
+			if err := a.DB.Where("id = ? AND document_id = ?", rid, doc.ID).First(&rev).Error; err != nil {
+				return "", fmt.Errorf("修订不存在（revision_id=%d）", rid)
+			}
+			label := argStr("label")
+			note := argStr("note")
+			if utf8.RuneCountInString(label) > 32 || utf8.RuneCountInString(note) > 500 {
+				return "", fmt.Errorf("label 最多 32 字，note 最多 500 字")
+			}
+			if label != "" {
+				var dup int64
+				a.DB.Model(&model.DocumentRevision{}).
+					Where("document_id = ? AND label = ? AND id <> ?", doc.ID, label, rev.ID).Count(&dup)
+				if dup > 0 {
+					return "", fmt.Errorf("版本号已被其他历史版本使用")
+				}
+			}
+			if err := a.DB.Model(&rev).Updates(map[string]any{"label": label, "note": note}).Error; err != nil {
+				return "", fmt.Errorf("保存失败: %v", err)
+			}
+			if label == "" {
+				return fmt.Sprintf("已取消修订 %d 的版本标签。", rid), nil
+			}
+			return fmt.Sprintf("已给修订 %d 打标签：%s", rid, label), nil
+
+		case "list_comments":
+			id := argInt("id", 0)
+			if id == 0 {
+				return "", fmt.Errorf("id 不能为空")
+			}
+			var doc model.Document
+			if err := scope().First(&doc, id).Error; err != nil {
+				return "", fmt.Errorf("文档不存在或无权访问（id=%d）", id)
+			}
+			views := a.listCommentViews(doc.ID)
+			if len(views) == 0 {
+				return "该文档暂无评论。", nil
+			}
+			out := make([]string, 0, len(views))
+			for _, v := range views {
+				name := v.Name
+				if name == "" {
+					name = "游客"
+				}
+				line := fmt.Sprintf("- comment_id=%d %s：%s（%s）", v.ID, name, v.Content, v.CreatedAt.Format("01-02 15:04"))
+				if v.ParentID > 0 {
+					line += fmt.Sprintf(" ←回复 %d", v.ParentID)
+				}
+				out = append(out, line)
+			}
+			return clip(strings.Join(out, "\n")), nil
+
+		case "add_comment":
+			id := argInt("id", 0)
+			content := argStr("content")
+			if id == 0 || content == "" {
+				return "", fmt.Errorf("id 与 content 不能为空")
+			}
+			if utf8.RuneCountInString(content) > commentMaxRunes {
+				return "", fmt.Errorf("评论最多 %d 字", commentMaxRunes)
+			}
+			var doc model.Document
+			if err := scope().First(&doc, id).Error; err != nil {
+				return "", fmt.Errorf("文档不存在或无权访问（id=%d）", id)
+			}
+			if !canEditDoc(&doc) {
+				return "", fmt.Errorf("没有该文档的编辑权限（id=%d）", id)
+			}
+			parentID := uint(argInt("parent_id", 0))
+			if parentID > 0 {
+				var parent model.Comment
+				if err := a.DB.Where("id = ? AND document_id = ? AND parent_id = 0", parentID, doc.ID).First(&parent).Error; err != nil {
+					return "", fmt.Errorf("只能回复顶层评论（parent_id=%d）", parentID)
+				}
+			}
+			cm := model.Comment{DocumentID: doc.ID, ParentID: parentID, UserID: user.ID, Content: content}
+			if err := a.DB.Create(&cm).Error; err != nil {
+				return "", fmt.Errorf("发表失败: %v", err)
+			}
+			var parent *model.Comment
+			if parentID > 0 {
+				var p model.Comment
+				if a.DB.First(&p, parentID).Error == nil {
+					parent = &p
+				}
+			}
+			a.notifyNewComment(&doc, &cm, user.DisplayName(), parent)
+			return fmt.Sprintf("评论已发表：comment_id=%d（文档 {{doc:%d}}）", cm.ID, doc.ID), nil
+
+		case "delete_comment":
+			id := argInt("id", 0)
+			cid := argInt("comment_id", 0)
+			if id == 0 || cid == 0 {
+				return "", fmt.Errorf("id 与 comment_id 不能为空")
+			}
+			var doc model.Document
+			if err := scope().First(&doc, id).Error; err != nil {
+				return "", fmt.Errorf("文档不存在或无权访问（id=%d）", id)
+			}
+			if !user.IsAdmin() && doc.OwnerID != user.ID {
+				return "", fmt.Errorf("只有文档属主可以删除评论")
+			}
+			res := a.DB.Where("id = ? AND document_id = ?", cid, doc.ID).Delete(&model.Comment{})
+			if res.Error != nil || res.RowsAffected == 0 {
+				return "", fmt.Errorf("评论不存在（comment_id=%d）", cid)
+			}
+			a.DB.Where("parent_id = ?", cid).Delete(&model.Comment{})
+			return fmt.Sprintf("已删除评论 %d 及其回复。", cid), nil
+
+		case "list_project_members":
+			p, err := a.aiVisibleProject(user, memberPids, uint(argInt("project_id", 0)))
+			if err != nil {
+				return "", err
+			}
+			var owner model.User
+			a.DB.First(&owner, p.OwnerID)
+			lines := []string{fmt.Sprintf("- user_id=%d %s（owner）", owner.ID, owner.DisplayName())}
+			var ms []model.ProjectMember
+			a.DB.Where("project_id = ? AND user_id <> ?", p.ID, p.OwnerID).Order("created_at asc").Limit(100).Find(&ms)
+			uids := make([]uint, 0, len(ms))
+			for _, m := range ms {
+				uids = append(uids, m.UserID)
+			}
+			umap := map[uint]model.User{}
+			if len(uids) > 0 {
+				var us []model.User
+				a.DB.Where("id IN ?", uids).Find(&us)
+				for _, u := range us {
+					umap[u.ID] = u
+				}
+			}
+			for _, m := range ms {
+				u := umap[m.UserID]
+				name := (&u).DisplayName()
+				if name == "" {
+					name = u.Username
+				}
+				lines = append(lines, fmt.Sprintf("- user_id=%d %s（%s）", m.UserID, name, m.Role))
+			}
+			return clip(strings.Join(lines, "\n")), nil
+
+		case "add_project_member":
+			p, err := a.aiManagedProject(user, uint(argInt("project_id", 0)))
+			if err != nil {
+				return "", err
+			}
+			role := argStr("role")
+			if role == "" {
+				role = model.MemberRoleView
+			}
+			if role != model.MemberRoleView && role != model.MemberRoleEdit {
+				return "", fmt.Errorf("角色非法，仅支持 view / edit")
+			}
+			target, err := a.aiResolveUser(argStr("username"), uint(argInt("user_id", 0)))
+			if err != nil {
+				return "", err
+			}
+			if target.ID == p.OwnerID {
+				return "", fmt.Errorf("项目所有者无需添加为成员")
+			}
+			m := model.ProjectMember{ProjectID: p.ID, UserID: target.ID, Role: role}
+			if err := a.DB.Create(&m).Error; err != nil {
+				if isDupKey(err) {
+					return "", fmt.Errorf("该用户已是项目成员")
+				}
+				return "", fmt.Errorf("添加失败: %v", err)
+			}
+			a.notifyProjectMemberAdded(p, m.UserID, m.Role)
+			return fmt.Sprintf("已添加成员 user_id=%d %s（%s）到项目 id=%d", target.ID, target.DisplayName(), role, p.ID), nil
+
+		case "update_project_member":
+			p, err := a.aiManagedProject(user, uint(argInt("project_id", 0)))
+			if err != nil {
+				return "", err
+			}
+			uid := uint(argInt("user_id", 0))
+			role := argStr("role")
+			if uid == 0 || (role != model.MemberRoleView && role != model.MemberRoleEdit) {
+				return "", fmt.Errorf("user_id 与 role（view/edit）必填")
+			}
+			var m model.ProjectMember
+			if err := a.DB.Where("project_id = ? AND user_id = ?", p.ID, uid).First(&m).Error; err != nil {
+				return "", fmt.Errorf("成员不存在（user_id=%d）", uid)
+			}
+			if err := a.DB.Model(&m).Update("role", role).Error; err != nil {
+				return "", fmt.Errorf("更新失败: %v", err)
+			}
+			a.notifyProjectMemberRole(p, m.UserID, role)
+			return fmt.Sprintf("已将 user_id=%d 角色改为 %s", uid, role), nil
+
+		case "remove_project_member":
+			p, err := a.aiManagedProject(user, uint(argInt("project_id", 0)))
+			if err != nil {
+				return "", err
+			}
+			uid := uint(argInt("user_id", 0))
+			if uid == 0 {
+				return "", fmt.Errorf("user_id 不能为空")
+			}
+			var m model.ProjectMember
+			if err := a.DB.Where("project_id = ? AND user_id = ?", p.ID, uid).First(&m).Error; err != nil {
+				return "", fmt.Errorf("成员不存在（user_id=%d）", uid)
+			}
+			if err := a.DB.Delete(&m).Error; err != nil {
+				return "", fmt.Errorf("移除失败: %v", err)
+			}
+			a.notifyProjectMemberRemoved(p, uid)
+			return fmt.Sprintf("已从项目 id=%d 移除 user_id=%d", p.ID, uid), nil
+
+		case "get_project_share":
+			p, err := a.aiManagedProject(user, uint(argInt("project_id", 0)))
+			if err != nil {
+				return "", err
+			}
+			var ps model.ProjectShare
+			if a.DB.Where("project_id = ?", p.ID).First(&ps).Error != nil {
+				return fmt.Sprintf("项目 id=%d 尚未开启分享。", p.ID), nil
+			}
+			note := ""
+			if ps.CanEdit {
+				note += "，登录用户可编辑"
+			}
+			if ps.HasPassword() {
+				note += "，需密码"
+			}
+			if ps.ExpireAt != nil {
+				note += "，" + ps.ExpireAt.Format("2006-01-02 15:04") + " 过期"
+			}
+			return fmt.Sprintf("项目分享已开启：{{pshare:%d}}%s", p.ID, note), nil
+
+		case "set_project_share":
+			p, err := a.aiManagedProject(user, uint(argInt("project_id", 0)))
+			if err != nil {
+				return "", err
+			}
+			enabled := false
+			if v, ok := args["enabled"].(bool); ok {
+				enabled = v
+			}
+			var ps model.ProjectShare
+			found := a.DB.Where("project_id = ?", p.ID).First(&ps).Error == nil
+			if !enabled {
+				if found {
+					a.DB.Delete(&ps)
+					a.DB.Where("project_id = ?", p.ID).Delete(&model.ShareAccessRequest{})
+				}
+				return fmt.Sprintf("已关闭项目 id=%d 的分享。", p.ID), nil
+			}
+			if !found {
+				ps = model.ProjectShare{ProjectID: p.ID, ShareToken: util.RandomHex(16)}
+			}
+			if v, ok := args["can_edit"].(bool); ok {
+				ps.CanEdit = v
+			}
+			if pwd := argStr("password"); pwd != "" {
+				hash, _ := bcrypt.GenerateFromPassword([]byte(pwd), bcrypt.DefaultCost)
+				ps.Password = string(hash)
+			} else if v, ok := args["remove_password"].(bool); ok && v {
+				ps.Password = ""
+			} else if !found {
+				ps.Password = ""
+			}
+			exp, err := applyExpire(ps.ExpireAt)
+			if err != nil {
+				return "", err
+			}
+			ps.ExpireAt = exp
+			if err := a.DB.Save(&ps).Error; err != nil {
+				return "", fmt.Errorf("分享设置失败: %v", err)
+			}
+			note := ""
+			if ps.CanEdit {
+				note += "（登录用户可编辑）"
+			}
+			return fmt.Sprintf("项目分享已开启：{{pshare:%d}}%s", p.ID, note), nil
+
+		case "list_access_requests":
+			docID := uint(argInt("document_id", 0))
+			projID := uint(argInt("project_id", 0))
+			if (docID == 0 && projID == 0) || (docID > 0 && projID > 0) {
+				return "", fmt.Errorf("请只传 document_id 或 project_id 之一")
+			}
+			var items []model.ShareAccessRequest
+			if docID > 0 {
+				var doc model.Document
+				if err := scope().First(&doc, docID).Error; err != nil {
+					return "", fmt.Errorf("文档不存在或无权访问（id=%d）", docID)
+				}
+				if !user.IsAdmin() && doc.OwnerID != user.ID {
+					return "", fmt.Errorf("只有文档属主可以查看访问申请")
+				}
+				a.DB.Where("document_id = ?", docID).Order("status asc, id desc").Limit(50).Find(&items)
+			} else {
+				if _, err := a.aiManagedProject(user, projID); err != nil {
+					return "", err
+				}
+				a.DB.Where("project_id = ?", projID).Order("status asc, id desc").Limit(50).Find(&items)
+			}
+			if len(items) == 0 {
+				return "暂无访问申请。", nil
+			}
+			statusName := map[int]string{
+				model.AccessPending: "pending", model.AccessApproved: "approved", model.AccessRejected: "rejected",
+			}
+			out := make([]string, 0, len(items))
+			for _, r := range items {
+				out = append(out, fmt.Sprintf("- request_id=%d [%s] %s contact=%s msg=%s（%s）",
+					r.ID, statusName[r.Status], r.GuestName, r.GuestContact, r.Message, r.CreatedAt.Format("01-02 15:04")))
+			}
+			return clip(strings.Join(out, "\n")), nil
+
+		case "review_access_request":
+			rid := uint(argInt("request_id", 0))
+			action := argStr("action")
+			docID := uint(argInt("document_id", 0))
+			projID := uint(argInt("project_id", 0))
+			if rid == 0 || (action != "approve" && action != "reject") {
+				return "", fmt.Errorf("request_id 与 action（approve/reject）必填")
+			}
+			if (docID == 0 && projID == 0) || (docID > 0 && projID > 0) {
+				return "", fmt.Errorf("请只传 document_id 或 project_id 之一")
+			}
+			status := model.AccessRejected
+			if action == "approve" {
+				status = model.AccessApproved
+			}
+			var req model.ShareAccessRequest
+			var doc model.Document
+			var project *model.Project
+			if docID > 0 {
+				if err := scope().First(&doc, docID).Error; err != nil {
+					return "", fmt.Errorf("文档不存在或无权访问（id=%d）", docID)
+				}
+				if !user.IsAdmin() && doc.OwnerID != user.ID {
+					return "", fmt.Errorf("只有文档属主可以审批")
+				}
+				if err := a.DB.Where("id = ? AND document_id = ?", rid, docID).First(&req).Error; err != nil {
+					return "", fmt.Errorf("申请不存在")
+				}
+			} else {
+				p, err := a.aiManagedProject(user, projID)
+				if err != nil {
+					return "", err
+				}
+				project = p
+				if err := a.DB.Where("id = ? AND project_id = ?", rid, projID).First(&req).Error; err != nil {
+					return "", fmt.Errorf("申请不存在")
+				}
+			}
+			if req.Status != model.AccessPending {
+				return "", fmt.Errorf("该申请已处理过")
+			}
+			now := time.Now()
+			if err := a.DB.Model(&req).Updates(map[string]any{
+				"status": status, "reviewed_at": now, "reviewer_id": user.ID,
+			}).Error; err != nil {
+				return "", fmt.Errorf("审批失败: %v", err)
+			}
+			req.Status = status
+			if docID > 0 {
+				var share model.Share
+				token := ""
+				if a.DB.Where("document_id = ?", doc.ID).First(&share).Error == nil {
+					token = share.ShareToken
+				}
+				a.notifyAccessReviewed(&req, &doc, action == "approve", token)
+			} else {
+				var ps model.ProjectShare
+				token := ""
+				if a.DB.Where("project_id = ?", project.ID).First(&ps).Error == nil {
+					token = ps.ShareToken
+				}
+				a.notifyProjectAccessReviewed(&req, project, action == "approve", token)
+			}
+			return fmt.Sprintf("已%s申请 request_id=%d", map[string]string{"approve": "通过", "reject": "拒绝"}[action], rid), nil
 		}
 		return "", fmt.Errorf("未知工具: %s", name)
 	}
@@ -1446,4 +2282,141 @@ func (a *App) aiOwnedCategory(user *model.User, id uint) error {
 		return fmt.Errorf("分类不存在或不属于你（category_id=%d）", id)
 	}
 	return nil
+}
+
+func (a *App) aiVisibleProject(user *model.User, memberPids []uint, id uint) (*model.Project, error) {
+	if id == 0 {
+		return nil, fmt.Errorf("project_id 不能为空")
+	}
+	var p model.Project
+	if err := a.DB.First(&p, id).Error; err != nil {
+		return nil, fmt.Errorf("项目不存在（id=%d）", id)
+	}
+	if user.IsAdmin() || p.OwnerID == user.ID {
+		return &p, nil
+	}
+	for _, pid := range memberPids {
+		if pid == p.ID {
+			return &p, nil
+		}
+	}
+	return nil, fmt.Errorf("无权查看该项目（id=%d）", id)
+}
+
+func (a *App) aiUsableTemplate(user *model.User, memberPids []uint, id uint) (*model.DocTemplate, error) {
+	if id == 0 {
+		return nil, fmt.Errorf("id 不能为空")
+	}
+	var tpl model.DocTemplate
+	if err := a.DB.First(&tpl, id).Error; err != nil {
+		return nil, fmt.Errorf("模板不存在（id=%d）", id)
+	}
+	if user.IsAdmin() || tpl.OwnerID == user.ID {
+		return &tpl, nil
+	}
+	if tpl.ProjectID == 0 {
+		return nil, fmt.Errorf("模板不可用（id=%d）", id)
+	}
+	for _, pid := range memberPids {
+		if pid == tpl.ProjectID {
+			return &tpl, nil
+		}
+	}
+	return nil, fmt.Errorf("模板不可用（id=%d）", id)
+}
+
+func (a *App) aiOwnedTemplate(user *model.User, id uint) (*model.DocTemplate, error) {
+	if id == 0 {
+		return nil, fmt.Errorf("id 不能为空")
+	}
+	var tpl model.DocTemplate
+	if err := a.DB.First(&tpl, id).Error; err != nil {
+		return nil, fmt.Errorf("模板不存在（id=%d）", id)
+	}
+	if !user.IsAdmin() && tpl.OwnerID != user.ID {
+		return nil, fmt.Errorf("无权操作他人的模板（id=%d）", id)
+	}
+	return &tpl, nil
+}
+
+func (a *App) aiTemplateProjectOK(user *model.User, memberPids []uint, projectID uint) error {
+	if projectID == 0 {
+		return nil
+	}
+	var p model.Project
+	if err := a.DB.First(&p, projectID).Error; err != nil {
+		return fmt.Errorf("项目不存在（project_id=%d）", projectID)
+	}
+	if p.OwnerID == user.ID {
+		return nil
+	}
+	for _, pid := range memberPids {
+		if pid == projectID {
+			return nil
+		}
+	}
+	return fmt.Errorf("只能绑定自己拥有或参与的项目（project_id=%d）", projectID)
+}
+
+func (a *App) aiResolveUser(username string, userID uint) (*model.User, error) {
+	var u model.User
+	switch {
+	case username != "":
+		if err := a.DB.Where("username = ? AND status = ?", username, model.StatusEnabled).First(&u).Error; err != nil {
+			return nil, fmt.Errorf("用户不存在或已禁用：%s", username)
+		}
+	case userID > 0:
+		if err := a.DB.Where("id = ? AND status = ?", userID, model.StatusEnabled).First(&u).Error; err != nil {
+			return nil, fmt.Errorf("用户不存在或已禁用（user_id=%d）", userID)
+		}
+	default:
+		return nil, fmt.Errorf("请提供 username 或 user_id")
+	}
+	return &u, nil
+}
+
+func (a *App) aiDuplicateDoc(user *model.User, doc *model.Document) (*model.Document, error) {
+	newProjectID := doc.ProjectID
+	if newProjectID != 0 {
+		var proj model.Project
+		if a.DB.First(&proj, newProjectID).Error != nil {
+			newProjectID = 0
+		} else if proj.OwnerID != user.ID {
+			var n int64
+			a.DB.Model(&model.ProjectMember{}).Where("project_id = ? AND user_id = ?", newProjectID, user.ID).Count(&n)
+			if n == 0 {
+				newProjectID = 0
+			}
+		}
+	}
+	newCategoryID := doc.CategoryID
+	if newCategoryID != 0 {
+		var cat model.Category
+		if a.DB.First(&cat, newCategoryID).Error != nil || cat.OwnerID != user.ID {
+			newCategoryID = 0
+		}
+	}
+	r := []rune(doc.Title)
+	if len(r) > 250 {
+		r = r[:250]
+	}
+	newDoc := model.Document{
+		Title: string(r) + "（副本）", Version: derivedDocVersion(0),
+		Slug: util.RandomSlug(8), Type: doc.Type, Content: doc.Content,
+		OwnerID: user.ID, UpdatedByID: user.ID, UpdatedVia: "ai",
+		ProjectID: newProjectID, CategoryID: newCategoryID,
+	}
+	for i := 0; i < 5; i++ {
+		var n int64
+		a.DB.Unscoped().Model(&model.Document{}).Where("slug = ?", newDoc.Slug).Count(&n)
+		if n == 0 {
+			break
+		}
+		newDoc.Slug = util.RandomSlug(8)
+	}
+	if err := a.DB.Create(&newDoc).Error; err != nil {
+		return nil, fmt.Errorf("复制失败: %v", err)
+	}
+	a.reindexDocAsync(newDoc.ID)
+	return &newDoc, nil
 }
