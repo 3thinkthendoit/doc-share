@@ -23,12 +23,10 @@ import (
 // 工具结果不落库，仅作为当轮上下文注入。
 
 const (
-	aiToolMaxResult    = 8000      // 单次工具结果字符上限（防止撑爆上下文）
-	aiPrereadMaxChars  = 40000     // 系统预读单篇上限（拼齐全量，避免 Flash 因分页停等）
-	aiToolMaxDocs      = 10        // search_documents 返回条数上限
-	aiMaxContentBytes  = 200 << 10 // AI 写入文档正文的大小上限（200KB）
-	aiMaxCreatesPerReq = 3         // 单次对话内 create_document 次数上限
-	aiMaxCreatesPerDay = 50        // 单用户单日 AI 创建文档数上限
+	aiToolMaxResult   = 8000      // 单次工具结果字符上限（防止撑爆上下文）
+	aiPrereadMaxChars = 40000     // 系统预读单篇上限（拼齐全量，避免 Flash 因分页停等）
+	aiToolMaxDocs     = 10        // search_documents 返回条数上限
+	aiMaxContentBytes = 200 << 10 // AI 写入文档正文的大小上限（200KB）
 )
 
 // aiApprovalTools 执行前必须经用户在会话中确认的敏感工具
@@ -112,6 +110,21 @@ func (a *App) chatTools(user *model.User) (
 	}
 
 	defs = []llm.Tool{
+		{Type: "function", Function: llm.ToolFunc{
+			Name:        "declare_tasks",
+			Description: "记录多步任务清单（2–6 条）。调用后必须立即执行第一项，不要等用户确认，也不要自己把任务标成完成。单篇上的修改不要调用。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"tasks": map[string]any{
+						"type":        "array",
+						"items":       map[string]any{"type": "string"},
+						"description": "按执行顺序排列的任务标题",
+					},
+				},
+				"required": []string{"tasks"},
+			},
+		}},
 		{Type: "function", Function: llm.ToolFunc{
 			Name:        "search_documents",
 			Description: "按关键词搜索当前用户可见的平台文档，返回标题、路径等元数据。需要了解平台有哪些文档时先调用本工具。",
@@ -662,7 +675,7 @@ func (a *App) chatTools(user *model.User) (
 		return s
 	}
 	// 参数解析失败/执行出错时返回文本，让模型自行调整
-	creates := 0 // 本次对话内 create_document 已调用次数
+	creates := 0 // 本次请求内 create_document / duplicate / apply_template 已预留次数
 	exec = func(name, argsJSON string) (string, error) {
 		var args map[string]any
 		if strings.TrimSpace(argsJSON) != "" {
@@ -705,21 +718,29 @@ func (a *App) chatTools(user *model.User) (
 			return &t, nil
 		}
 		reserveCreate := func() error {
+			limits := a.Settings()
 			creates++
-			if creates > aiMaxCreatesPerReq {
-				return fmt.Errorf("单次对话最多创建 %d 篇文档，已达到上限；请先确认已有文档是否满足需求", aiMaxCreatesPerReq)
+			if creates > limits.AIMaxCreatesPerReq {
+				return fmt.Errorf("单次对话最多创建 %d 篇文档，已达到上限；请先确认已有文档是否满足需求", limits.AIMaxCreatesPerReq)
 			}
 			var createdToday int64
 			now := time.Now()
 			startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 			a.DB.Model(&model.Document{}).Where("owner_id = ? AND updated_via = ? AND created_at >= ?", user.ID, "ai", startOfDay).Count(&createdToday)
-			if createdToday >= aiMaxCreatesPerDay {
-				return fmt.Errorf("你今天通过 AI 创建的文档已达 %d 篇上限，请明天再试或手动创建", aiMaxCreatesPerDay)
+			if createdToday >= int64(limits.AIMaxCreatesPerDay) {
+				return fmt.Errorf("你今天通过 AI 创建的文档已达 %d 篇上限，请明天再试或手动创建", limits.AIMaxCreatesPerDay)
 			}
 			return nil
 		}
 
 		switch name {
+		case "declare_tasks":
+			titles, err := parseDeclareTasks(argsJSON)
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("已记录 %d 项任务。请立即执行第 1 项，不要向用户确认，不要把任务标成完成。", len(titles)), nil
+
 		case "search_documents":
 			q := argStr("query")
 			if q == "" {

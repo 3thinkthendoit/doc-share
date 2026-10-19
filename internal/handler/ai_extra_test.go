@@ -354,4 +354,19 @@ func TestAgentAtomicShareCommentAndGuards(t *testing.T) {
 	if _, err := limited("apply_template", `{"template_id":`+id(tpl.ID)+`}`); err == nil {
 		t.Fatal("apply_template must share the create quota")
 	}
+
+	if err := app.DB.AutoMigrate(&model.SystemSetting{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.DB.Create(&model.SystemSetting{Key: keyAIMaxCreatesPerReq, Value: "1"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	app.setCache = nil
+	_, tight, _ := app.chatTools(owner)
+	if _, err := tight("create_document", `{"title":"配置后仍允许","content":"x"}`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tight("create_document", `{"title":"配置后应拒绝","content":"x"}`); err == nil {
+		t.Fatal("configured per-request quota must apply")
+	}
 }

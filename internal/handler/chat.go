@@ -206,6 +206,9 @@ const aiToolRounds = 8
 // aiAutoContinueMax Flash 等弱模型「只说话不调工具」时的服务端自动续跑次数上限
 const aiAutoContinueMax = 3
 
+// taskNudgeMax 清单里仍有未通过项时，催促模型继续改的次数上限
+const taskNudgeMax = 3
+
 // aiMaxConcurrentGensPerUser 每用户同时进行中的生成上限（多任务并行）
 const aiMaxConcurrentGensPerUser = 3
 
@@ -271,6 +274,173 @@ var aiMutationTools = map[string]bool{
 	"set_project_share": true, "add_project_member": true,
 	"update_project_member": true, "remove_project_member": true,
 	"review_access_request": true,
+}
+
+const (
+	taskPending = "pending"
+	taskRunning = "running"
+	taskDone    = "done"
+	taskFailed  = "failed"
+)
+
+type agentTask struct {
+	Title string
+	State string
+}
+
+// taskBoard 本请求内的多步清单。状态只由工具结果和回读更新。
+type taskBoard struct {
+	items []agentTask
+}
+
+func parseDeclareTasks(argsJSON string) ([]string, error) {
+	var args struct {
+		Tasks []string `json:"tasks"`
+	}
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return nil, fmt.Errorf("tasks 必须是字符串数组")
+	}
+	var out []string
+	for _, t := range args.Tasks {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		if utf8.RuneCountInString(t) > 80 {
+			t = string([]rune(t)[:80])
+		}
+		out = append(out, t)
+	}
+	if len(out) < 2 || len(out) > 6 {
+		return nil, fmt.Errorf("任务须为 2–6 条")
+	}
+	return out, nil
+}
+
+func (b *taskBoard) active() bool { return len(b.items) > 0 }
+
+// taskTracksTool 只有文档写入才推进清单。改分享、评论、项目等不把下一条标成完成。
+func taskTracksTool(name string) bool { return aiDocWriteTools[name] }
+
+func (b *taskBoard) reset(titles []string) error {
+	for _, it := range b.items {
+		if it.State == taskDone || it.State == taskRunning {
+			return fmt.Errorf("任务已在执行，不能重列")
+		}
+	}
+	b.items = make([]agentTask, len(titles))
+	for i, t := range titles {
+		b.items[i] = agentTask{Title: t, State: taskPending}
+	}
+	return nil
+}
+
+// claim 下一条要记结果的任务：进行中优先，其次待做。没有待做时才重试未通过项，
+// 避免下一条任务的成功被记到前面的失败项上。
+func (b *taskBoard) claim() int {
+	for _, st := range []string{taskRunning, taskPending, taskFailed} {
+		for i := range b.items {
+			if b.items[i].State == st {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+func (b *taskBoard) markRunning() {
+	if i := b.claim(); i >= 0 {
+		b.items[i].State = taskRunning
+	}
+}
+
+func (b *taskBoard) finishCurrent(pass bool) {
+	i := b.claim()
+	if i < 0 {
+		return
+	}
+	if pass {
+		b.items[i].State = taskDone
+		return
+	}
+	b.items[i].State = taskFailed
+}
+
+func (b *taskBoard) unfinished() bool {
+	for _, it := range b.items {
+		if it.State != taskDone {
+			return true
+		}
+	}
+	return false
+}
+
+func (b *taskBoard) pendingSummary() string {
+	var parts []string
+	for _, it := range b.items {
+		if it.State == taskDone {
+			continue
+		}
+		parts = append(parts, it.Title)
+	}
+	return strings.Join(parts, "；")
+}
+
+func (b taskBoard) eventJSON() string {
+	var buf strings.Builder
+	buf.WriteString(`{"tasks":[`)
+	for i, it := range b.items {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		buf.WriteString(`{"title":` + jsonQuote(it.Title) + `,"state":` + jsonQuote(it.State) + `}`)
+	}
+	buf.WriteString(`]}`)
+	return buf.String()
+}
+
+// taskWriteVerified 写入后回读库中正文。局部替换必须能检出 new_text；整篇写入必须与提交内容一致。
+func (a *App) taskWriteVerified(name, argsJSON, result string) (bool, string) {
+	if strings.Contains(result, "校验失败") {
+		return false, "工具结果含校验失败"
+	}
+	if !aiDocWriteTools[name] {
+		return true, ""
+	}
+	id := toolStepDocID(name, argsJSON, result)
+	if id <= 0 {
+		return false, "回读失败：没有文档 id"
+	}
+	var doc model.Document
+	if err := a.DB.Select("content").First(&doc, id).Error; err != nil {
+		return false, "回读失败：" + err.Error()
+	}
+	switch name {
+	case "replace_section":
+		var args struct {
+			OldText string `json:"old_text"`
+			NewText string `json:"new_text"`
+		}
+		_ = json.Unmarshal([]byte(argsJSON), &args)
+		note := verifyReplaceResult(doc.Content, args.OldText, args.NewText)
+		// 「校验注意」表示本次替换已落地，正文里还留着别处相同原文，不算未通过。
+		return !strings.Contains(note, "校验失败"), note
+	case "update_document", "create_document":
+		var args struct {
+			Content string `json:"content"`
+		}
+		_ = json.Unmarshal([]byte(argsJSON), &args)
+		want := strings.TrimSpace(args.Content)
+		if want == "" {
+			return true, "回读通过"
+		}
+		if strings.TrimSpace(doc.Content) != want {
+			return false, "回读不一致：库中正文与提交内容不同"
+		}
+		return true, "回读通过：正文与提交内容一致"
+	default:
+		return true, "回读通过"
+	}
 }
 
 // sideEffectCorrection 自动续跑仍无效时，附加到助手终答的系统更正（用户可见）
@@ -776,6 +946,7 @@ const chatSystemPrompt = "你是 DocShare 文档平台的 AI 助手，用与用�
 	"①读文档：用户要查看/阅读/总结/对比某文档时，直接调用 read_document 读正文后回答；上下文里若已有 [系统预读]/[系统自动读取] 的正文，直接使用，不要重复调 read_document；" +
 	"②改文档：改局部内容用 replace_section，old_text 必须来自上下文最近一段正文（逐字一致）；整体重写才用 update_document，并回传 content_version 作为 base_version；改完汇报改了哪几处。用户已给出明确修改要求时，直接调用工具执行，禁止先 read_document 重读全文，禁止用\"总结要点\"代替执行修改；" +
 	"③执行：凡说要执行的操作，同一条回复直接发起工具调用，禁止只输出计划或要求用户回复「开始/继续」；工具失败就如实告知并按错误提示重试；删除/回滚等敏感操作不用口头确认（系统会弹审批）；" +
+	"【多步任务】用户要求两件及以上彼此独立的写入（多篇文档、先创建再修改、多个交付物）时，先 declare_tasks 列出 2–6 条，然后立即调用工具执行，禁止等用户确认。单篇上的修改不要 declare_tasks。任务是否完成只由服务端根据工具结果和回读正文判定，不要自己把任务标成完成；" +
 	"④歧义：语义无歧义时直接执行，不要列 A/B/C 方案让用户选；只有用户表述确实存在多种理解时才先问一个澄清问题。" +
 	"【链接】引用文档/分享一律原样输出占位符 {{doc:8}}，系统替换为真实链接；不输出任何 http:// 或 https://；没经工具核实的信息（分享链接、密码、过期时间）不输出，先查再说。" +
 	"【上下文感知】历史工具结果可能被服务端裁短到摘要；需要完整正文时直接再调用对应工具，不要凭空补全。" +
@@ -1066,6 +1237,7 @@ func (a *App) ChatCompletions(c *gin.Context) {
 	}
 
 	cfg := a.DefaultLLM()
+	cfg.StreamTimeout = time.Duration(a.Settings().AIStreamTimeoutMin) * time.Minute
 	if !cfg.Valid() {
 		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "chat.llmNotConfigured")})
 		return
@@ -1301,267 +1473,314 @@ func (a *App) ChatCompletions(c *gin.Context) {
 			return out
 		}
 
-	var final strings.Builder // 最终轮正文（唯一落库/外显的内容）
-	var anyEmitted bool       // 是否有任何正文流出过（用于错误兜底判断）
-	var totalUsage llm.Usage  // 累计所有轮的 token 用量
-	startedAt := time.Now()
-	toolCache := map[string]string{} // 重复的相同调用直接复用结果，防止模型原地打转
-	var lastToolResults string       // 上一轮工具结果（用于无 tool_call 时的自动续跑判断）
-	var mutEv mutationEvidence       // 本请求写入证据（防口头谎称 / 错工具洗白）
-	autoContinues := 0
-	for round := 0; round < aiToolRounds; round++ {
-		// 仅显式停止（genCtx）中断轮次；刷新不断开 genCtx
-		if genCtx.Err() != nil {
-			if anyEmitted || final.Len() > 0 {
-				break
-			}
-			// 一开局就被停止且无产出：保留用户消息
-			log.Printf("[llm] 生成已取消且无内容 session=%d", s.ID)
-			return
-		}
-		var rc strings.Builder
-		roundStart := time.Now()
-		assistant, err := cfg.StreamChat(genCtx, msgs, tools, func(delta string) {
-			rc.WriteString(delta)
-			anyEmitted = true
-			emitDelta(delta)
-		}, func(think string) {
-			// 推理模型的思考过程实时下发，前端渲染为可折叠面板
-			writeEvent(`{"think":` + jsonQuote(think) + `}`)
-		})
-		if assistant.Usage != nil {
-			totalUsage.PromptTokens += assistant.Usage.PromptTokens
-			totalUsage.CompletionTokens += assistant.Usage.CompletionTokens
-			totalUsage.TotalTokens += assistant.Usage.TotalTokens
-		}
-		if err != nil {
+		var final strings.Builder // 最终轮正文（唯一落库/外显的内容）
+		var anyEmitted bool       // 是否有任何正文流出过（用于错误兜底判断）
+		var totalUsage llm.Usage  // 累计所有轮的 token 用量
+		startedAt := time.Now()
+		toolCache := map[string]string{} // 重复的相同调用直接复用结果，防止模型原地打转
+		var lastToolResults string       // 上一轮工具结果（用于无 tool_call 时的自动续跑判断）
+		var mutEv mutationEvidence       // 本请求写入证据（防口头谎称 / 错工具洗白）
+		autoContinues := 0
+		taskNudges := 0
+		var board taskBoard
+		simpleTurn := isEdit && !createSkillMode && len(prereadIDs) <= 1
+		for round := 0; round < aiToolRounds; round++ {
+			// 仅显式停止（genCtx）中断轮次；刷新不断开 genCtx
 			if genCtx.Err() != nil {
-				// 用户点了停止：保留已生成片段并落库
-				final.WriteString(rc.String())
-				break
-			}
-			if !anyEmitted {
-				// 真正的上游失败且一个字没出：删除用户消息避免留垃圾
-				a.DB.Delete(&userMsg)
-				writeEvent(`{"error":` + jsonQuote(err.Error()) + `}`)
+				if anyEmitted || final.Len() > 0 {
+					break
+				}
+				// 一开局就被停止且无产出：保留用户消息
+				log.Printf("[llm] 生成已取消且无内容 session=%d", s.ID)
 				return
 			}
-			final.WriteString(rc.String()) // 已有部分内容：提示中断，保留已有回答
-			writeEvent(`{"error":` + jsonQuote(err.Error()) + `}`)
-			break
-		}
-		if len(assistant.ToolCalls) == 0 {
-			// Flash 常见：口述「说开始再读/再改」、谎称已创建却未调工具、或上一页未读完却不调工具 —— 服务端自动续跑
-			if tools != nil && autoContinues < aiAutoContinueMax && shouldAutoContinue(lastToolResults, rc.String(), mutEv) {
-				autoContinues++
-				if rc.Len() > 0 {
-					writeEvent(`{"reset":true}`)
-				}
-				nudge := "[系统] 不要只输出计划或等待用户确认。请立即发起工具调用继续执行未完成操作；" +
-					"若文档未读完，直接调用 read_document 并带上正确的 offset；若已有完整正文，直接 replace_section / update_document。" +
-					"禁止要求用户回复「开始/继续」。"
-				if claimsUnverifiedMutation(rc.String(), mutEv) {
-					nudge = "[系统] 你刚才声称已创建/保存/生成了文档，但本轮没有与表述相符的写入工具成功结果（创建类须 create_document/duplicate_document）。" +
-						"请立即调用正确工具实际执行；禁止编造 id 或用其它工具结果洗白。"
-				}
-				msgs = append(msgs,
-					llm.Message{Role: "assistant", Content: rc.String()},
-					llm.Message{Role: "user", Content: nudge},
-				)
-				log.Printf("[llm] 自动续跑 #%d session=%d（未读完/口头停等/未核实侧效）", autoContinues, s.ID)
-				writeEvent(`{"tool":` + jsonQuote("auto_continue") + `}`)
-				continue
-			}
-			// usage 只在最终回答完成后回传：中间轮（调工具）不显示
-			if assistant.Usage != nil {
-				writeEvent(`{"usage":{"prompt":` + strconv.Itoa(totalUsage.PromptTokens) +
-					`,"completion":` + strconv.Itoa(totalUsage.CompletionTokens) +
-					`,"total":` + strconv.Itoa(totalUsage.TotalTokens) +
-					`},"round_ms":` + strconv.FormatInt(time.Since(roundStart).Milliseconds(), 10) +
-					`,"elapsed_ms":` + strconv.FormatInt(time.Since(startedAt).Milliseconds(), 10) + `}`)
-			}
-			final.WriteString(rc.String())
-			break // 最终回答完成
-		}
-		// 模型请求工具：中间轮的“思考文字”不作为回答，前端重置气泡并显示状态条
-		if rc.Len() > 0 {
-			writeEvent(`{"reset":true}`)
-		}
-		var names []string
-		for _, tc := range assistant.ToolCalls {
-			names = append(names, tc.Function.Name)
-		}
-		// 先发状态事件再执行：工具可能耗时较长（读大文档/写文档），
-		// 用户必须在整个等待期间看到 Working 动画，而不是空白气泡
-		writeEvent(`{"tool":` + jsonQuote(strings.Join(names, ", ")) + `}`)
-		writeEvent(`{"tool_step":{"phase":"start","tools":` + jsonQuote(strings.Join(names, ", ")) + `}}`)
-		// 工具结果不使用 role:"tool" 消息回传（部分网关会丢失/变形该角色消息），
-		// 而是以普通 user 消息注入 —— 兼容所有 OpenAI 兼容实现。
-		// 注意：assistant 消息必须连同 ToolCalls 一并回传给上游，否则严格网关（如新版 OpenAI/Azure）
-		// 会因为“assistant 缺 tool_calls 但紧接着 user 充当工具结果”的序列返回 400，
-		// 触发 client.go 里的自动降级重试 —— 模型丢失工具上下文后只能输出纯文本（典型表现：列清单）。
-		msgs = append(msgs, llm.Message{Role: "assistant", Content: assistant.Content, ToolCalls: assistant.ToolCalls})
-		results := strings.Builder{}
-		results.WriteString("[工具查询结果]\n")
-
-		// 同回合敏感操作合并为一次审批；若存在待审批项，先等人再按序执行，
-		// 避免 update 等写操作在弹窗前已落地、用户拒绝却无法撤回。
-		// 会话 TrustSensitive=true 时跳过弹窗并写审计日志。
-		type slot struct {
-			result  string
-			execErr error
-			hit     bool
-			filled  bool
-		}
-		slots := make([]slot, len(assistant.ToolCalls))
-		var pendingIdx []int
-		for i, tc := range assistant.ToolCalls {
-			cacheKey := tc.Function.Name + "\x00" + tc.Function.Arguments
-			if cached, hit := toolCache[cacheKey]; hit {
-				log.Printf("[llm] 重复工具调用命中缓存 %s(%s)", tc.Function.Name, maskArgs(tc.Function.Arguments))
-				slots[i] = slot{result: cached + "\n（该调用已执行过且结果相同，请基于已有结果直接作答，不要重复调用）", hit: true, filled: true}
-				continue
-			}
-			if aiNeedsApproval(tc) {
-				if s.TrustSensitive {
-					log.Printf("[llm] audit auto-approve session=%d user=%d tool=%s args=%s",
-						s.ID, user.ID, tc.Function.Name, maskArgs(tc.Function.Arguments))
-					continue // 受信会话：不进 pending，下面按普通工具执行
-				}
-				pendingIdx = append(pendingIdx, i)
-			}
-		}
-		approvedSensitive := true
-		var timeoutMsg string
-		if len(pendingIdx) > 0 {
-			apprID := util.RandomHex(8)
-			decision := make(chan bool, 1)
-			first := assistant.ToolCalls[pendingIdx[0]]
-			var items []string
-			for _, idx := range pendingIdx {
-				tc := assistant.ToolCalls[idx]
-				items = append(items, `{"tool":`+jsonQuote(tc.Function.Name)+`,"args":`+jsonQuote(maskArgs(tc.Function.Arguments))+`}`)
-			}
-			itemsJSON := "[" + strings.Join(items, ",") + "]"
-			a.approvals.Store(apprID, chatApproval{
-				UserID: user.ID, SessionID: s.ID, Tool: first.Function.Name, Args: first.Function.Arguments,
-				ItemsJSON: itemsJSON,
-				Ch: decision, Expire: time.Now().Add(chatApprovalTTL),
+			var rc strings.Builder
+			roundStart := time.Now()
+			assistant, err := cfg.StreamChat(genCtx, msgs, tools, func(delta string) {
+				rc.WriteString(delta)
+				anyEmitted = true
+				emitDelta(delta)
+			}, func(think string) {
+				// 推理模型的思考过程实时下发，前端渲染为可折叠面板
+				writeEvent(`{"think":` + jsonQuote(think) + `}`)
 			})
-			writeEvent(`{"approval":{"id":` + jsonQuote(apprID) +
-				`,"tool":` + jsonQuote(first.Function.Name) +
-				`,"args":` + jsonQuote(maskArgs(first.Function.Arguments)) +
-				`,"items":` + itemsJSON + `}}`)
-			approvedSensitive, timeoutMsg = waitSensitiveDecision(genCtx, decision, chatApprovalTTL)
-			a.approvals.Delete(apprID)
-		}
-		pendingSet := map[int]bool{}
-		for _, idx := range pendingIdx {
-			pendingSet[idx] = true
-		}
-		for i, tc := range assistant.ToolCalls {
-			if slots[i].filled {
-				continue
+			if assistant.Usage != nil {
+				totalUsage.PromptTokens += assistant.Usage.PromptTokens
+				totalUsage.CompletionTokens += assistant.Usage.CompletionTokens
+				totalUsage.TotalTokens += assistant.Usage.TotalTokens
 			}
-			if pendingSet[i] {
-				switch {
-				case timeoutMsg != "":
-					slots[i] = slot{result: timeoutMsg, filled: true}
-				case approvedSensitive:
-					result, execErr := a.aiExecTool(execTool, tc)
-					slots[i] = slot{result: result, execErr: execErr, filled: true}
-				default:
-					slots[i] = slot{result: "用户拒绝了该操作，未执行。请勿重复请求，向用户确认意图后继续。", filled: true}
-					log.Printf("[llm] 用户拒绝 %s(%s)", tc.Function.Name, maskArgs(tc.Function.Arguments))
+			if err != nil {
+				if genCtx.Err() != nil {
+					// 用户点了停止：保留已生成片段并落库
+					final.WriteString(rc.String())
+					break
 				}
-				continue
+				if !anyEmitted {
+					// 真正的上游失败且一个字没出：删除用户消息避免留垃圾
+					a.DB.Delete(&userMsg)
+					writeEvent(`{"error":` + jsonQuote(err.Error()) + `}`)
+					return
+				}
+				final.WriteString(rc.String()) // 已有部分内容：提示中断，保留已有回答
+				writeEvent(`{"error":` + jsonQuote(err.Error()) + `}`)
+				break
 			}
-			result, execErr := a.aiExecTool(execTool, tc)
-			slots[i] = slot{result: result, execErr: execErr, filled: true}
-		}
-
-		for i, tc := range assistant.ToolCalls {
-			sl := slots[i]
-			ok := sl.execErr == nil && !strings.HasPrefix(sl.result, "工具执行失败：") &&
-				!strings.HasPrefix(sl.result, "用户拒绝") && !strings.HasPrefix(sl.result, "等待用户确认超时")
-			if sl.execErr == nil {
-				if !sl.hit {
-					logResult := sl.result
-					if utf8.RuneCountInString(logResult) > 400 {
-						logResult = string([]rune(logResult)[:400]) + "…"
+			if len(assistant.ToolCalls) == 0 {
+				// 清单里还有未通过回读或未执行的项：继续改，不把模型的口头完成当完成。
+				if tools != nil && board.unfinished() && taskNudges < taskNudgeMax {
+					taskNudges++
+					if rc.Len() > 0 {
+						writeEvent(`{"reset":true}`)
 					}
-					log.Printf("[llm] 工具调用 %s(%s) -> %s", tc.Function.Name, maskArgs(tc.Function.Arguments), logResult)
-					toolCache[tc.Function.Name+"\x00"+tc.Function.Arguments] = sl.result
+					nudge := "[系统核对] 下列任务尚未通过回读或尚未执行：" + board.pendingSummary() +
+						"。请立即调用工具完成或修正，不要向用户确认，不要口头宣布完成。"
+					msgs = append(msgs,
+						llm.Message{Role: "assistant", Content: rc.String()},
+						llm.Message{Role: "user", Content: nudge},
+					)
+					log.Printf("[llm] 任务核对续跑 #%d session=%d", taskNudges, s.ID)
+					writeEvent(`{"tool":` + jsonQuote("task_check") + `}`)
+					continue
 				}
-			} else {
-				log.Printf("[llm] 工具调用失败 %s(%s) -> %s", tc.Function.Name, maskArgs(tc.Function.Arguments), sl.result)
+				// Flash 常见：口述「说开始再读/再改」、谎称已创建却未调工具、或上一页未读完却不调工具 —— 服务端自动续跑
+				if tools != nil && autoContinues < aiAutoContinueMax && shouldAutoContinue(lastToolResults, rc.String(), mutEv) {
+					autoContinues++
+					if rc.Len() > 0 {
+						writeEvent(`{"reset":true}`)
+					}
+					nudge := "[系统] 不要只输出计划或等待用户确认。请立即发起工具调用继续执行未完成操作；" +
+						"若文档未读完，直接调用 read_document 并带上正确的 offset；若已有完整正文，直接 replace_section / update_document。" +
+						"禁止要求用户回复「开始/继续」。"
+					if claimsUnverifiedMutation(rc.String(), mutEv) {
+						nudge = "[系统] 你刚才声称已创建/保存/生成了文档，但本轮没有与表述相符的写入工具成功结果（创建类须 create_document/duplicate_document）。" +
+							"请立即调用正确工具实际执行；禁止编造 id 或用其它工具结果洗白。"
+					}
+					msgs = append(msgs,
+						llm.Message{Role: "assistant", Content: rc.String()},
+						llm.Message{Role: "user", Content: nudge},
+					)
+					log.Printf("[llm] 自动续跑 #%d session=%d（未读完/口头停等/未核实侧效）", autoContinues, s.ID)
+					writeEvent(`{"tool":` + jsonQuote("auto_continue") + `}`)
+					continue
+				}
+				// usage 只在最终回答完成后回传：中间轮（调工具）不显示
+				if assistant.Usage != nil {
+					writeEvent(`{"usage":{"prompt":` + strconv.Itoa(totalUsage.PromptTokens) +
+						`,"completion":` + strconv.Itoa(totalUsage.CompletionTokens) +
+						`,"total":` + strconv.Itoa(totalUsage.TotalTokens) +
+						`},"round_ms":` + strconv.FormatInt(time.Since(roundStart).Milliseconds(), 10) +
+						`,"elapsed_ms":` + strconv.FormatInt(time.Since(startedAt).Milliseconds(), 10) + `}`)
+				}
+				final.WriteString(rc.String())
+				break // 最终回答完成
 			}
-			writeEvent(toolStepEndJSON(tc, sl.result, ok))
-			results.WriteString("\n[" + tc.Function.Name + " 参数: " + maskArgs(tc.Function.Arguments) + "]\n" + sl.result + "\n")
-			if ok {
-				mutEv.note(tc.Function.Name, toolStepDocID(tc.Function.Name, tc.Function.Arguments, sl.result))
+			// 模型请求工具：中间轮的“思考文字”不作为回答，前端重置气泡并显示状态条
+			if rc.Len() > 0 {
+				writeEvent(`{"reset":true}`)
 			}
-			if ok && tc.Function.Name == "save_skill" && s.CreatingSkill {
-				if err := a.DB.Model(&model.ChatSession{}).Where("id = ? AND user_id = ?", s.ID, user.ID).
-					Update("creating_skill", false).Error; err != nil {
-					log.Printf("[llm] 清除 creating_skill 失败 session=%d: %v", s.ID, err)
+			var names []string
+			for _, tc := range assistant.ToolCalls {
+				names = append(names, tc.Function.Name)
+			}
+			// 先发状态事件再执行：工具可能耗时较长（读大文档/写文档），
+			// 用户必须在整个等待期间看到 Working 动画，而不是空白气泡
+			writeEvent(`{"tool":` + jsonQuote(strings.Join(names, ", ")) + `}`)
+			writeEvent(`{"tool_step":{"phase":"start","tools":` + jsonQuote(strings.Join(names, ", ")) + `}}`)
+			// 工具结果不使用 role:"tool" 消息回传（部分网关会丢失/变形该角色消息），
+			// 而是以普通 user 消息注入 —— 兼容所有 OpenAI 兼容实现。
+			// 注意：assistant 消息必须连同 ToolCalls 一并回传给上游，否则严格网关（如新版 OpenAI/Azure）
+			// 会因为“assistant 缺 tool_calls 但紧接着 user 充当工具结果”的序列返回 400，
+			// 触发 client.go 里的自动降级重试 —— 模型丢失工具上下文后只能输出纯文本（典型表现：列清单）。
+			msgs = append(msgs, llm.Message{Role: "assistant", Content: assistant.Content, ToolCalls: assistant.ToolCalls})
+			results := strings.Builder{}
+			results.WriteString("[工具查询结果]\n")
+
+			// 同回合敏感操作合并为一次审批；若存在待审批项，先等人再按序执行，
+			// 避免 update 等写操作在弹窗前已落地、用户拒绝却无法撤回。
+			// 会话 TrustSensitive=true 时跳过弹窗并写审计日志。
+			type slot struct {
+				result  string
+				execErr error
+				hit     bool
+				filled  bool
+			}
+			slots := make([]slot, len(assistant.ToolCalls))
+			var pendingIdx []int
+			for i, tc := range assistant.ToolCalls {
+				cacheKey := tc.Function.Name + "\x00" + tc.Function.Arguments
+				if cached, hit := toolCache[cacheKey]; hit {
+					log.Printf("[llm] 重复工具调用命中缓存 %s(%s)", tc.Function.Name, maskArgs(tc.Function.Arguments))
+					slots[i] = slot{result: cached + "\n（该调用已执行过且结果相同，请基于已有结果直接作答，不要重复调用）", hit: true, filled: true}
+					continue
+				}
+				if aiNeedsApproval(tc) {
+					if s.TrustSensitive {
+						log.Printf("[llm] audit auto-approve session=%d user=%d tool=%s args=%s",
+							s.ID, user.ID, tc.Function.Name, maskArgs(tc.Function.Arguments))
+						continue // 受信会话：不进 pending，下面按普通工具执行
+					}
+					pendingIdx = append(pendingIdx, i)
+				}
+			}
+			approvedSensitive := true
+			var timeoutMsg string
+			if len(pendingIdx) > 0 {
+				apprID := util.RandomHex(8)
+				decision := make(chan bool, 1)
+				first := assistant.ToolCalls[pendingIdx[0]]
+				var items []string
+				for _, idx := range pendingIdx {
+					tc := assistant.ToolCalls[idx]
+					items = append(items, `{"tool":`+jsonQuote(tc.Function.Name)+`,"args":`+jsonQuote(maskArgs(tc.Function.Arguments))+`}`)
+				}
+				itemsJSON := "[" + strings.Join(items, ",") + "]"
+				a.approvals.Store(apprID, chatApproval{
+					UserID: user.ID, SessionID: s.ID, Tool: first.Function.Name, Args: first.Function.Arguments,
+					ItemsJSON: itemsJSON,
+					Ch:        decision, Expire: time.Now().Add(chatApprovalTTL),
+				})
+				writeEvent(`{"approval":{"id":` + jsonQuote(apprID) +
+					`,"tool":` + jsonQuote(first.Function.Name) +
+					`,"args":` + jsonQuote(maskArgs(first.Function.Arguments)) +
+					`,"items":` + itemsJSON + `}}`)
+				approvedSensitive, timeoutMsg = waitSensitiveDecision(genCtx, decision, chatApprovalTTL)
+				a.approvals.Delete(apprID)
+			}
+			pendingSet := map[int]bool{}
+			for _, idx := range pendingIdx {
+				pendingSet[idx] = true
+			}
+			for i, tc := range assistant.ToolCalls {
+				if slots[i].filled {
+					continue
+				}
+				if pendingSet[i] {
+					switch {
+					case timeoutMsg != "":
+						slots[i] = slot{result: timeoutMsg, filled: true}
+					case approvedSensitive:
+						result, execErr := a.aiExecTool(execTool, tc)
+						slots[i] = slot{result: result, execErr: execErr, filled: true}
+					default:
+						slots[i] = slot{result: "用户拒绝了该操作，未执行。请勿重复请求，向用户确认意图后继续。", filled: true}
+						log.Printf("[llm] 用户拒绝 %s(%s)", tc.Function.Name, maskArgs(tc.Function.Arguments))
+					}
+					continue
+				}
+				if tc.Function.Name == "declare_tasks" && simpleTurn {
+					slots[i] = slot{result: "本轮是单篇修改，不要调用 declare_tasks。请直接 replace_section 或 update_document。", filled: true}
+					continue
+				}
+				if board.active() && taskTracksTool(tc.Function.Name) {
+					board.markRunning()
+					writeEvent(board.eventJSON())
+				}
+				result, execErr := a.aiExecTool(execTool, tc)
+				slots[i] = slot{result: result, execErr: execErr, filled: true}
+			}
+
+			for i, tc := range assistant.ToolCalls {
+				sl := slots[i]
+				ok := sl.execErr == nil && !strings.HasPrefix(sl.result, "工具执行失败：") &&
+					!strings.HasPrefix(sl.result, "用户拒绝") && !strings.HasPrefix(sl.result, "等待用户确认超时")
+				if sl.execErr == nil {
+					if !sl.hit {
+						logResult := sl.result
+						if utf8.RuneCountInString(logResult) > 400 {
+							logResult = string([]rune(logResult)[:400]) + "…"
+						}
+						log.Printf("[llm] 工具调用 %s(%s) -> %s", tc.Function.Name, maskArgs(tc.Function.Arguments), logResult)
+						toolCache[tc.Function.Name+"\x00"+tc.Function.Arguments] = sl.result
+					}
 				} else {
-					s.CreatingSkill = false
+					log.Printf("[llm] 工具调用失败 %s(%s) -> %s", tc.Function.Name, maskArgs(tc.Function.Arguments), sl.result)
+				}
+				writeEvent(toolStepEndJSON(tc, sl.result, ok))
+				if tc.Function.Name == "declare_tasks" && ok && !simpleTurn {
+					if titles, err := parseDeclareTasks(tc.Function.Arguments); err == nil {
+						if err := board.reset(titles); err == nil {
+							writeEvent(board.eventJSON())
+						}
+					}
+				}
+				if board.active() && taskTracksTool(tc.Function.Name) && !sl.hit {
+					pass := ok
+					if ok && aiDocWriteTools[tc.Function.Name] {
+						var note string
+						pass, note = a.taskWriteVerified(tc.Function.Name, tc.Function.Arguments, sl.result)
+						if note != "" {
+							sl.result += "\n[系统核对] " + note
+							slots[i].result = sl.result
+						}
+					}
+					board.finishCurrent(pass)
+					writeEvent(board.eventJSON())
+				}
+				results.WriteString("\n[" + tc.Function.Name + " 参数: " + maskArgs(tc.Function.Arguments) + "]\n" + sl.result + "\n")
+				if ok {
+					mutEv.note(tc.Function.Name, toolStepDocID(tc.Function.Name, tc.Function.Arguments, sl.result))
+				}
+				if ok && tc.Function.Name == "save_skill" && s.CreatingSkill {
+					if err := a.DB.Model(&model.ChatSession{}).Where("id = ? AND user_id = ?", s.ID, user.ID).
+						Update("creating_skill", false).Error; err != nil {
+						log.Printf("[llm] 清除 creating_skill 失败 session=%d: %v", s.ID, err)
+					} else {
+						s.CreatingSkill = false
+					}
 				}
 			}
+			lastToolResults = results.String()
+			msgs = append(msgs, llm.Message{Role: "user", Content: lastToolResults})
 		}
-		lastToolResults = results.String()
-		msgs = append(msgs, llm.Message{Role: "user", Content: lastToolResults})
-	}
 
-	// 吐出缓冲中未闭合的占位符残片
-	if tail := flushDelta(); tail != "" {
-		final.WriteString(tail)
-		writeEvent(`{"delta":` + jsonQuote(tail) + `}`)
-	}
+		// 吐出缓冲中未闭合的占位符残片
+		if tail := flushDelta(); tail != "" {
+			final.WriteString(tail)
+			writeEvent(`{"delta":` + jsonQuote(tail) + `}`)
+		}
 
-	reply := final.String()
+		reply := final.String()
 
-	// 兜底：轮数打满但模型全程未输出正文（如最后一轮仍在调工具）——
-	// 去掉工具强制它根据已收集的工具结果作答一次
-	if strings.TrimSpace(reply) == "" && genCtx.Err() == nil {
-		var fb strings.Builder
-		respMsg, err := cfg.StreamChat(genCtx, msgs, nil, func(delta string) {
-			fb.WriteString(emitDelta(delta))
-		})
-		if err == nil && strings.TrimSpace(respMsg.Content) != "" {
-			reply = respMsg.Content
-		} else if fb.Len() > 0 {
-			reply = fb.String()
+		// 兜底：轮数打满但模型全程未输出正文（如最后一轮仍在调工具）——
+		// 去掉工具强制它根据已收集的工具结果作答一次
+		if strings.TrimSpace(reply) == "" && genCtx.Err() == nil {
+			var fb strings.Builder
+			respMsg, err := cfg.StreamChat(genCtx, msgs, nil, func(delta string) {
+				fb.WriteString(emitDelta(delta))
+			})
+			if err == nil && strings.TrimSpace(respMsg.Content) != "" {
+				reply = respMsg.Content
+			} else if fb.Len() > 0 {
+				reply = fb.String()
+			}
 		}
-	}
-	stopped := genCtx.Err() != nil
-	if strings.TrimSpace(reply) == "" {
-		if stopped {
-			// 显式停止且无正文：不落假回复
-			log.Printf("[llm] 无正文结束 stopped=true session=%d", s.ID)
-			return
+		stopped := genCtx.Err() != nil
+		if strings.TrimSpace(reply) == "" {
+			if stopped {
+				// 显式停止且无正文：不落假回复
+				log.Printf("[llm] 无正文结束 stopped=true session=%d", s.ID)
+				return
+			}
+			// 刷新断连也要落库一条，否则前端会永远「正在处理」
+			if lastToolResults != "" || mutEv.writeOK || mutEv.createOK {
+				reply = "（后台已跑完工具步骤，但未生成文字说明。请刷新查看文档是否已更新；需要的话可让我继续说明改动。）"
+			} else {
+				reply = failMsg
+				writeEvent(`{"error":` + jsonQuote(failMsg) + `}`)
+			}
+			log.Printf("[llm] 空正文已兜底落库 session=%d tools=%v", s.ID, lastToolResults != "")
 		}
-		// 刷新断连也要落库一条，否则前端会永远「正在处理」
-		if lastToolResults != "" || mutEv.writeOK || mutEv.createOK {
-			reply = "（后台已跑完工具步骤，但未生成文字说明。请刷新查看文档是否已更新；需要的话可让我继续说明改动。）"
-		} else {
-			reply = failMsg
-			writeEvent(`{"error":` + jsonQuote(failMsg) + `}`)
+		// 仍含未核实侧效宣称：附加系统更正，避免用户采信假成功
+		if claimsUnverifiedMutation(reply, mutEv) {
+			reply += sideEffectCorrection
+			writeEvent(`{"delta":` + jsonQuote(sideEffectCorrection) + `}`)
 		}
-		log.Printf("[llm] 空正文已兜底落库 session=%d tools=%v", s.ID, lastToolResults != "")
-	}
-	// 仍含未核实侧效宣称：附加系统更正，避免用户采信假成功
-	if claimsUnverifiedMutation(reply, mutEv) {
-		reply += sideEffectCorrection
-		writeEvent(`{"delta":` + jsonQuote(sideEffectCorrection) + `}`)
-	}
-	assistantMsg := model.ChatMessage{SessionID: s.ID, Role: "assistant", Content: reply}
-	if err := a.DB.Create(&assistantMsg).Error; err != nil {
-		log.Printf("[llm] 回答落库失败 session=%d err=%v", s.ID, err)
-	}
-	a.DB.Model(&model.ChatSession{}).Where("id = ?", s.ID).UpdateColumn("updated_at", a.DB.NowFunc())
-	writeEvent(fmt.Sprintf(`{"done":true,"message_id":%d}`, assistantMsg.ID))
+		assistantMsg := model.ChatMessage{SessionID: s.ID, Role: "assistant", Content: reply}
+		if err := a.DB.Create(&assistantMsg).Error; err != nil {
+			log.Printf("[llm] 回答落库失败 session=%d err=%v", s.ID, err)
+		}
+		a.DB.Model(&model.ChatSession{}).Where("id = ?", s.ID).UpdateColumn("updated_at", a.DB.NowFunc())
+		writeEvent(fmt.Sprintf(`{"done":true,"message_id":%d}`, assistantMsg.ID))
 	}() // end background gen goroutine
 
 	// SSE 泵：写出失败或客户端离开则停泵；后台 gen 靠 dropSSE 继续且不被 channel 堵死

@@ -16,6 +16,7 @@
     <a href="#sec-reg">{{$.T "set.regTitle"}}</a>
     <a href="#sec-mail">{{$.T "set.smtpTitle"}}</a>
     <a href="#sec-storage">{{$.T "set.storageTitle"}}</a>
+    <a href="#sec-agent">{{$.T "set.agentTitle"}}</a>
     <a href="#sec-llm">{{$.T "set.llmTitle"}}</a>
   </aside>
 
@@ -171,6 +172,24 @@
             <button type="button" class="btn btn-sm" id="testCOSBtn">{{$.T "set.testCOS"}}</button>
           </div>
         </div>
+      </div>
+      </section>
+
+      <section id="sec-agent" class="set-sec">
+      <div class="settings-section">{{$.T "set.agentTitle"}}</div>
+      <div class="smtp-grid">
+        <label>{{$.T "set.aiCreatesPerReq"}}
+          <input type="number" name="ai_max_creates_per_req" min="1" max="100" required value="{{.set.AIMaxCreatesPerReq}}">
+          <span class="muted" style="font-size:12.5px">{{$.T "set.aiCreatesPerReqTip"}}</span>
+        </label>
+        <label>{{$.T "set.aiCreatesPerDay"}}
+          <input type="number" name="ai_max_creates_per_day" min="1" max="10000" required value="{{.set.AIMaxCreatesPerDay}}">
+          <span class="muted" style="font-size:12.5px">{{$.T "set.aiCreatesPerDayTip"}}</span>
+        </label>
+        <label>{{$.T "set.aiStreamTimeout"}}
+          <input type="number" name="ai_stream_timeout_min" min="1" max="120" required value="{{.set.AIStreamTimeoutMin}}">
+          <span class="muted" style="font-size:12.5px">{{$.T "set.aiStreamTimeoutTip"}}</span>
+        </label>
       </div>
       </section>
 
@@ -727,7 +746,10 @@
       allow_share_apply: form.allow_share_apply.checked,
       login_max_fails: form.login_lock.checked ? (parseInt(form.login_max_fails.value, 10) || 5) : 0,
       login_lock_minutes: parseInt(form.login_lock_minutes.value, 10) || 30,
-      totp_enabled: form.totp_enabled.checked
+      totp_enabled: form.totp_enabled.checked,
+      ai_max_creates_per_req: parseInt(form.ai_max_creates_per_req.value, 10),
+      ai_max_creates_per_day: parseInt(form.ai_max_creates_per_day.value, 10),
+      ai_stream_timeout_min: parseInt(form.ai_stream_timeout_min.value, 10)
     };
     try {
       var res = await fetch('/console/api/settings', {

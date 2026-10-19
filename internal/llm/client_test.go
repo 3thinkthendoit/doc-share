@@ -7,9 +7,19 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func cfgAt(url string) Config { return Config{BaseURL: url, APIKey: "k", Model: "m"} }
+
+func TestStreamTimeoutDefault(t *testing.T) {
+	if got := (Config{}).streamTimeout(); got != defaultStreamTimeout {
+		t.Fatalf("zero timeout: got %s", got)
+	}
+	if got := (Config{StreamTimeout: 2 * time.Minute}).streamTimeout(); got != 2*time.Minute {
+		t.Fatalf("custom timeout: got %s", got)
+	}
+}
 
 // sseServer 返回按行发送 SSE 的测试上游
 func sseServer(t *testing.T, chunks []string) *httptest.Server {

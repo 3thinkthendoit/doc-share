@@ -85,10 +85,27 @@ type SiteSettings struct {
 	LoginLockMinutes int
 	// 登录在密码正确后还要 Google 动态口令
 	TOTPEnabled bool
+
+	// 智能体创建文档配额。未入库时用默认值。
+	AIMaxCreatesPerReq int // 一次用户消息内 create/duplicate/apply_template 合计上限
+	AIMaxCreatesPerDay int // 单用户自然日通过智能体新建的篇数上限
+	AIStreamTimeoutMin int // 单轮请求上游的最长等待（分钟）
 }
 
 // 常用默认值
 const defaultSiteName = "DocShare"
+
+const (
+	defaultAIMaxCreatesPerReq = 3
+	defaultAIMaxCreatesPerDay = 50
+	minAIMaxCreatesPerReq     = 1
+	maxAIMaxCreatesPerReq     = 100
+	minAIMaxCreatesPerDay     = 1
+	maxAIMaxCreatesPerDay     = 10000
+	defaultAIStreamTimeoutMin = 10
+	minAIStreamTimeoutMin     = 1
+	maxAIStreamTimeoutMin     = 120
+)
 
 // 系统设置键名（注册方式、SMTP、存储）
 const (
@@ -118,6 +135,10 @@ const (
 	keyLoginMaxFails    = "login_max_fails"    // 0 = 不锁定
 	keyLoginLockMinutes = "login_lock_minutes" // 锁定持续分钟，到期自动解除
 	keyTOTPEnabled      = "totp_enabled"
+
+	keyAIMaxCreatesPerReq = "ai_max_creates_per_req" // 一次用户消息内智能体新建篇数
+	keyAIMaxCreatesPerDay = "ai_max_creates_per_day" // 单用户单日智能体新建篇数
+	keyAIStreamTimeoutMin = "ai_stream_timeout_min"  // 单轮请求上游最长等待（分钟）
 )
 
 func boolVal(s string) bool { return s == "1" || s == "true" }
@@ -140,15 +161,18 @@ func (a *App) Settings() SiteSettings {
 	a.setMu.RUnlock()
 
 	s := SiteSettings{
-		SiteName:        defaultSiteName,
-		RegMethod:       "username", // 默认用户名注册
-		SMTPPort:        465,
-		SMTPSSL:         true,
-		StorageDriver:   storage.DriverLocal,
-		RustFSRegion:    "us-east-1",
-		COSRegion:       "ap-guangzhou",
-		AllowShareApply:  true, // 默认开放申请查看
-		LoginLockMinutes: 30,
+		SiteName:           defaultSiteName,
+		RegMethod:          "username", // 默认用户名注册
+		SMTPPort:           465,
+		SMTPSSL:            true,
+		StorageDriver:      storage.DriverLocal,
+		RustFSRegion:       "us-east-1",
+		COSRegion:          "ap-guangzhou",
+		AllowShareApply:    true, // 默认开放申请查看
+		LoginLockMinutes:   30,
+		AIMaxCreatesPerReq: defaultAIMaxCreatesPerReq,
+		AIMaxCreatesPerDay: defaultAIMaxCreatesPerDay,
+		AIStreamTimeoutMin: defaultAIStreamTimeoutMin,
 	}
 	var rows []model.SystemSetting
 	if err := a.DB.Find(&rows).Error; err != nil {
@@ -226,6 +250,18 @@ func (a *App) Settings() SiteSettings {
 			}
 		case keyTOTPEnabled:
 			s.TOTPEnabled = boolVal(r.Value)
+		case keyAIMaxCreatesPerReq:
+			if n, err := strconv.Atoi(strings.TrimSpace(r.Value)); err == nil && n >= minAIMaxCreatesPerReq && n <= maxAIMaxCreatesPerReq {
+				s.AIMaxCreatesPerReq = n
+			}
+		case keyAIMaxCreatesPerDay:
+			if n, err := strconv.Atoi(strings.TrimSpace(r.Value)); err == nil && n >= minAIMaxCreatesPerDay && n <= maxAIMaxCreatesPerDay {
+				s.AIMaxCreatesPerDay = n
+			}
+		case keyAIStreamTimeoutMin:
+			if n, err := strconv.Atoi(strings.TrimSpace(r.Value)); err == nil && n >= minAIStreamTimeoutMin && n <= maxAIStreamTimeoutMin {
+				s.AIStreamTimeoutMin = n
+			}
 		}
 	}
 
@@ -274,21 +310,24 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		SMTPFromName string `json:"smtp_from_name"`
 		SMTPSSL      bool   `json:"smtp_ssl"`
 		// 存储
-		StorageDriver   string `json:"storage_driver"`
-		RustFSEndpoint  string `json:"rustfs_endpoint"`
-		RustFSRegion    string `json:"rustfs_region"`
-		RustFSAccessKey string `json:"rustfs_access_key"`
-		RustFSSecretKey string `json:"rustfs_secret_key"`
-		RustFSBucket    string `json:"rustfs_bucket"`
-		COSEndpoint     string `json:"cos_endpoint"`
-		COSRegion       string `json:"cos_region"`
-		COSSecretID     string `json:"cos_secret_id"`
-		COSSecretKey    string `json:"cos_secret_key"`
-		COSBucket       string `json:"cos_bucket"`
-		AllowShareApply bool `json:"allow_share_apply"`
-		LoginMaxFails    int  `json:"login_max_fails"`
-		LoginLockMinutes int  `json:"login_lock_minutes"`
-		TOTPEnabled      bool `json:"totp_enabled"`
+		StorageDriver      string `json:"storage_driver"`
+		RustFSEndpoint     string `json:"rustfs_endpoint"`
+		RustFSRegion       string `json:"rustfs_region"`
+		RustFSAccessKey    string `json:"rustfs_access_key"`
+		RustFSSecretKey    string `json:"rustfs_secret_key"`
+		RustFSBucket       string `json:"rustfs_bucket"`
+		COSEndpoint        string `json:"cos_endpoint"`
+		COSRegion          string `json:"cos_region"`
+		COSSecretID        string `json:"cos_secret_id"`
+		COSSecretKey       string `json:"cos_secret_key"`
+		COSBucket          string `json:"cos_bucket"`
+		AllowShareApply    bool   `json:"allow_share_apply"`
+		LoginMaxFails      int    `json:"login_max_fails"`
+		LoginLockMinutes   int    `json:"login_lock_minutes"`
+		TOTPEnabled        bool   `json:"totp_enabled"`
+		AIMaxCreatesPerReq int    `json:"ai_max_creates_per_req"`
+		AIMaxCreatesPerDay int    `json:"ai_max_creates_per_day"`
+		AIStreamTimeoutMin int    `json:"ai_stream_timeout_min"`
 	}
 	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -400,6 +439,21 @@ func (a *App) UpdateSettings(c *gin.Context) {
 	if lockMinutes < 1 || lockMinutes > 1440 {
 		lockMinutes = 30
 	}
+	createsPerReq := req.AIMaxCreatesPerReq
+	if createsPerReq < minAIMaxCreatesPerReq || createsPerReq > maxAIMaxCreatesPerReq {
+		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "set.errAICreatesPerReq")})
+		return
+	}
+	createsPerDay := req.AIMaxCreatesPerDay
+	if createsPerDay < minAIMaxCreatesPerDay || createsPerDay > maxAIMaxCreatesPerDay {
+		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "set.errAICreatesPerDay")})
+		return
+	}
+	streamTimeoutMin := req.AIStreamTimeoutMin
+	if streamTimeoutMin < minAIStreamTimeoutMin || streamTimeoutMin > maxAIStreamTimeoutMin {
+		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "set.errAIStreamTimeout")})
+		return
+	}
 
 	if driver == storage.DriverCOS {
 		if _, err := (storage.COSConfig{
@@ -434,11 +488,14 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		keyCOSRegion:            cosRegion,
 		keyCOSSecretID:          cosSecretID,
 		keyCOSSecretKey:         cosSecretKey,
-		keyCOSBucket:       cosBucket,
-		keyAllowShareApply:  boolStr(req.AllowShareApply),
-		keyLoginMaxFails:    strconv.Itoa(maxFails),
-		keyLoginLockMinutes: strconv.Itoa(lockMinutes),
-		keyTOTPEnabled:      boolStr(req.TOTPEnabled),
+		keyCOSBucket:            cosBucket,
+		keyAllowShareApply:      boolStr(req.AllowShareApply),
+		keyLoginMaxFails:        strconv.Itoa(maxFails),
+		keyLoginLockMinutes:     strconv.Itoa(lockMinutes),
+		keyTOTPEnabled:          boolStr(req.TOTPEnabled),
+		keyAIMaxCreatesPerReq:   strconv.Itoa(createsPerReq),
+		keyAIMaxCreatesPerDay:   strconv.Itoa(createsPerDay),
+		keyAIStreamTimeoutMin:   strconv.Itoa(streamTimeoutMin),
 	}
 	// 单条批量 upsert（INSERT ... ON DUPLICATE KEY UPDATE）：
 	// 一次网络往返写完全部设置。逐条 SELECT+UPDATE 在远程 MySQL 上要 2N 次往返，保存明显变慢

@@ -24,6 +24,8 @@ type Config struct {
 	// Temperature 采样温度：越低越保守。指针类型，显式设置 0 也会下发；
 	// nil（未设置）才表示不传该字段、使用上游默认。
 	Temperature *float64 `json:"temperature,omitempty"`
+	// StreamTimeout 单轮请求上游的最长等待。零值用 defaultStreamTimeout。
+	StreamTimeout time.Duration `json:"-"`
 }
 
 // Valid 配置是否完整可用
@@ -187,13 +189,13 @@ type ToolFunc struct {
 
 // completionsRequest /chat/completions 请求体（仅覆盖用到的字段）
 type completionsRequest struct {
-	Model       string        `json:"model"`
-	Messages    []Message     `json:"messages"`
-	Stream      bool          `json:"stream"`
-	Tools       []Tool        `json:"tools,omitempty"`
-	Temperature *float64      `json:"temperature,omitempty"`
+	Model       string    `json:"model"`
+	Messages    []Message `json:"messages"`
+	Stream      bool      `json:"stream"`
+	Tools       []Tool    `json:"tools,omitempty"`
+	Temperature *float64  `json:"temperature,omitempty"`
 	// 要求上游在最终 chunk 返回本轮 usage；多数 OpenAI 兼容网关支持
-	StreamOptions *StreamOpts  `json:"stream_options,omitempty"`
+	StreamOptions *StreamOpts `json:"stream_options,omitempty"`
 }
 
 type StreamOpts struct {
@@ -220,7 +222,7 @@ type streamChunk struct {
 		} `json:"delta"`
 		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
-	Usage *Usage    `json:"usage,omitempty"`
+	Usage *Usage `json:"usage,omitempty"`
 	Error *struct {
 		Message string `json:"message"`
 	} `json:"error,omitempty"`
@@ -284,8 +286,15 @@ func (c Config) Ping(ctx context.Context) error {
 	return nil
 }
 
-// streamTimeout 单次对话整体超时（长回答 / 慢推理模型给足时间）
-const streamTimeout = 10 * time.Minute
+// defaultStreamTimeout 未配置时，单轮请求上游的最长等待。
+const defaultStreamTimeout = 10 * time.Minute
+
+func (c Config) streamTimeout() time.Duration {
+	if c.StreamTimeout > 0 {
+		return c.StreamTimeout
+	}
+	return defaultStreamTimeout
+}
 
 // StreamChat 流式对话：增量文本通过 onDelta 回调返回（保证按序、在返回前回调）；
 // onThink 可为 nil，非 nil 时接收推理模型的思考内容增量（reasoning_content）。
@@ -294,7 +303,7 @@ const streamTimeout = 10 * time.Minute
 // 上游对带 tools 的请求返回 400/422 时（模型不支持 function calling 或格式分歧），
 // 自动去工具降级重试一次，保证对话不中断；完整错误体记入服务日志便于排查。
 func (c Config) StreamChat(ctx context.Context, messages []Message, tools []Tool, onDelta func(string), onThink ...func(string)) (Message, error) {
-	ctx, cancel := context.WithTimeout(ctx, streamTimeout)
+	ctx, cancel := context.WithTimeout(ctx, c.streamTimeout())
 	defer cancel()
 	log.Printf("[llm] 请求 model=%s msgs=%d tools=%d url=%s", c.Model, len(messages), len(tools), c.endpoint())
 	// 消息序列结构化日志：role + 长度 + 是否含 tool_calls + 开头摘要，
@@ -332,11 +341,11 @@ func (c Config) StreamChat(ctx context.Context, messages []Message, tools []Tool
 // streamOnce 执行一次流式请求（不降级）
 func (c Config) streamOnce(ctx context.Context, messages []Message, tools []Tool, onDelta func(string), onThink func(string)) (Message, error) {
 	req, err := c.newRequest(ctx, completionsRequest{
-		Model:       c.Model,
-		Messages:    messages,
-		Stream:      true,
-		Tools:       tools,
-		Temperature: c.Temperature,
+		Model:         c.Model,
+		Messages:      messages,
+		Stream:        true,
+		Tools:         tools,
+		Temperature:   c.Temperature,
 		StreamOptions: &StreamOpts{IncludeUsage: true},
 	})
 	if err != nil {
@@ -387,10 +396,14 @@ func (c Config) streamOnce(ctx context.Context, messages []Message, tools []Tool
 			return Message{}, fmt.Errorf("%s", chunk.Error.Message)
 		}
 		if len(chunk.Choices) == 0 {
-			if chunk.Usage != nil { lastUsage = chunk.Usage }
+			if chunk.Usage != nil {
+				lastUsage = chunk.Usage
+			}
 			continue
 		}
-		if chunk.Usage != nil { lastUsage = chunk.Usage }
+		if chunk.Usage != nil {
+			lastUsage = chunk.Usage
+		}
 		delta := chunk.Choices[0].Delta
 		if delta.Reasoning != "" && onThink != nil {
 			onThink(delta.Reasoning)

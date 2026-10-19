@@ -94,6 +94,12 @@
 .chat-trust span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:42vw}
 /* Cursor 风格工具轨迹：轻量灰字 + 可展开 diff，不抢正文 */
 .chat-trail{width:100%;display:flex;flex-direction:column;gap:6px;font-size:12.5px;line-height:1.45;color:var(--muted)}
+.chat-tasks{list-style:none;margin:0;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--bg)}
+.chat-tasks li{display:flex;gap:8px;padding:3px 0}
+.chat-tasks .st{flex:none;width:3.2em;color:var(--muted)}
+.chat-tasks li.done .st{color:#0f766e}
+.chat-tasks li.failed .st{color:#e5484d}
+.chat-tasks li.running .st{color:var(--chat-accent2)}
 .chat-trail-pill{display:inline-flex;align-items:center;align-self:flex-start;gap:6px;max-width:100%;padding:4px 10px;border-radius:8px;background:rgba(127,127,127,.08);border:1px solid transparent;color:var(--muted);word-break:break-word}
 .chat-trail-pill.run{border-color:rgba(16,185,133,.25);background:rgba(16,185,133,.06)}
 .chat-trail-pill.ok{color:var(--text)}
@@ -990,6 +996,29 @@
       '<div class="chat-diff-body">' + diffLines(diff.old, '- ', 'del') + diffLines(diff.new, '+ ', 'add') + '</div>';
     return det;
   }
+  function renderTasks(target, tasks) {
+    if (!target || !tasks || !tasks.length) return;
+    var trail = ensureTrail(target);
+    var ol = target.taskList;
+    if (!ol) {
+      ol = document.createElement('ol');
+      ol.className = 'chat-tasks';
+      trail.insertBefore(ol, trail.firstChild);
+      target.taskList = ol;
+    }
+    var label = {
+      pending: UI.t('chat.taskPending'),
+      running: UI.t('chat.taskRunning'),
+      done: UI.t('chat.taskDone'),
+      failed: UI.t('chat.taskFailed')
+    };
+    ol.innerHTML = tasks.map(function (t, i) {
+      var st = t.state || 'pending';
+      return '<li class="' + esc(st) + '"><span class="st">' + esc(label[st] || st) + '</span><span>' +
+        (i + 1) + '. ' + esc(t.title || '') + '</span></li>';
+    }).join('');
+    scrollBottom(false);
+  }
   function onToolStep(target, step) {
     var trail = ensureTrail(target);
     if (step.phase === 'start') {
@@ -1190,6 +1219,7 @@
       stream.pendingApproval = null;
       showApproval(target, appr);
     }
+    if (stream.tasks) renderTasks(target, stream.tasks);
   }
 
   function stopPendingPoll() {
@@ -1498,6 +1528,7 @@
               st.pendingSteps = st.pendingSteps || [];
               st.pendingSteps.push(payload.tool_step);
             }
+            if (st && payload.tasks) st.tasks = payload.tasks;
             if (payload.done) done = true;
             continue;
           }
@@ -1511,6 +1542,10 @@
             armWaiting(ai, true);
           }
           if (payload.tool) { showToolStatus(ai, payload.tool); }
+          if (payload.tasks) {
+            if (activeStreams[sk]) activeStreams[sk].tasks = payload.tasks;
+            renderTasks(ai, payload.tasks);
+          }
           if (payload.tool_step) { onToolStep(ai, payload.tool_step); }
           if (payload.approval) {
             disarmWaiting(ai);
