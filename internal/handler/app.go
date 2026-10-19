@@ -45,11 +45,13 @@ type App struct {
 
 // chatApproval 一次待用户确认的敏感工具调用
 type chatApproval struct {
-	UserID uint
-	Tool   string
-	Args   string
-	Ch     chan bool
-	Expire time.Time
+	UserID    uint
+	SessionID uint
+	Tool      string
+	Args      string
+	ItemsJSON string // 前端重放审批卡用的 items JSON 数组
+	Ch        chan bool
+	Expire    time.Time
 }
 
 // NewApp 构造 App

@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -471,18 +472,16 @@ type chatGenToken struct {
 	userID uint
 }
 
-// tryBindChatGen 登记本会话当前生成。同会话已有生成则取消旧的并替换（不占新槽）；
-// 新会话登记时若该用户并发生成数已达上限则拒绝。成功返回 true。
-func (a *App) tryBindChatGen(sessionID, userID uint, token *chatGenToken) bool {
+// tryBindChatGen 登记本会话当前生成。
+// 同会话已有进行中的生成时拒绝且不取消（催促消息不能掐掉后台任务；只有停止按钮会 cancel）。
+// 新会话登记时若该用户并发生成数已达上限则拒绝。
+// 第二返回值："" 成功，"session" 同会话忙，"cap" 用户并发已满。
+func (a *App) tryBindChatGen(sessionID, userID uint, token *chatGenToken) (bool, string) {
 	a.userGenMu.Lock()
 	defer a.userGenMu.Unlock()
 	token.userID = userID
-	if prev, ok := a.chatGens.Load(sessionID); ok {
-		if old, ok := prev.(*chatGenToken); ok && old != nil && old.cancel != nil {
-			old.cancel()
-		}
-		a.chatGens.Store(sessionID, token)
-		return true
+	if _, ok := a.chatGens.Load(sessionID); ok {
+		return false, "session"
 	}
 	n := 0
 	a.chatGens.Range(func(_, v any) bool {
@@ -492,10 +491,10 @@ func (a *App) tryBindChatGen(sessionID, userID uint, token *chatGenToken) bool {
 		return true
 	})
 	if n >= aiMaxConcurrentGensPerUser {
-		return false
+		return false, "cap"
 	}
 	a.chatGens.Store(sessionID, token)
-	return true
+	return true, ""
 }
 
 // unbindChatGen 仅当仍是本次 token 时移除，避免误清后来者的登记
@@ -520,7 +519,40 @@ func (a *App) cancelChatGen(sessionID uint) bool {
 	return false
 }
 
-// sessionGenerating 该会话是否有进行中的后台生成
+// sseEventCritical 通道背压时仍尽量投递的事件（其它增量可丢）。
+func sseEventCritical(payload string) bool {
+	return strings.Contains(payload, `"done"`) ||
+		strings.Contains(payload, `"error"`) ||
+		strings.Contains(payload, `"approval"`)
+}
+
+// waitSensitiveDecision 等待用户审批。只认 genCtx（停止按钮）和超时。
+// 刷新/关页取消的是 SSE 的 clientCtx，不得传入这里，否则会把尚未确认的写入判成拒绝。
+func waitSensitiveDecision(genCtx context.Context, decision <-chan bool, ttl time.Duration) (approved bool, timeoutMsg string) {
+	select {
+	case approved = <-decision:
+		return approved, ""
+	case <-time.After(ttl):
+		return false, "等待用户确认超时，操作未执行。"
+	case <-genCtx.Done():
+		return false, "用户已停止生成，操作未执行。"
+	}
+}
+
+// pendingApprovalForSession 取该用户该会话尚未过期的审批，供刷新后重放卡片。
+func (a *App) pendingApprovalForSession(userID, sessionID uint) (id string, pa chatApproval, ok bool) {
+	a.approvals.Range(func(k, v any) bool {
+		p, good := v.(chatApproval)
+		if !good || p.UserID != userID || p.SessionID != sessionID || time.Now().After(p.Expire) {
+			return true
+		}
+		id, _ = k.(string)
+		pa = p
+		ok = true
+		return false
+	})
+	return id, pa, ok
+}
 func (a *App) sessionGenerating(sessionID uint) bool {
 	_, ok := a.chatGens.Load(sessionID)
 	return ok
@@ -891,7 +923,7 @@ func (a *App) ListChatSessions(c *gin.Context) {
 	}
 	out := make([]gin.H, 0, len(sessions))
 	for _, s := range sessions {
-		out = append(out, gin.H{
+		row := gin.H{
 			"id":              s.ID,
 			"user_id":         s.UserID,
 			"title":           s.Title,
@@ -901,7 +933,17 @@ func (a *App) ListChatSessions(c *gin.Context) {
 			"created_at":      s.CreatedAt,
 			"updated_at":      s.UpdatedAt,
 			"generating":      a.sessionGenerating(s.ID),
-		})
+		}
+		if id, pa, ok := a.pendingApprovalForSession(user.ID, s.ID); ok {
+			var items any
+			if pa.ItemsJSON != "" {
+				_ = json.Unmarshal([]byte(pa.ItemsJSON), &items)
+			}
+			row["pending_approval"] = gin.H{
+				"id": id, "tool": pa.Tool, "args": maskArgs(pa.Args), "items": items,
+			}
+		}
+		out = append(out, row)
 	}
 	c.JSON(http.StatusOK, gin.H{"sessions": out})
 }
@@ -1033,9 +1075,14 @@ func (a *App) ChatCompletions(c *gin.Context) {
 	// 禁止在本 handler 上 defer genCancel——客户端断连返回时会误杀后台 LLM。
 	genCtx, genCancel := context.WithCancel(context.Background())
 	token := &chatGenToken{cancel: genCancel}
-	if !a.tryBindChatGen(s.ID, user.ID, token) {
+	ok, why := a.tryBindChatGen(s.ID, user.ID, token)
+	if !ok {
 		genCancel()
-		c.JSON(http.StatusTooManyRequests, gin.H{"error": a.tr(c, "chat.maxConcurrent")})
+		if why == "session" {
+			c.JSON(http.StatusConflict, gin.H{"error": a.tr(c, "chat.waitStreaming")})
+		} else {
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": a.tr(c, "chat.maxConcurrent")})
+		}
 		return
 	}
 
@@ -1202,12 +1249,33 @@ func (a *App) ChatCompletions(c *gin.Context) {
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	flusher, canFlush := c.Writer.(http.Flusher)
 
-	events := make(chan string, 64)
+	events := make(chan string, 256)
+	var dropSSE atomic.Bool // 客户端走了或泵卡住：只停推流，绝不堵死后台 LLM
 	writeEvent := func(payload string) {
+		if dropSSE.Load() {
+			return
+		}
 		select {
 		case events <- payload:
+			return
+		case <-clientCtx.Done():
+			dropSSE.Store(true)
+			return
 		default:
-			// 客户端慢/已走：丢弃推流，绝不阻塞后台 LLM
+		}
+		// 通道满：增量可丢；done/error/approval 再短等，仍满则放弃推流（回复已/将落库）
+		if !sseEventCritical(payload) {
+			return
+		}
+		t := time.NewTimer(500 * time.Millisecond)
+		defer t.Stop()
+		select {
+		case events <- payload:
+		case <-t.C:
+			dropSSE.Store(true)
+			log.Printf("[llm] SSE backpressure, drop stream session=%d", s.ID)
+		case <-clientCtx.Done():
+			dropSSE.Store(true)
 		}
 	}
 
@@ -1369,33 +1437,22 @@ func (a *App) ChatCompletions(c *gin.Context) {
 			apprID := util.RandomHex(8)
 			decision := make(chan bool, 1)
 			first := assistant.ToolCalls[pendingIdx[0]]
-			a.approvals.Store(apprID, chatApproval{
-				UserID: user.ID, Tool: first.Function.Name, Args: first.Function.Arguments,
-				Ch: decision, Expire: time.Now().Add(chatApprovalTTL),
-			})
 			var items []string
 			for _, idx := range pendingIdx {
 				tc := assistant.ToolCalls[idx]
 				items = append(items, `{"tool":`+jsonQuote(tc.Function.Name)+`,"args":`+jsonQuote(maskArgs(tc.Function.Arguments))+`}`)
 			}
+			itemsJSON := "[" + strings.Join(items, ",") + "]"
+			a.approvals.Store(apprID, chatApproval{
+				UserID: user.ID, SessionID: s.ID, Tool: first.Function.Name, Args: first.Function.Arguments,
+				ItemsJSON: itemsJSON,
+				Ch: decision, Expire: time.Now().Add(chatApprovalTTL),
+			})
 			writeEvent(`{"approval":{"id":` + jsonQuote(apprID) +
 				`,"tool":` + jsonQuote(first.Function.Name) +
 				`,"args":` + jsonQuote(maskArgs(first.Function.Arguments)) +
-				`,"items":[` + strings.Join(items, ",") + `]}}`)
-			select {
-			case approvedSensitive = <-decision:
-			case <-time.After(chatApprovalTTL):
-				timeoutMsg = "等待用户确认超时，操作未执行。"
-				approvedSensitive = false
-			case <-genCtx.Done():
-				// 用户点停止
-				timeoutMsg = "用户已停止生成，操作未执行。"
-				approvedSensitive = false
-			case <-clientCtx.Done():
-				// 刷新/关页：审批 UI 已不可用，拒绝敏感操作但生成继续（非敏感工具仍执行）
-				timeoutMsg = "连接已断开，敏感操作未执行。"
-				approvedSensitive = false
-			}
+				`,"items":` + itemsJSON + `}}`)
+			approvedSensitive, timeoutMsg = waitSensitiveDecision(genCtx, decision, chatApprovalTTL)
 			a.approvals.Delete(apprID)
 		}
 		pendingSet := map[int]bool{}
@@ -1507,31 +1564,41 @@ func (a *App) ChatCompletions(c *gin.Context) {
 	writeEvent(fmt.Sprintf(`{"done":true,"message_id":%d}`, assistantMsg.ID))
 	}() // end background gen goroutine
 
-	// SSE 泵：客户端离开立即返回，后台生成继续；Write/Flush panic 不得冒泡杀进程逻辑
-	writeSSE := func(payload string) {
+	// SSE 泵：写出失败或客户端离开则停泵；后台 gen 靠 dropSSE 继续且不被 channel 堵死
+	drainEvents := func() {
+		go func() {
+			for range events {
+			}
+		}()
+	}
+	writeSSE := func(payload string) (ok bool) {
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("[llm] SSE write aborted session=%d: %v", s.ID, r)
+				ok = false
 			}
 		}()
 		if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", payload); err != nil {
-			return
+			return false
 		}
 		if canFlush {
 			flusher.Flush()
 		}
+		return true
 	}
 	for payload := range events {
-		if clientCtx.Err() != nil {
-			// 刷新/关页：停泵，丢弃后续事件（writeEvent 非阻塞），生成在后台收尾
-			go func() {
-				for range events {
-				}
-			}()
+		if dropSSE.Load() || clientCtx.Err() != nil {
+			dropSSE.Store(true)
+			drainEvents()
 			log.Printf("[llm] SSE client gone, gen continues in background session=%d", s.ID)
 			return
 		}
-		writeSSE(payload)
+		if !writeSSE(payload) {
+			dropSSE.Store(true)
+			drainEvents()
+			log.Printf("[llm] SSE write failed, gen continues in background session=%d", s.ID)
+			return
+		}
 	}
 }
 

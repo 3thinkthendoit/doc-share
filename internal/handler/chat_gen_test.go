@@ -3,35 +3,26 @@ package handler
 import (
 	"context"
 	"testing"
+	"time"
 )
 
-func TestUnbindChatGenDoesNotPanicAndKeepsNewer(t *testing.T) {
+func TestUnbindChatGenDoesNotCancelOnSecondBind(t *testing.T) {
 	a := &App{}
 	oldCancelled := false
 	old := &chatGenToken{cancel: func() { oldCancelled = true }}
-	if !a.tryBindChatGen(1, 10, old) {
-		t.Fatal("首次绑定应成功")
+	if ok, why := a.tryBindChatGen(1, 10, old); !ok || why != "" {
+		t.Fatalf("首次绑定应成功 ok=%v why=%s", ok, why)
 	}
 
-	newerCancelled := false
-	newer := &chatGenToken{cancel: func() { newerCancelled = true }}
-	if !a.tryBindChatGen(1, 10, newer) {
-		t.Fatal("同会话替换应成功")
+	newer := &chatGenToken{cancel: func() {}}
+	if ok, why := a.tryBindChatGen(1, 10, newer); ok || why != "session" {
+		t.Fatalf("同会话应拒绝且不替换 ok=%v why=%s", ok, why)
 	}
-	if !oldCancelled {
-		t.Fatal("同会话新生成应取消上一次")
+	if oldCancelled {
+		t.Fatal("同会话新请求不得取消正在跑的生成")
 	}
-	if newerCancelled {
-		t.Fatal("新生成不应被自己的登记取消")
-	}
-
-	// 旧登记收尾不得删掉后来者，也不得因函数不可比较而 panic
-	a.unbindChatGen(1, old)
-	if !a.cancelChatGen(1) || !newerCancelled {
-		t.Fatal("后来者的登记应仍在，且停止应调用它的取消函数")
-	}
-	if a.cancelChatGen(1) {
-		t.Fatal("取消后登记应已清空")
+	if !a.cancelChatGen(1) || !oldCancelled {
+		t.Fatal("停止按钮仍应取消当前生成")
 	}
 }
 
@@ -39,7 +30,7 @@ func TestUnbindChatGenRemovesCurrent(t *testing.T) {
 	a := &App{}
 	cancelled := false
 	token := &chatGenToken{cancel: func() { cancelled = true }}
-	if !a.tryBindChatGen(1, 10, token) {
+	if ok, _ := a.tryBindChatGen(1, 10, token); !ok {
 		t.Fatal("绑定应成功")
 	}
 
@@ -58,54 +49,78 @@ func TestTryBindChatGenUserCap(t *testing.T) {
 	for i := uint(1); i <= aiMaxConcurrentGensPerUser; i++ {
 		tok := &chatGenToken{cancel: func() {}}
 		tokens = append(tokens, tok)
-		if !a.tryBindChatGen(i, 42, tok) {
-			t.Fatalf("第 %d 路应成功", i)
+		if ok, why := a.tryBindChatGen(i, 42, tok); !ok || why != "" {
+			t.Fatalf("第 %d 路应成功 why=%s", i, why)
 		}
 	}
 	extra := &chatGenToken{cancel: func() {}}
-	if a.tryBindChatGen(99, 42, extra) {
-		t.Fatal("超限应拒绝")
+	if ok, why := a.tryBindChatGen(99, 42, extra); ok || why != "cap" {
+		t.Fatalf("超限应拒绝 ok=%v why=%s", ok, why)
 	}
-	// 其他用户不受影响
 	other := &chatGenToken{cancel: func() {}}
-	if !a.tryBindChatGen(100, 7, other) {
+	if ok, _ := a.tryBindChatGen(100, 7, other); !ok {
 		t.Fatal("其他用户应可绑定")
 	}
-	// 同会话替换不占第二槽
-	repl := &chatGenToken{cancel: func() {}}
-	if !a.tryBindChatGen(1, 42, repl) {
-		t.Fatal("同会话替换不应受上限拒绝")
-	}
-	// 释放一路后可再占
-	a.unbindChatGen(1, repl)
+	a.unbindChatGen(1, tokens[0])
 	again := &chatGenToken{cancel: func() {}}
-	if !a.tryBindChatGen(99, 42, again) {
-		t.Fatal("释放后应可再绑定")
+	if ok, why := a.tryBindChatGen(99, 42, again); !ok || why != "" {
+		t.Fatalf("释放后应可再绑定 why=%s", why)
 	}
 }
 
-// TestGenCtxIndependentOfClientCtx 回归：刷新取消的是 clientCtx，不得带动 genCtx。
-// 后台生成必须用 context.Background 衍生的 genCtx，否则断 SSE 会停 LLM。
-func TestGenCtxIndependentOfClientCtx(t *testing.T) {
+func TestWaitSensitiveDecisionIgnoresUnrelatedCancel(t *testing.T) {
 	genCtx, genCancel := context.WithCancel(context.Background())
 	defer genCancel()
 	clientCtx, clientCancel := context.WithCancel(context.Background())
-	clientCancel() // 模拟刷新/关页
+	clientCancel()
 	if clientCtx.Err() == nil {
-		t.Fatal("clientCtx 应已取消")
+		t.Fatal("client 应已取消")
 	}
-	if genCtx.Err() != nil {
-		t.Fatal("genCtx 不得随客户端断连而取消")
-	}
+	decision := make(chan bool, 1)
+	done := make(chan struct{})
+	var approved bool
+	var msg string
+	go func() {
+		approved, msg = waitSensitiveDecision(genCtx, decision, time.Second)
+		close(done)
+	}()
 	select {
-	case <-clientCtx.Done():
-	default:
-		t.Fatal("client Done 未触发")
+	case <-done:
+		t.Fatal("无关 context 取消不得结束审批等待")
+	case <-time.After(50 * time.Millisecond):
 	}
+	decision <- true
 	select {
-	case <-genCtx.Done():
-		t.Fatal("gen Done 不应触发")
-	default:
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("用户确认后应返回")
+	}
+	if !approved || msg != "" {
+		t.Fatalf("approved=%v msg=%q", approved, msg)
+	}
+}
+
+func TestWaitSensitiveDecisionStop(t *testing.T) {
+	genCtx, genCancel := context.WithCancel(context.Background())
+	genCancel()
+	approved, msg := waitSensitiveDecision(genCtx, make(chan bool), time.Second)
+	if approved || msg == "" {
+		t.Fatalf("停止应拒绝审批 approved=%v msg=%q", approved, msg)
+	}
+}
+
+func TestSSEEventCritical(t *testing.T) {
+	if !sseEventCritical(`{"done":true,"message_id":1}`) {
+		t.Fatal("done 应 critical")
+	}
+	if !sseEventCritical(`{"error":"x"}`) {
+		t.Fatal("error 应 critical")
+	}
+	if !sseEventCritical(`{"approval":{"id":"a"}}`) {
+		t.Fatal("approval 应 critical")
+	}
+	if sseEventCritical(`{"delta":"hello"}`) {
+		t.Fatal("delta 不应 critical")
 	}
 }
 
@@ -115,7 +130,9 @@ func TestSessionGenerating(t *testing.T) {
 		t.Fatal("空闲会话不应 generating")
 	}
 	tok := &chatGenToken{cancel: func() {}}
-	a.tryBindChatGen(1, 1, tok)
+	if ok, _ := a.tryBindChatGen(1, 1, tok); !ok {
+		t.Fatal("绑定失败")
+	}
 	if !a.sessionGenerating(1) {
 		t.Fatal("绑定后应 generating")
 	}

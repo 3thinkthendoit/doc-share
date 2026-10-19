@@ -379,8 +379,15 @@
     });
     return n;
   }
-  // 本页 SSE 或服务端仍在跑（刷新重进后）都视为忙碌，可点停止
-  function currentBusy() { return sessionBusy(currentId) || serverGenerating(currentId); }
+  // 本页 SSE / 服务端仍在跑 / 未决审批 / 正在轮询后台结果 → 忙碌，发送键变停止
+  function currentBusy() {
+    if (!currentId) return false;
+    if (sessionBusy(currentId) || serverGenerating(currentId)) return true;
+    var meta = sessionMeta[currentId];
+    if (meta && meta.pending_approval) return true;
+    if (pendingPollAi && String(pendingPollSessionId) === String(currentId)) return true;
+    return false;
+  }
   var sessionMeta = {}; // id -> { trust_sensitive, title, generating }
   var trustChk = document.getElementById('trustSensitiveChk');
   var pendingImageURL = null; // 粘贴上传后待发送的图
@@ -515,7 +522,12 @@
       sessions.forEach(function (s) {
         var gen = (!!s.generating || sessionBusy(s.id)) && !stoppedLocal[sidKey(s.id)];
         if (!s.generating) delete stoppedLocal[sidKey(s.id)];
-        sessionMeta[s.id] = { trust_sensitive: !!s.trust_sensitive, title: s.title || '', generating: gen };
+        sessionMeta[s.id] = {
+          trust_sensitive: !!s.trust_sensitive,
+          title: s.title || '',
+          generating: gen,
+          pending_approval: s.pending_approval || null
+        };
         var item = document.createElement('div');
         item.className = 'chat-s-item' +
           (String(s.id) === String(currentId) ? ' active' : '') +
@@ -1139,6 +1151,10 @@
         var st = activeStreams[k];
         if (st && st.pendingApproval && st.pendingApproval.id === approval.id) st.pendingApproval = null;
       });
+      Object.keys(sessionMeta).forEach(function (k) {
+        var p = sessionMeta[k] && sessionMeta[k].pending_approval;
+        if (p && p.id === approval.id) sessionMeta[k].pending_approval = null;
+      });
       okBtn.disabled = true;
       noBtn.disabled = true;
       card.classList.add('done');
@@ -1163,6 +1179,7 @@
   // ===== 会话加载与发送 =====
   var pendingPollTimer = null;
   var pendingPollAi = null;
+  var pendingPollSessionId = null;
   function replayStreamBuffers(stream, target) {
     if (!stream || !target) return;
     var steps = stream.pendingSteps || [];
@@ -1178,6 +1195,7 @@
   function stopPendingPoll() {
     if (pendingPollTimer) { clearInterval(pendingPollTimer); pendingPollTimer = null; }
     pendingPollAi = null;
+    pendingPollSessionId = null;
   }
   function showInterruptedPlaceholder(afterUserId) {
     var ai = addMsg('assistant', '', false);
@@ -1203,9 +1221,17 @@
     var ai = addMsg('assistant', '', true);
     ai._live = true;
     pendingPollAi = ai;
+    pendingPollSessionId = sessionId;
+    // 轮询期间也算忙碌：发送键必须是停止（刷新重进没有本页 SSE）
+    if (!sessionMeta[sessionId]) sessionMeta[sessionId] = {};
+    if (sessionMeta[sessionId].generating !== false) sessionMeta[sessionId].generating = true;
+    refreshSendBusy();
     armWaiting(ai, true);
+    var pa0 = sessionMeta[sessionId] && sessionMeta[sessionId].pending_approval;
+    if (pa0) { ai._apprShown = true; showApproval(ai, pa0); }
     var tries = 0;
-    var maxTries = 300; // 最长约 10 分钟（长任务/多工具）
+    var maxTries = 300;
+    var genMiss = 0; // 连续确认「服务端已不在生成」的次数，避免一次抖动就判死
     pendingPollTimer = setInterval(async function () {
       tries++;
       if (String(currentId) !== String(sessionId)) {
@@ -1236,6 +1262,8 @@
         if (last && last.role === 'assistant' && (!afterUserId || last.id > afterUserId)) {
           stopPendingPoll();
           ai._live = false;
+          if (sessionMeta[sessionId]) sessionMeta[sessionId].generating = false;
+          refreshSendBusy();
           if (ai && ai.wrap && ai.wrap.parentNode) ai.wrap.remove();
           addMsg('assistant', last.content, false, { createdAt: last.created_at });
           loadSessions();
@@ -1244,17 +1272,33 @@
         // 每 2 次拉会话列表看 generating；后台已停且仍无助手回复 → 立刻结束假忙碌
         if (tries === 1 || tries % 2 === 0) {
           var listRes = await fetch('/console/api/chat/sessions', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+          if (!listRes.ok) return;
           var listData = await listRes.json();
           var row = (listData.sessions || []).find(function (s) { return String(s.id) === String(sessionId); });
-          var gen = !!(row && row.generating);
-          if (sessionMeta[sessionId]) sessionMeta[sessionId].generating = gen;
+          if (!row) return;
+          var gen = !!row.generating;
+          if (!sessionMeta[sessionId]) sessionMeta[sessionId] = {};
+          sessionMeta[sessionId].generating = gen;
+          sessionMeta[sessionId].pending_approval = row.pending_approval || null;
           refreshSendBusy();
-          if (!gen && tries >= 2) {
+          if (row.pending_approval && ai && !ai._apprShown) {
+            ai._apprShown = true;
+            showApproval(ai, row.pending_approval);
+          }
+          if (gen || row.pending_approval) {
+            genMiss = 0;
+            return;
+          }
+          genMiss++;
+          // 约 10 秒连续确认已停，才提示可重发（进程重启后内存任务确实没了）
+          if (genMiss >= 5) {
             stopPendingPoll();
             ai._live = false;
+            if (sessionMeta[sessionId]) sessionMeta[sessionId].generating = false;
             disarmWaiting(ai);
             if (ai.wrap && ai.wrap.parentNode) ai.wrap.remove();
             showInterruptedPlaceholder(afterUserId);
+            refreshSendBusy();
             loadSessions();
           }
         }
@@ -1291,8 +1335,8 @@
         armWaiting(liveAi, true);
         replayStreamBuffers(stream, liveAi);
       } else if (last && last.role === 'user') {
-        // 仅服务端仍在生成时转圈；已停则直接提示，避免假「正在处理」
-        if (serverGenerating(id) || (sessionMeta[id] && sessionMeta[id].generating)) {
+        var pending = sessionMeta[id] && sessionMeta[id].pending_approval;
+        if (serverGenerating(id) || (sessionMeta[id] && sessionMeta[id].generating) || pending) {
           watchPendingReply(id, last.id);
         } else {
           showInterruptedPlaceholder(last.id);
@@ -1595,18 +1639,23 @@
     var sid = currentId;
     var stream = sid ? activeStreams[sidKey(sid)] : null;
     if (!sid) return;
+    // 刷新后没有本页 SSE 时，也必须能停：走 /cancel + 清轮询
     stoppedLocal[sidKey(sid)] = true;
-    if (sessionMeta[sid]) sessionMeta[sid].generating = false;
-    refreshSendBusy();
+    if (sessionMeta[sid]) {
+      sessionMeta[sid].generating = false;
+      sessionMeta[sid].pending_approval = null;
+    }
     var pollAi = pendingPollAi;
-    if (!stream) {
+    var pollingThis = pendingPollSessionId != null && String(pendingPollSessionId) === String(sid);
+    if (pollingThis || !stream) {
       stopPendingPoll();
       if (pollAi) {
         pollAi._live = false;
         disarmWaiting(pollAi);
         if (contentEl(pollAi)) contentEl(pollAi).textContent = UI.t('chat.stopped');
       }
-    } else {
+    }
+    if (stream) {
       if (stream.abortCtrl) {
         try { stream.abortCtrl.abort(); } catch (e) {}
       }
@@ -1614,6 +1663,7 @@
         try { stream.reader.cancel(); } catch (e) {}
       }
     }
+    refreshSendBusy();
     fetch('/console/api/chat/sessions/' + sid + '/cancel', {
       method: 'POST',
       headers: { 'X-Requested-With': 'XMLHttpRequest' }
