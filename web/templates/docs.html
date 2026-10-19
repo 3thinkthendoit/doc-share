@@ -263,6 +263,40 @@
     </div>
   </div>
 </div>
+<!-- 从链接导入：抓取公网页面 → Markdown 文档 -->
+<div class="modal-overlay" id="linkImportModal" hidden>
+  <div class="modal modal-sm" role="dialog" aria-modal="true" aria-label="{{$.T "docs.fromLink"}}">
+    <div class="modal-head">
+      <h2>{{$.T "docs.fromLink"}}</h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+    </div>
+    <div class="modal-body import-body">
+      <label class="import-field" style="margin-bottom:12px">{{$.T "docs.fromLinkURL"}}
+        <input type="url" id="linkImportURL" placeholder="{{$.T "docs.fromLinkURLPh"}}" autocomplete="off">
+      </label>
+      <input type="text" id="linkImportTitle" class="input-title" style="width:100%;margin-bottom:12px" placeholder="{{$.T "文档标题"}}">
+      <div class="import-fields">
+        <label class="import-field">{{$.T "项目"}}
+          <select id="linkImportProject">
+            <option value="0">{{$.T "未分组"}}</option>
+            {{range .projects}}{{if not .Linked}}<option value="{{.ID}}">{{.Name}}</option>{{end}}{{end}}
+          </select>
+        </label>
+        <label class="import-field">{{$.T "分类"}}
+          <select id="linkImportCategory">
+            <option value="0">{{$.T "未分类"}}</option>
+            {{range .categories}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+          </select>
+        </label>
+      </div>
+      <div id="linkImportProgress" class="muted" hidden></div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn" data-close-modal>{{$.T "取消"}}</button>
+      <button type="button" id="doLinkImportBtn" class="btn btn-primary">{{$.T "docs.fromLinkImport"}}</button>
+    </div>
+  </div>
+</div>
 <!-- 分享设置弹窗（公共壳）：状态由 share_modal.js 在打开时注入 -->
 {{template "shareSettingsModal" .}}
 <!-- 文档转让：打开加载项目成员列表，可搜索过滤 → 确认后转让所有权 -->
@@ -336,8 +370,9 @@
 .import-files{margin-top:10px;font-size:13px;line-height:1.6}
 .import-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
 .import-field{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted)}
-.import-field select{padding:8px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);width:100%;font-family:inherit;font-size:14px;background:var(--panel);color:var(--text);cursor:pointer;transition:all .15s}
-.import-field select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+.import-field select,.import-field input{padding:8px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);width:100%;font-family:inherit;font-size:14px;background:var(--panel);color:var(--text);box-sizing:border-box;transition:all .15s}
+.import-field select{cursor:pointer}
+.import-field select:focus,.import-field input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
 #importProgress{margin-top:12px;font-size:13px}
 </style>
 <script src="/static/share_modal.js"></script>
@@ -676,6 +711,17 @@ ShareModal.bind({
   }
   if (typeModal && newBtn && grid) {
     UI.bindModal(typeModal);
+    function openLinkImport() {
+      if (typeModal) UI.closeModal(typeModal);
+      var urlEl = document.getElementById('linkImportURL');
+      var titleEl = document.getElementById('linkImportTitle');
+      var prog = document.getElementById('linkImportProgress');
+      if (urlEl) urlEl.value = '';
+      if (titleEl) titleEl.value = '';
+      if (prog) prog.hidden = true;
+      var linkModal = document.getElementById('linkImportModal');
+      if (linkModal) UI.openModal(linkModal);
+    }
     function icon(paths) {
       return '<span class="doc-type-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths + '</svg></span>';
     }
@@ -709,7 +755,13 @@ ShareModal.bind({
         desc: UI.t('docs.typeDrawioDesc'),
         icon: icon('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><path d="M10 6.5h4M6.5 10v4M14 17.5h-4"/>'),
         action: function () { location.href = '/console/docs/new?type=drawio'; }
-      }{{end}}
+      }{{end}},
+      {
+        title: UI.t('docs.fromLink'),
+        desc: UI.t('docs.fromLinkDesc'),
+        icon: icon('<path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L10.5 5.4"/><path d="M14 11a5 5 0 0 0-7.07 0L4.8 13.12a5 5 0 0 0 7.07 7.07L13.5 18.6"/>'),
+        action: openLinkImport
+      }
       /* 后续扩展示例：
       { title: 'Word 文档', desc: UI.t('...'), icon: icon('...'), action: ... } */
     ];
@@ -722,6 +774,39 @@ ShareModal.bind({
       grid.appendChild(card);
     });
     newBtn.addEventListener('click', function () { UI.openModal(typeModal); });
+  }
+
+  var linkModal = document.getElementById('linkImportModal');
+  var doLinkBtn = document.getElementById('doLinkImportBtn');
+  if (linkModal && doLinkBtn && window.UI) {
+    UI.bindModal(linkModal);
+    doLinkBtn.addEventListener('click', async function () {
+      var url = (document.getElementById('linkImportURL').value || '').trim();
+      if (!url) { UI.toast(UI.t('docs.fromLinkURL'), 'error'); return; }
+      var prog = document.getElementById('linkImportProgress');
+      doLinkBtn.disabled = true;
+      if (prog) { prog.hidden = false; prog.textContent = UI.t('docs.fromLink'); }
+      try {
+        var res = await fetch('/console/api/docs/from-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+          body: JSON.stringify({
+            url: url,
+            title: (document.getElementById('linkImportTitle').value || '').trim(),
+            project_id: parseInt(document.getElementById('linkImportProject').value, 10) || 0,
+            category_id: parseInt(document.getElementById('linkImportCategory').value, 10) || 0
+          })
+        });
+        var data = await res.json().catch(function () { return {}; });
+        if (!res.ok || !data.data || !data.data.id) throw new Error((data && data.error) || UI.t('docs.fromLinkFail'));
+        UI.toast(UI.t('docs.fromLinkOk'), 'success');
+        location.href = '/console/docs/' + data.data.id + '/edit';
+      } catch (err) {
+        UI.toast(err.message || UI.t('docs.fromLinkFail'), 'error');
+        doLinkBtn.disabled = false;
+        if (prog) prog.hidden = true;
+      }
+    });
   }
 
   function setZip(file) {

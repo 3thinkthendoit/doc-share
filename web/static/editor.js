@@ -786,6 +786,7 @@
     });
   }
   contentEl.addEventListener('paste', function (e) {
+    if (contentEl.readOnly) return;
     var items = (e.clipboardData || {}).items || [];
     for (var i = 0; i < items.length; i++) {
       if (items[i].type.indexOf('image/') === 0) {
@@ -797,6 +798,7 @@
   });
   contentEl.addEventListener('dragover', function (e) { e.preventDefault(); });
   contentEl.addEventListener('drop', function (e) {
+    if (contentEl.readOnly) return;
     var files = (e.dataTransfer || {}).files || [];
     if (!files.length) return;
     if (files[0].type.indexOf('image/') === 0) {
@@ -892,6 +894,8 @@
   }
   ensureEditingHeartbeat();
 
+  // 链接导入未完成时不提交正文，避免自动保存把占位文字写回去盖掉后台结果。
+  var importLock = false;
   function buildSavePayload() {
     var name = effectiveTitle();
     var proj = parseInt((projEl && projEl.value) || '0', 10) || 0;
@@ -899,12 +903,13 @@
     if (TPL_MODE) {
       return { name: name, type: 'markdown', content: contentEl.value, project_id: proj, category_id: cat };
     }
-    return {
+    var payload = {
       title: name,
-      content: contentEl.value,
       project_id: proj,
       category_id: cat
     };
+    if (!importLock) payload.content = contentEl.value;
+    return payload;
   }
 
   // 离开页面前尽力补存（keepalive）；取消关闭对话框后允许再次触发
@@ -959,7 +964,7 @@
     var payload = buildSavePayload();
     var title = TPL_MODE ? payload.name : payload.title;
     // 记下本次提交快照：保存过程中若用户继续改，成功后不能清 dirty
-    var snapContent = payload.content;
+    var snapContent = importLock ? contentEl.value : payload.content;
     var snapTitle = title;
     var snapProj = payload.project_id;
     var snapCat = payload.category_id;
@@ -1312,6 +1317,42 @@
 
   /* ---- 历史版本面板：逻辑已抽到共享 revisions.js（Markdown 与画布编辑页复用），此处仅注入文档 ID 取值 ---- */
   if (window.Revisions) window.Revisions.init(docID);
+
+  // 从链接导入：正文只读，等后台写回后再填入。标题可以先改，保存时不带正文。
+  if (!TPL_MODE && docID() && contentEl.value.indexOf('正在从链接导入，完成后正文会自动出现。') !== -1) {
+    var importBaseline = contentEl.value;
+    var importTitleBaseline = titleEl ? titleEl.value : '';
+    var importPolls = 0;
+    importLock = true;
+    contentEl.readOnly = true;
+    var importTimer = setInterval(function () {
+      importPolls++;
+      if (importPolls > 100) {
+        clearInterval(importTimer);
+        importLock = false;
+        contentEl.readOnly = false;
+        return;
+      }
+      fetch('/console/api/docs/' + docID() + '/import', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (data) {
+          var row = data && data.data;
+          if (!row || row.importing) return;
+          clearInterval(importTimer);
+          importLock = false;
+          contentEl.readOnly = false;
+          if (contentEl.value === importBaseline) {
+            contentEl.value = row.content || '';
+            if (versionEl && row.version) versionEl.value = row.version;
+            doPreview();
+          }
+          if (titleEl && row.title && titleEl.value === importTitleBaseline) {
+            titleEl.value = row.title;
+          }
+        })
+        .catch(function () { /* 下一轮再试 */ });
+    }, 2000);
+  }
 })();
 
 // 分享密码本机记忆的存储键（从 /s/<token> 链接中提取 token）

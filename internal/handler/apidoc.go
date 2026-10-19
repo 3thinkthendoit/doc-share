@@ -211,6 +211,28 @@ func openAPIGroups() []apiGroup {
     "view_count": 0
   }
 }`},
+			{Method: "POST", Path: openAPIBase + "/docs/from-url", DescKey: "ep.docImportURL", LabelKey: "ep.tDocImportURL",
+				ReqExample: `{
+  "url": "https://example.com/guide",
+  "title": "接入指南",
+  "project_id": 3,
+  "category_id": 1
+}`,
+				RespExample: `{
+  "data": {
+    "id": 14,
+    "title": "接入指南",
+    "version": "v1.0.0",
+    "slug": "mN4pQ8sT",
+    "type": "markdown",
+    "content": "# 接入指南\n\n> 来源：https://example.com/guide\n\n正文…",
+    "owner_id": 2,
+    "project_id": 3,
+    "category_id": 1,
+    "is_shared": false,
+    "view_count": 0
+  }
+}`},
 			{Method: "POST", Path: openAPIBase + "/docs/html", DescKey: "ep.docCreateHTML", LabelKey: "ep.tDocCreateHTML", CodeLang: "HTTP",
 				ReqExample: `Content-Type: multipart/form-data; boundary=----docshare
 

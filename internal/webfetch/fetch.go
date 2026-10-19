@@ -11,21 +11,23 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/net/html"
 )
 
 const (
-	maxBodyBytes = 1 << 20
+	maxBodyBytes = 8 << 20
 	fetchTimeout = 15 * time.Second
 	maxRedirects = 3
 )
 
-// Page 是一次公网读取的结果。Text 为去掉脚本和样式后的可读文本。
+// Page 是一次公网读取的结果。Text 为可读纯文本；Markdown 为 HTML 页转出的结构（含图片原地址）。
 type Page struct {
 	FinalURL    string
 	Title       string
 	Text        string
+	Markdown    string
 	ContentType string
 }
 
@@ -72,8 +74,9 @@ func Read(ctx context.Context, rawURL string) (Page, error) {
 	if err != nil {
 		return Page{}, err
 	}
-	req.Header.Set("User-Agent", "doc-share-agent/1.0")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,text/plain,application/json;q=0.5")
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
 	client := publicHTTPClient()
 	res, err := client.Do(req)
 	if err != nil {
@@ -99,7 +102,99 @@ func Read(ctx context.Context, rawURL string) (Page, error) {
 	if res.Request != nil && res.Request.URL != nil {
 		final = displayURL(res.Request.URL)
 	}
-	return Page{FinalURL: final, Title: title, Text: text, ContentType: ct}, nil
+	if challengePage(final, title, text) {
+		return Page{}, fmt.Errorf("页面要求验证，无法读取正文")
+	}
+	page := Page{FinalURL: final, Title: title, Text: text, ContentType: ct}
+	if strings.Contains(strings.ToLower(ct), "html") || looksLikeHTML(body) {
+		mdTitle, md := HTMLMarkdown(final, body)
+		if strings.TrimSpace(page.Title) == "" {
+			page.Title = mdTitle
+		}
+		page.Markdown = md
+	}
+	return page, nil
+}
+
+// Fetch 按与 Read 相同的公网限制下载资源。referer 可空，用于图床校验来源。
+func Fetch(ctx context.Context, rawURL, referer string, limit int64) ([]byte, string, error) {
+	u, err := parsePublicURL(rawURL)
+	if err != nil {
+		return nil, "", err
+	}
+	if limit <= 0 {
+		limit = maxBodyBytes
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, "", err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
+	if strings.TrimSpace(referer) != "" {
+		req.Header.Set("Referer", referer)
+	}
+	res, err := publicHTTPClient().Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("读取失败: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return nil, "", fmt.Errorf("HTTP %d", res.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(res.Body, limit+1))
+	if err != nil {
+		return nil, "", err
+	}
+	if int64(len(body)) > limit {
+		return nil, "", fmt.Errorf("文件超过 %d 字节上限", limit)
+	}
+	return body, res.Header.Get("Content-Type"), nil
+}
+
+// challengePage 认出反爬验证页。
+// 微信验证地址一律拒绝。其余验证路径只在正文很短时拒绝，避免 /challenge-types 这类长文被误伤。
+func challengePage(finalURL, title, text string) bool {
+	if strings.Contains(strings.ToLower(finalURL), "wappoc_appmsgcaptcha") {
+		return true
+	}
+	short := utf8.RuneCountInString(text) <= 800
+	if short && challengePath(finalURL) {
+		return true
+	}
+	if !short {
+		return false
+	}
+	blob := title + "\n" + text
+	for _, marker := range []string{
+		"环境异常",
+		"完成验证后即可继续访问",
+		"当前环境异常",
+		"请完成安全验证",
+		"Just a moment",
+		"Attention Required",
+		"cf-browser-verification",
+	} {
+		if strings.Contains(blob, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// challengePath 只匹配路径段本身是验证页的地址，不把 challenge-types 当成 /challenge。
+func challengePath(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	for _, seg := range strings.Split(strings.ToLower(u.Path), "/") {
+		switch seg {
+		case "captcha", "recaptcha", "challenge", "cf-browser-verification":
+			return true
+		}
+	}
+	return false
 }
 
 func displayURL(u *url.URL) string {
@@ -111,6 +206,12 @@ func displayURL(u *url.URL) string {
 	out.RawQuery = ""
 	out.Fragment = ""
 	return out.String()
+}
+
+// CheckPublicURL 只校验链接是否允许抓取，不发起请求。
+func CheckPublicURL(raw string) error {
+	_, err := parsePublicURL(raw)
+	return err
 }
 
 func parsePublicURL(raw string) (*url.URL, error) {
@@ -243,16 +344,24 @@ func HTMLText(body []byte) (string, string) {
 		"h4": true, "h5": true, "h6": true, "section": true, "article": true, "header": true,
 		"footer": true, "blockquote": true, "pre": true, "table": true,
 	}
-	var title string
+	var title, h1 string
 	var b strings.Builder
 	var walk func(*html.Node)
 	walk = func(n *html.Node) {
 		if n.Type == html.ElementNode && skip[n.Data] {
 			return
 		}
-		if n.Type == html.ElementNode && n.Data == "title" && title == "" {
+		if n.Type == html.ElementNode && n.Data == "title" && strings.TrimSpace(title) == "" {
 			title = nodeText(n)
 			return
+		}
+		if n.Type == html.ElementNode && n.Data == "meta" && strings.TrimSpace(title) == "" {
+			if t := metaTitle(n); t != "" {
+				title = t
+			}
+		}
+		if n.Type == html.ElementNode && n.Data == "h1" && strings.TrimSpace(h1) == "" {
+			h1 = nodeText(n)
 		}
 		if n.Type == html.TextNode {
 			b.WriteString(n.Data)
@@ -265,7 +374,29 @@ func HTMLText(body []byte) (string, string) {
 		}
 	}
 	walk(doc)
+	if strings.TrimSpace(title) == "" {
+		title = h1
+	}
 	return collapseWS(title), collapseWS(b.String())
+}
+
+func metaTitle(n *html.Node) string {
+	var key, content string
+	for _, a := range n.Attr {
+		switch strings.ToLower(a.Key) {
+		case "property", "name":
+			key = strings.ToLower(strings.TrimSpace(a.Val))
+		case "content":
+			content = strings.TrimSpace(a.Val)
+		}
+	}
+	if content == "" {
+		return ""
+	}
+	if key == "og:title" || key == "twitter:title" {
+		return content
+	}
+	return ""
 }
 
 func nodeText(n *html.Node) string {

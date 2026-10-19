@@ -71,7 +71,7 @@ func aiNeedsApproval(tc llm.ToolCallMsg) bool {
 // 工具结果中一律不出现真实 URL，链接用占位符 {{doc:<id>}} / {{share:<id>}} 表示，
 // 由服务端在流式输出时替换为真实链接（防止模型编造/改写 URL，见 chat.go 的 newLinkResolver）。
 // injectRead 不暴露给模型；exec 若收到未注册名（含旧内部名 __read_document_full）一律未知工具。
-func (a *App) chatTools(user *model.User) (
+func (a *App) chatTools(user *model.User, clientIP string) (
 	defs []llm.Tool,
 	exec func(name, argsJSON string) (string, error),
 	injectRead func(id int64, maxChars int, query string) (string, error),
@@ -437,6 +437,20 @@ func (a *App) chatTools(user *model.User) (
 			},
 		}},
 		{Type: "function", Function: llm.ToolFunc{
+			Name:        "import_document_from_url",
+			Description: "从公网 http(s) 链接抓取页面正文，创建一篇可编辑的 Markdown 文档。拒绝内网、本机和保留地址。用户给出链接并要求导入/转成文档时用此工具，不要先 read_webpage 再 create_document。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"url":         map[string]any{"type": "string", "description": "以 http:// 或 https:// 开头的公网地址"},
+					"title":       map[string]any{"type": "string", "description": "文档标题（可选，默认用页面标题）"},
+					"project_id":  map[string]any{"type": "integer", "description": "归属项目 ID（可选，必须是自己的项目）"},
+					"category_id": map[string]any{"type": "integer", "description": "归属分类 ID（可选，必须是自己的分类）"},
+				},
+				"required": []string{"url"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
 			Name:        "create_document",
 			Description: "创建文档。type 默认 markdown，也可 mindmap / board / drawio。project_id / category_id 可选且必须是自己的。" + aiCanvasDocHint,
 			Parameters: map[string]any{
@@ -675,7 +689,7 @@ func (a *App) chatTools(user *model.User) (
 		return s
 	}
 	// 参数解析失败/执行出错时返回文本，让模型自行调整
-	creates := 0 // 本次请求内 create_document / duplicate / apply_template 已预留次数
+	creates := 0 // 本次请求内 create_document / import_document_from_url / duplicate / apply_template 已预留次数
 	exec = func(name, argsJSON string) (string, error) {
 		var args map[string]any
 		if strings.TrimSpace(argsJSON) != "" {
@@ -1334,6 +1348,7 @@ func (a *App) chatTools(user *model.User) (
 				Content: tpl.Content, OwnerID: user.ID,
 				UpdatedByID: user.ID, UpdatedVia: "ai",
 			}
+			stampCreatorGeo(&doc, clientIP)
 			var dropped []string
 			if pid, ok, err := argUintOpt("project_id"); err != nil {
 				return "", err
@@ -1611,6 +1626,39 @@ func (a *App) chatTools(user *model.User) (
 			check := verifyReplaceResult(newContent, oldText, newText)
 			return fmt.Sprintf("已完成局部替换（id=%d，版本 %s）。%s 预览：{{doc:%d}}", doc.ID, doc.Version, check, doc.ID), nil
 
+		case "import_document_from_url":
+			rawURL := argStr("url")
+			if rawURL == "" {
+				return "", fmt.Errorf("url 不能为空")
+			}
+			if err := reserveCreate(); err != nil {
+				return "", err
+			}
+			var projectID, categoryID uint
+			if pid, ok, err := argUintOpt("project_id"); err != nil {
+				return "", err
+			} else if ok && pid > 0 {
+				if err := a.aiOwnedProject(user, pid); err != nil {
+					return "", err
+				}
+				projectID = pid
+			}
+			if cid, ok, err := argUintOpt("category_id"); err != nil {
+				return "", err
+			} else if ok && cid > 0 {
+				if err := a.aiOwnedCategory(user, cid); err != nil {
+					return "", err
+				}
+				categoryID = cid
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), importTimeout)
+			doc, err := a.createDocFromPublicURL(ctx, user, rawURL, argStr("title"), "未命名文档", "ai", clientIP, projectID, categoryID)
+			cancel()
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("已从链接导入 Markdown 文档：{{doc:%d}}（id=%d）", doc.ID, doc.ID), nil
+
 		case "create_document":
 			if err := reserveCreate(); err != nil {
 				return "", err
@@ -1640,6 +1688,7 @@ func (a *App) chatTools(user *model.User) (
 				Content: contentAI, OwnerID: user.ID,
 				UpdatedByID: user.ID, UpdatedVia: "ai",
 			}
+			stampCreatorGeo(&doc, clientIP)
 			if pid, ok, err := argUintOpt("project_id"); err != nil {
 				return "", err
 			} else if ok && pid > 0 {
@@ -1772,7 +1821,7 @@ func (a *App) chatTools(user *model.User) (
 			if err := reserveCreate(); err != nil {
 				return "", err
 			}
-			newDoc, err := a.aiDuplicateDoc(user, &doc)
+			newDoc, err := a.aiDuplicateDoc(user, &doc, clientIP)
 			if err != nil {
 				return "", err
 			}
@@ -2249,6 +2298,9 @@ func (a *App) aiApplyDocUpdate(user *model.User, doc *model.Document, oldTitle, 
 			updates["category_id"] = *categoryID
 			doc.CategoryID = *categoryID
 		}
+		if hasContent && blockImportContentWrite(fresh.Content, newContent) {
+			return fmt.Errorf("文档正在从链接导入，请稍后再修改正文")
+		}
 		if hasContent && newContent != fresh.Content {
 			updates["content"] = newContent
 			updates["content_version"] = fresh.ContentVersion + 1
@@ -2432,7 +2484,7 @@ func (a *App) aiResolveUser(username string, userID uint) (*model.User, error) {
 	return &u, nil
 }
 
-func (a *App) aiDuplicateDoc(user *model.User, doc *model.Document) (*model.Document, error) {
+func (a *App) aiDuplicateDoc(user *model.User, doc *model.Document, clientIP string) (*model.Document, error) {
 	newProjectID := doc.ProjectID
 	if newProjectID != 0 {
 		var proj model.Project
@@ -2463,6 +2515,7 @@ func (a *App) aiDuplicateDoc(user *model.User, doc *model.Document) (*model.Docu
 		OwnerID: user.ID, UpdatedByID: user.ID, UpdatedVia: "ai",
 		ProjectID: newProjectID, CategoryID: newCategoryID,
 	}
+	stampCreatorGeo(&newDoc, clientIP)
 	for i := 0; i < 5; i++ {
 		var n int64
 		a.DB.Unscoped().Model(&model.Document{}).Where("slug = ?", newDoc.Slug).Count(&n)

@@ -268,9 +268,9 @@
             <input type="text" name="name" required maxlength="64" placeholder="DeepSeek / Ollama" autocomplete="off">
           </label>
           <label>{{$.T "set.llmModel"}}
-            <input type="text" name="model" required maxlength="128" placeholder="deepseek-chat" autocomplete="off" list="llmModelList">
-            <datalist id="llmModelList"></datalist>
-            <span class="muted" style="font-size:12px">{{$.T "set.llmModelTip"}}</span>
+            <input type="text" name="model" required maxlength="128" placeholder="deepseek-chat" autocomplete="off">
+            <div class="llm-model-pop" id="llmModelPop" hidden></div>
+            <span class="muted" style="font-size:12px" id="llmModelTip">{{$.T "set.llmModelTip"}}</span>
           </label>
         </div>
         <label>{{$.T "set.llmBaseURL"}}
@@ -506,18 +506,40 @@
     if (!modal || !llmForm || !tbody) return;
     // form.id / form.name 会被 HTMLFormElement 内建属性遮蔽，必须走 elements
     function lf() { return llmForm.elements; }
-    var modelList = document.getElementById('llmModelList');
+    var modelPop = document.getElementById('llmModelPop');
+    var modelTip = document.getElementById('llmModelTip');
+    var modelTipDefault = modelTip ? modelTip.textContent : '';
+    var modelNames = [];
     var modelSeq = 0;
     var modelAbort = null;
-    function fillModelList(names) {
-      if (!modelList) return;
-      modelList.innerHTML = '';
-      (names || []).forEach(function (name) {
-        if (!name) return;
-        var opt = document.createElement('option');
-        opt.value = name;
-        modelList.appendChild(opt);
+    var modelQuery = null;
+    function showModelPop(list) {
+      if (!modelPop) return;
+      modelPop.innerHTML = '';
+      if (!list || !list.length) { modelPop.hidden = true; return; }
+      list.forEach(function (name) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = name;
+        btn.addEventListener('mousedown', function (ev) {
+          ev.preventDefault();
+          lf().model.value = name;
+          modelQuery = name;
+          modelPop.hidden = true;
+        });
+        modelPop.appendChild(btn);
       });
+      modelPop.hidden = false;
+    }
+    function visibleModels() {
+      var typed = lf().model.value.trim();
+      if (!typed || typed === modelQuery) return modelNames.slice();
+      var q = typed.toLowerCase();
+      return modelNames.filter(function (name) { return name.toLowerCase().indexOf(q) >= 0; });
+    }
+    function setModelTip(text) {
+      if (!modelTip) return;
+      modelTip.textContent = text || modelTipDefault;
     }
     async function loadModelList() {
       var seq = ++modelSeq;
@@ -527,7 +549,9 @@
       }
       var f = lf();
       var base = f.base_url.value.trim();
-      fillModelList([]);
+      modelNames = [];
+      if (modelPop) modelPop.hidden = true;
+      setModelTip('');
       if (!base) return;
       var ac = new AbortController();
       modelAbort = ac;
@@ -544,8 +568,14 @@
         });
         if (seq !== modelSeq) return;
         var data = await res.json();
-        if (seq !== modelSeq || !res.ok) return;
-        fillModelList(data.models || []);
+        if (seq !== modelSeq) return;
+        if (!res.ok || (data && data.error)) {
+          setModelTip((data && data.error) || '');
+          return;
+        }
+        modelNames = data.models || [];
+        modelQuery = f.model.value.trim();
+        if (document.activeElement === f.model) showModelPop(visibleModels());
       } catch (e) { /* 过期或取消的请求不回写列表 */ }
     }
     UI.bindModal(modal);
@@ -619,6 +649,31 @@
     }
     lf().base_url.addEventListener('change', loadModelList);
     lf().api_key.addEventListener('change', loadModelList);
+    var pointerInModelPop = false;
+    if (modelPop) modelPop.addEventListener('pointerdown', function () { pointerInModelPop = true; });
+    document.addEventListener('pointerup', function () {
+      if (!pointerInModelPop) return;
+      setTimeout(function () { pointerInModelPop = false; }, 0);
+    });
+    document.addEventListener('pointercancel', function () { pointerInModelPop = false; });
+    document.addEventListener('pointerdown', function (ev) {
+      if (!modelPop || modelPop.hidden) return;
+      if (ev.target === lf().model || modelPop.contains(ev.target)) return;
+      modelPop.hidden = true;
+    });
+    lf().model.addEventListener('focus', function () {
+      modelQuery = lf().model.value.trim();
+      showModelPop(modelNames.slice());
+    });
+    lf().model.addEventListener('input', function () {
+      showModelPop(visibleModels());
+    });
+    lf().model.addEventListener('blur', function () {
+      setTimeout(function () {
+        if (pointerInModelPop || !modelPop) return;
+        modelPop.hidden = true;
+      }, 0);
+    });
 
     function rowData(tr) {
       return {

@@ -217,7 +217,7 @@ func TestChatSkillCRUD(t *testing.T) {
 		t.Fatalf("commands missing builtin/user: %+v", cmds.Commands)
 	}
 
-	_, exec, _ := a.chatTools(u)
+	_, exec, _ := a.chatTools(u, "")
 	out, err := exec("save_skill", `{
 		"name":"code-review",
 		"description":"Review code. Use when reviewing pull requests.",
@@ -255,7 +255,7 @@ func TestChatSkillIsolationAndQuota(t *testing.T) {
 		t.Fatalf("cross-user get want 404 got %d", w.Code)
 	}
 
-	_, exec, _ := a.chatTools(u)
+	_, exec, _ := a.chatTools(u, "")
 	if _, err := exec("get_skill", `{"name":"secret"}`); err == nil {
 		t.Fatal("get_skill must not read other user's skill")
 	}

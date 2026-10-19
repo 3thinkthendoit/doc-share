@@ -39,7 +39,7 @@ func newExtraApp(t *testing.T) (*App, *model.User, *model.User) {
 
 func TestCreateCanvasDocAndTemplate(t *testing.T) {
 	app, owner, _ := newExtraApp(t)
-	_, exec, _ := app.chatTools(owner)
+	_, exec, _ := app.chatTools(owner, "")
 	out, err := exec("create_document", `{"title":"图","type":"mindmap","content":"{\"data\":{\"text\":\"中心\"},\"children\":[]}"}`)
 	if err != nil {
 		t.Fatal(err, out)
@@ -69,7 +69,7 @@ func TestCreateCanvasDocAndTemplate(t *testing.T) {
 func TestProjectMemberAndShare(t *testing.T) {
 	app, owner, other := newExtraApp(t)
 	id := func(v uint) string { return strconv.FormatUint(uint64(v), 10) }
-	_, exec, _ := app.chatTools(owner)
+	_, exec, _ := app.chatTools(owner, "")
 	if _, err := exec("create_project", `{"name":"协作"}`); err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestProjectMemberAndShare(t *testing.T) {
 	if err := app.DB.Where("project_id = ?", p.ID).First(&ps).Error; err != nil || ps.ExpireAt == nil {
 		t.Fatalf("expire cleared: %+v %v", ps, err)
 	}
-	_, otherExec, _ := app.chatTools(other)
+	_, otherExec, _ := app.chatTools(other, "")
 	if _, err := otherExec("remove_project_member", `{"project_id":`+id(p.ID)+`,"user_id":`+id(other.ID)+`}`); err == nil {
 		t.Fatal("member must not remove others as owner")
 	}
@@ -130,7 +130,7 @@ func TestProjectMemberAndShare(t *testing.T) {
 func TestCommentDuplicatePurgeAndApprovals(t *testing.T) {
 	app, owner, _ := newExtraApp(t)
 	id := func(v uint) string { return strconv.FormatUint(uint64(v), 10) }
-	_, exec, _ := app.chatTools(owner)
+	_, exec, _ := app.chatTools(owner, "")
 	if _, err := exec("create_document", `{"title":"原文","content":"hello"}`); err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +220,7 @@ func TestCommentDuplicatePurgeAndApprovals(t *testing.T) {
 func TestAgentAtomicShareCommentAndGuards(t *testing.T) {
 	app, owner, other := newExtraApp(t)
 	id := func(v uint) string { return strconv.FormatUint(uint64(v), 10) }
-	_, exec, _ := app.chatTools(owner)
+	_, exec, _ := app.chatTools(owner, "")
 
 	if _, err := exec("create_project", `{"name":"归属"}`); err != nil {
 		t.Fatal(err)
@@ -243,7 +243,7 @@ func TestAgentAtomicShareCommentAndGuards(t *testing.T) {
 	if _, err := exec("add_project_member", `{"project_id":`+id(proj.ID)+`,"username":"other2","role":"view"}`); err != nil {
 		t.Fatal(err)
 	}
-	_, memberExec, _ := app.chatTools(other)
+	_, memberExec, _ := app.chatTools(other, "")
 	if _, err := memberExec("get_project_share", `{"project_id":`+id(proj.ID)+`}`); err == nil {
 		t.Fatal("member must not read project share")
 	}
@@ -339,7 +339,7 @@ func TestAgentAtomicShareCommentAndGuards(t *testing.T) {
 		t.Fatal("html duplicate must be refused")
 	}
 
-	_, limited, _ := app.chatTools(owner)
+	_, limited, _ := app.chatTools(owner, "")
 	for i := 0; i < 3; i++ {
 		if _, err := limited("create_document", `{"title":"配额`+strconv.Itoa(i)+`","content":"x"}`); err != nil {
 			t.Fatal(err)
@@ -362,7 +362,7 @@ func TestAgentAtomicShareCommentAndGuards(t *testing.T) {
 		t.Fatal(err)
 	}
 	app.setCache = nil
-	_, tight, _ := app.chatTools(owner)
+	_, tight, _ := app.chatTools(owner, "")
 	if _, err := tight("create_document", `{"title":"配置后仍允许","content":"x"}`); err != nil {
 		t.Fatal(err)
 	}

@@ -36,7 +36,7 @@ func newOrgApp(t *testing.T) (*App, *model.User, *model.User) {
 
 func TestAgentProjectAndCategoryCRUD(t *testing.T) {
 	app, owner, other := newOrgApp(t)
-	_, exec, _ := app.chatTools(owner)
+	_, exec, _ := app.chatTools(owner, "")
 
 	id := func(v uint) string { return strconv.FormatUint(uint64(v), 10) }
 
@@ -91,7 +91,7 @@ func TestAgentProjectAndCategoryCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, otherExec, _ := app.chatTools(other)
+	_, otherExec, _ := app.chatTools(other, "")
 	if _, err := otherExec("delete_project", `{"id":`+id(p.ID)+`}`); err == nil {
 		t.Fatal("other user must not delete the project")
 	}
@@ -128,7 +128,7 @@ func TestDeleteOrgNeedsApproval(t *testing.T) {
 func TestAssignRequiresOwnerAndOwnTarget(t *testing.T) {
 	app, owner, other := newOrgApp(t)
 	id := func(v uint) string { return strconv.FormatUint(uint64(v), 10) }
-	_, ownerExec, _ := app.chatTools(owner)
+	_, ownerExec, _ := app.chatTools(owner, "")
 	out, err := ownerExec("create_project", `{"name":"属主项目"}`)
 	if err != nil {
 		t.Fatal(err, out)
@@ -144,7 +144,7 @@ func TestAssignRequiresOwnerAndOwnTarget(t *testing.T) {
 	if err := app.DB.Create(&doc).Error; err != nil {
 		t.Fatal(err)
 	}
-	_, otherExec, _ := app.chatTools(other)
+	_, otherExec, _ := app.chatTools(other, "")
 	if _, err := otherExec("update_document", `{"id":`+id(doc.ID)+`,"project_id":0}`); err == nil {
 		t.Fatal("edit member must not change project assignment")
 	}
@@ -172,7 +172,7 @@ func TestAdminListsOnlyOwnCategories(t *testing.T) {
 	if err := app.DB.Create(&model.Category{Name: "自己的", OwnerID: owner.ID}).Error; err != nil {
 		t.Fatal(err)
 	}
-	_, exec, _ := app.chatTools(owner)
+	_, exec, _ := app.chatTools(owner, "")
 	out, err := exec("list_categories", `{}`)
 	if err != nil {
 		t.Fatal(err)
@@ -185,7 +185,7 @@ func TestAdminListsOnlyOwnCategories(t *testing.T) {
 func TestPurgeProjectClearsShareAndTrash(t *testing.T) {
 	app, owner, _ := newOrgApp(t)
 	id := func(v uint) string { return strconv.FormatUint(uint64(v), 10) }
-	_, exec, _ := app.chatTools(owner)
+	_, exec, _ := app.chatTools(owner, "")
 	if _, err := exec("create_project", `{"name":"待删"}`); err != nil {
 		t.Fatal(err)
 	}
@@ -226,8 +226,11 @@ func TestPurgeProjectClearsShareAndTrash(t *testing.T) {
 
 func TestReadWebpageRejectsLoopback(t *testing.T) {
 	app, owner, _ := newOrgApp(t)
-	_, exec, _ := app.chatTools(owner)
+	_, exec, _ := app.chatTools(owner, "")
 	if _, err := exec("read_webpage", `{"url":"http://127.0.0.1/secret"}`); err == nil {
 		t.Fatal("loopback must be rejected")
+	}
+	if _, err := exec("import_document_from_url", `{"url":"http://127.0.0.1/secret"}`); err == nil {
+		t.Fatal("import must reject loopback")
 	}
 }

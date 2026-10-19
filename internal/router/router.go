@@ -141,6 +141,8 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 
 		// 文档 API
 		admin.POST("/api/docs", app.CreateDoc)
+		admin.POST("/api/docs/from-url", app.ImportDocFromURL)
+		admin.GET("/api/docs/:id/import", app.ImportDocStatus)
 		admin.PUT("/api/docs/:id", app.UpdateDoc)
 		admin.DELETE("/api/docs/:id", app.DeleteDoc)
 		admin.POST("/api/docs/:id/restore", app.RestoreDoc)
@@ -236,6 +238,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		open.GET("/docs", app.OpenListDocs)
 		open.GET("/docs/:id", app.OpenGetDoc)
 		open.POST("/docs", app.CreateDoc)
+		open.POST("/docs/from-url", app.ImportDocFromURL)
 		open.POST("/docs/html", app.OpenCreateHTMLDoc)
 		open.PUT("/docs/:id", app.UpdateDoc)
 		open.DELETE("/docs/:id", app.DeleteDoc)

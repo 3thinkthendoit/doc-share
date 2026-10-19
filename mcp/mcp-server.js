@@ -189,6 +189,26 @@ const TOOLS = [
     },
   },
   {
+    name: 'docshare_import_from_url',
+    description: '从公网 http(s) 链接抓取页面正文，创建可编辑的 Markdown 文档。拒绝内网、本机和保留地址',
+    schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: '以 http:// 或 https:// 开头的公网地址' },
+        title: { type: 'string', description: '文档标题（可选，默认用页面标题）' },
+        project_id: { type: 'number', description: '所属项目 ID（可选，0=未分组）' },
+        category_id: { type: 'number', description: '所属分类 ID（可选，0=未分类）' },
+      },
+      required: ['url'],
+    },
+    async run(args) {
+      return apiCall('POST', '/openapi/v1/docs/from-url', null, clean({
+        url: args.url, title: args.title,
+        project_id: args.project_id, category_id: args.category_id,
+      }));
+    },
+  },
+  {
     name: 'docshare_update_doc',
     description: '更新文档：content 未传 = 不修改（只改标题/归属安全）；传值 = 整体覆盖。version 由系统自动递增（内容变更时 +1），无需也不可手工传入。html 整站类型拒绝修改内容',
     schema: docSchema,

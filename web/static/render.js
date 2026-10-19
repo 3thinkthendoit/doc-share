@@ -1,16 +1,38 @@
 // 浏览器端 Markdown 渲染（分享阅读页）
 (function () {
+  function pageTitle() {
+    var el = document.querySelector('.doc-title');
+    if (!el) return '';
+    var text = '';
+    el.childNodes.forEach(function (n) {
+      if (n.nodeType === 3) text += n.textContent;
+    });
+    return text.replace(/\s+/g, ' ').trim();
+  }
+
+  // 页头已经展示文档标题。正文开头若是同一条一级标题，预览里去掉，不改原文。
+  function stripDuplicateTitle(el) {
+    var title = pageTitle();
+    if (!title) return;
+    var h = el.firstElementChild;
+    if (!h || h.tagName !== 'H1') return;
+    if ((h.textContent || '').replace(/\s+/g, ' ').trim() !== title) return;
+    h.remove();
+  }
+
   function renderMarkdown(src, el) {
     if (window.Embeds && Embeds.parseMarkdown) {
       var html = Embeds.parseMarkdown(src || '');
       if (html != null) {
         el.innerHTML = html;
+        stripDuplicateTitle(el);
         return;
       }
     }
     if (window.marked && window.DOMPurify) {
       // DOMPurify 消毒，防分享文档内嵌脚本/XSS
       el.innerHTML = DOMPurify.sanitize(marked.parse(src || ''));
+      stripDuplicateTitle(el);
     } else {
       // C1：消毒组件未就绪时绝不写未净化 HTML，降级为纯文本展示
       el.textContent = src || '';

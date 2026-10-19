@@ -12,10 +12,12 @@ html,body{height:100%;margin:0}
 /* 分享页编辑保存状态角标（仅 canEdit 时显示） */
 .json-save-status{position:fixed;right:16px;bottom:16px;z-index:50;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-sm,6px);padding:6px 12px;font-size:13px;color:var(--text);box-shadow:0 2px 8px rgba(0,0,0,.12);cursor:default}
 .json-save-status.error{color:#c0392b;border-color:#e5b4ae}
+.creator-region{position:fixed;left:16px;bottom:16px;z-index:50;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-sm,6px);padding:6px 12px;font-size:13px;color:var(--muted)}
 </style>
 </head>
 <body>
   <div id="jsonViewMount" class="json-view-mount {{if eq .docKind "mindmap"}}embed-mount embed-mount-mindmap{{else if eq .docKind "drawio"}}json-view-mount-drawio{{else}}embed-mount embed-mount-excalidraw{{end}}"></div>
+  {{if .doc.CreatorRegion}}<div class="creator-region">{{$.T "share.region" .doc.CreatorRegion}}</div>{{end}}
   <div id="jsonSaveStatus" class="json-save-status" hidden></div>
   <script>
     window.JSON_DOC = {

@@ -174,6 +174,10 @@ type Document struct {
 	Category       *Category `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
 	IsShared       bool      `gorm:"not null;default:false" json:"is_shared"`
 	ViewCount      int64     `gorm:"not null;default:0" json:"view_count"`
+	// CreatorIP / CreatorRegion：文档创建时写入（客户端 IP + 离线库反查归属地）；只写一次，不随更新覆盖。
+	// CreatorRegion 供预览/分享页展示；CreatorIP 仅审计（不对读者展示）。
+	CreatorIP     string `gorm:"size:64;not null;default:''" json:"-"` // 仅落库审计，不进入任何 JSON 响应
+	CreatorRegion string `gorm:"size:128;not null;default:''" json:"creator_region"`
 	// 最后更新人：0 = 本字段上线前的历史数据（展示时回退为所有者）；UpdatedVia = api 表示经开放平台更新
 	UpdatedByID uint      `gorm:"index;not null;default:0" json:"updated_by_id"`
 	UpdatedVia  string    `gorm:"size:16;not null;default:''" json:"updated_via"`

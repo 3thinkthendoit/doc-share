@@ -465,6 +465,7 @@ func (a *App) createHTMLDocFromFiles(c *gin.Context, files []siteFile, title str
 		UpdatedByID: user.ID,
 		ProjectID:   projectID, CategoryID: categoryID,
 	}
+	stampCreatorGeoFromCtx(c, &doc)
 	for {
 		var n int64
 		// Unscoped：同时避开回收站文档占用的 slug，否则撞唯一索引导致插入失败

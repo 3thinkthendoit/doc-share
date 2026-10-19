@@ -22,6 +22,16 @@ func TestHTMLTextSkipsScript(t *testing.T) {
 	}
 }
 
+func TestHTMLTextUsesOGTitle(t *testing.T) {
+	title, text := HTMLText([]byte(`<html><head><title></title><meta property="og:title" content="AI Agent 核心架构详解"></head><body><h1>AI Agent 核心架构详解</h1><p>正文</p></body></html>`))
+	if title != "AI Agent 核心架构详解" {
+		t.Fatalf("title=%q", title)
+	}
+	if !strings.Contains(text, "正文") {
+		t.Fatalf("text=%q", text)
+	}
+}
+
 func TestParsePublicURLRejectsPrivate(t *testing.T) {
 	for _, raw := range []string{
 		"http://127.0.0.1/a",
@@ -52,6 +62,26 @@ func TestBlockedIPExtraRanges(t *testing.T) {
 	}
 	if blockedIP(net.ParseIP("1.1.1.1")) {
 		t.Fatal("public IP must pass")
+	}
+}
+
+func TestChallengePage(t *testing.T) {
+	wechat := "环境异常\n当前环境异常，完成验证后即可继续访问。\n去验证"
+	if !challengePage("https://mp.weixin.qq.com/mp/wappoc_appmsgcaptcha", "环境异常", wechat) {
+		t.Fatal("wechat captcha url must be rejected")
+	}
+	if !challengePage("https://example.com/article", "环境异常", wechat) {
+		t.Fatal("short captcha copy must be rejected")
+	}
+	long := strings.Repeat("这是一篇正常文章，提到完成验证后即可继续访问只是举例。", 30)
+	if challengePage("https://example.com/article", "架构详解", long) {
+		t.Fatal("long article must pass")
+	}
+	if challengePage("https://example.com/docs/challenge-types/", "证书校验", long) {
+		t.Fatal("long article under a challenge-* path must pass")
+	}
+	if challengePage("https://example.com/docs", "指南", "第一段\n第二段") {
+		t.Fatal("normal page must pass")
 	}
 }
 

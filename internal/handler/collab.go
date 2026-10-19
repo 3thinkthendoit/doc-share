@@ -661,6 +661,11 @@ func (a *App) saveShareContentBody(c *gin.Context, doc *model.Document, user *mo
 			conflictVersion = fresh.ContentVersion
 			return nil // 无写操作，正常提交
 		}
+		if blockImportContentWrite(fresh.Content, req.Content) {
+			hasConflict = true
+			conflictVersion = fresh.ContentVersion
+			return nil
+		}
 		res := tx.Model(&model.Document{}).
 			Where("id = ? AND content_version = ?", doc.ID, fresh.ContentVersion).
 			Updates(map[string]any{

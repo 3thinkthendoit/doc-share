@@ -10,7 +10,8 @@
   {{template "siteNav" .}}
   <article class="reader">
     <div class="doc-title-row">
-      <h1 class="doc-title">{{.doc.Title}}{{if .doc.Version}} <span class="doc-version-tag">{{.doc.Version}}</span>{{end}}</h1>
+      <h1 class="doc-title">{{.doc.Title}}</h1>
+      {{if .doc.Version}}<span class="doc-version-tag">{{.doc.Version}}</span>{{end}}
       {{if .canExport}}
       <div class="doc-export" role="group" aria-label="{{$.T "share.download"}}">
         <a class="btn btn-sm doc-export-btn" href="{{.exportBase}}?format=pdf" download>{{$.T "share.downloadPdf"}}</a>
@@ -32,6 +33,10 @@
       {{end}}
       <span class="doc-author-dot">·</span>
       <span>{{$.T "share.views" .doc.ViewCount}}</span>
+      {{if .doc.CreatorRegion}}
+      <span class="doc-author-dot">·</span>
+      <span>{{$.T "share.region" .doc.CreatorRegion}}</span>
+      {{end}}
       {{if .visitors}}
       <span class="doc-author-dot">·</span>
       <span class="doc-visitors">

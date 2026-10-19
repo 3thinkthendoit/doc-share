@@ -636,6 +636,7 @@ func (a *App) CreateDoc(c *gin.Context) {
 		UpdatedByID: user.ID,
 		UpdatedVia:  openapiVia(c),
 	}
+	stampCreatorGeoFromCtx(c, &doc)
 	if req.ProjectID != nil {
 		doc.ProjectID = *req.ProjectID
 	}
@@ -728,13 +729,17 @@ func (a *App) UpdateDoc(c *gin.Context) {
 			return err
 		}
 		updates := map[string]any{}
-		if newContent != nil {
+		contentWrite := newContent
+		if contentWrite != nil && blockImportContentWrite(fresh.Content, *contentWrite) {
+			contentWrite = nil
+		}
+		if contentWrite != nil {
 			if !req.Force && req.BaseVersion != nil && fresh.ContentVersion != *req.BaseVersion {
 				hasConflict = true
 				conflictVersion = fresh.ContentVersion
 				return nil
 			}
-			updates["content"] = *newContent
+			updates["content"] = *contentWrite
 			updates["content_version"] = fresh.ContentVersion + 1
 			updates["version"] = derivedDocVersion(fresh.ContentVersion + 1) // 版本号随内容保存自动递增
 		}
@@ -755,21 +760,21 @@ func (a *App) UpdateDoc(c *gin.Context) {
 			return nil
 		}
 		q := tx.Model(&model.Document{}).Where("id = ?", doc.ID)
-		if newContent != nil {
+		if contentWrite != nil {
 			q = q.Where("content_version = ?", fresh.ContentVersion)
 		}
 		res := q.Updates(updates)
 		if res.Error != nil {
 			return res.Error
 		}
-		if newContent != nil && res.RowsAffected == 0 {
+		if contentWrite != nil && res.RowsAffected == 0 {
 			// 守卫落空 = 未传 base_version 的写入者也撞上了并发提交；
 			// 此时事务内读到的版本已过期，conflictVersion 置 0 由响应前回读
 			hasConflict = true
 			return nil
 		}
 		// 内容实际变化时同事务快照覆盖前正文（历史版本）；仅改标题/归属不产生修订
-		if newContent != nil && *newContent != fresh.Content {
+		if contentWrite != nil && *contentWrite != fresh.Content {
 			editorID, editorName := uint(0), "系统"
 			if actor != nil {
 				editorID, editorName = actor.ID, actor.DisplayName()
@@ -1169,6 +1174,7 @@ func (a *App) DuplicateDoc(c *gin.Context) {
 		ProjectID:   newProjectID,
 		CategoryID:  newCategoryID,
 	}
+	stampCreatorGeoFromCtx(c, &newDoc)
 	for {
 		var n int64
 		a.DB.Unscoped().Model(&model.Document{}).Where("slug = ?", newDoc.Slug).Count(&n)
