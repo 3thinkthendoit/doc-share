@@ -1014,8 +1014,9 @@
     };
     ol.innerHTML = tasks.map(function (t, i) {
       var st = t.state || 'pending';
+      var doc = t.doc_id ? ' · doc ' + t.doc_id : '';
       return '<li class="' + esc(st) + '"><span class="st">' + esc(label[st] || st) + '</span><span>' +
-        (i + 1) + '. ' + esc(t.title || '') + '</span></li>';
+        (i + 1) + '. ' + esc(t.title || '') + esc(doc) + '</span></li>';
     }).join('');
     scrollBottom(false);
   }

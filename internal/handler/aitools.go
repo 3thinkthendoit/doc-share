@@ -112,7 +112,7 @@ func (a *App) chatTools(user *model.User) (
 	defs = []llm.Tool{
 		{Type: "function", Function: llm.ToolFunc{
 			Name:        "declare_tasks",
-			Description: "记录多步任务清单（2–6 条）。调用后必须立即执行第一项，不要等用户确认，也不要自己把任务标成完成。单篇上的修改不要调用。",
+			Description: "记录多步任务清单（2–20 条）。多篇修改若服务端已列出清单，不要再调用。调用后必须立即执行，不要等用户确认，也不要自己把任务标成完成。单篇修改不要调用。",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{

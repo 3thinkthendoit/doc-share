@@ -11,6 +11,83 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestMultiDocIntent(t *testing.T) {
+	if !multiDocIntent("10个专题的文档 需要在补充完善一下") {
+		t.Fatal("counted topics must be multi-doc")
+	}
+	if !multiDocIntent("这些文档都补充一下") {
+		t.Fatal("这些文档 must be multi-doc")
+	}
+	if multiDocIntent("把标题补充一句说明") {
+		t.Fatal("single sentence edit must not be multi-doc")
+	}
+	if multiDocQuery("10个专题的文档需要补充") != "专题" {
+		t.Fatal("query should be 专题")
+	}
+	if multiDocIntent("第3篇补充一下") {
+		t.Fatal("第N篇 is one document")
+	}
+	if multiDocIntent("改2个字") {
+		t.Fatal("N个字 is not a document count")
+	}
+	if continueBoard("继续用这个格式写一段") {
+		t.Fatal("继续 must be the whole message")
+	}
+	if !continueBoard("  继续") {
+		t.Fatal("继续 should resume the board")
+	}
+	var b taskBoard
+	b.items = []agentTask{
+		{Title: "甲", State: taskPending, DocID: 41},
+		{Title: "乙", State: taskDone, DocID: 42},
+		{Title: "丙", State: taskPending, DocID: 43},
+		{Title: "丁", State: taskPending, DocID: 44},
+	}
+	prompt := b.batchPrompt(2)
+	if !strings.Contains(prompt, "id=41") || !strings.Contains(prompt, "id=43") || strings.Contains(prompt, "id=44") || strings.Contains(prompt, "id=42") {
+		t.Fatalf("batch should be the first two unfinished: %s", prompt)
+	}
+	b.bindTurn(2)
+	if !b.turnUnfinished() {
+		t.Fatal("bound batch should be unfinished")
+	}
+	if !b.finishDoc(43, true) || b.items[2].State != taskDone || b.items[0].State != taskPending {
+		t.Fatalf("success must land on the written doc: %+v", b.items)
+	}
+	if b.finishDoc(99, true) {
+		t.Fatal("unknown doc must not complete another task")
+	}
+	b.finishDoc(41, true)
+	if b.turnUnfinished() {
+		t.Fatal("later items outside this turn must not keep the nudge going")
+	}
+	if b.items[3].State != taskPending {
+		t.Fatal("doc 44 stays for the next continue")
+	}
+	titles := make([]string, 10)
+	for i := range titles {
+		titles[i] = "专题"
+	}
+	raw, _ := jsonMarshalTasks(titles)
+	if _, err := parseDeclareTasks(raw); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func jsonMarshalTasks(titles []string) (string, error) {
+	buf := []byte(`{"tasks":[`)
+	for i, t := range titles {
+		if i > 0 {
+			buf = append(buf, ',')
+		}
+		buf = append(buf, '"')
+		buf = append(buf, t...)
+		buf = append(buf, '"')
+	}
+	buf = append(buf, "]}"...)
+	return string(buf), nil
+}
+
 func TestParseDeclareTasks(t *testing.T) {
 	got, err := parseDeclareTasks(`{"tasks":[" 建文档 ","改一节"]}`)
 	if err != nil || len(got) != 2 || got[0] != "建文档" {

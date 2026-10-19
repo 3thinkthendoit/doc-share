@@ -16,6 +16,7 @@ import (
 	"doc-share/internal/llm"
 	"doc-share/internal/middleware"
 	"doc-share/internal/model"
+	"doc-share/internal/search"
 	"doc-share/internal/util"
 
 	"github.com/gin-gonic/gin"
@@ -107,6 +108,145 @@ func lastHistoryDocID(history []model.ChatMessage) int64 {
 		}
 	}
 	return 0
+}
+
+// reMultiWords 明确的多篇说法。数量词单独在代码里判断，避开「第3篇」「2个字」。
+var reMultiWords = regexp.MustCompile(`多篇|全部文档|所有文档|每一篇|每篇|各篇|这些文档|这些专题|若干篇`)
+
+// reCountUnit 「10个」「3篇」这类数量。
+var reCountUnit = regexp.MustCompile(`(\d+)\s*(个|篇)`)
+
+func multiDocIntent(text string) bool {
+	if reMultiWords.MatchString(text) {
+		return true
+	}
+	for _, m := range reCountUnit.FindAllStringSubmatchIndex(text, -1) {
+		if m[0] > 0 {
+			prev, _ := utf8.DecodeLastRuneInString(text[:m[0]])
+			if prev == '第' {
+				continue
+			}
+		}
+		if text[m[4]:m[5]] == "个" && strings.HasPrefix(text[m[1]:], "字") {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func continueBoard(text string) bool {
+	s := strings.TrimSpace(text)
+	s = strings.TrimRight(s, "。！!？?… ")
+	switch s {
+	case "继续", "接着做", "接着改", "下一步":
+		return true
+	default:
+		return false
+	}
+}
+
+// multiDocQuery 从多篇修改的句子里抽出检索词。提到专题时就搜专题。
+func multiDocQuery(text string) string {
+	if strings.Contains(text, "专题") {
+		return "专题"
+	}
+	rest := reCountUnit.ReplaceAllString(text, " ")
+	rest = reMultiWords.ReplaceAllString(rest, " ")
+	rest = reEditVerb.ReplaceAllString(rest, " ")
+	rest = strings.TrimSpace(strings.Join(strings.Fields(rest), " "))
+	if utf8.RuneCountInString(rest) < 2 {
+		return ""
+	}
+	return rest
+}
+
+func parseStoredBoard(raw string) taskBoard {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return taskBoard{}
+	}
+	var items []agentTask
+	if err := json.Unmarshal([]byte(raw), &items); err != nil {
+		return taskBoard{}
+	}
+	return taskBoard{items: items}
+}
+
+func (a *App) saveTaskBoard(sessionID uint, b taskBoard) {
+	raw := ""
+	if b.active() {
+		buf, err := json.Marshal(b.items)
+		if err != nil {
+			return
+		}
+		raw = string(buf)
+	}
+	if err := a.DB.Model(&model.ChatSession{}).Where("id = ?", sessionID).Update("task_board", raw).Error; err != nil {
+		log.Printf("[llm] 保存任务清单失败 session=%d: %v", sessionID, err)
+	}
+}
+
+// listAgentDocs 按当前用户可见范围搜索文档，供多篇修改建清单。失败或没有检索词时返回空。
+func (a *App) listAgentDocs(user *model.User, query string, limit int) []agentTask {
+	query = strings.TrimSpace(query)
+	if query == "" || user == nil || limit <= 0 {
+		return nil
+	}
+	var memberPids []uint
+	if !user.IsAdmin() {
+		a.DB.Model(&model.ProjectMember{}).Where("user_id = ?", user.ID).Pluck("project_id", &memberPids)
+	}
+	p := search.DefaultParams()
+	p.Query = query
+	p.UserID = user.ID
+	p.IsAdmin = user.IsAdmin()
+	p.MemberPids = memberPids
+	p.Offset = 0
+	p.Size = limit
+	ids, err := a.searchSvc().Page(p)
+	if err != nil || len(ids) == 0 {
+		return nil
+	}
+	var docs []model.Document
+	a.searchSvc().ScopeQuery(p).Where("id IN ?", ids).Select("id, title").Find(&docs)
+	byID := make(map[uint]model.Document, len(docs))
+	for _, d := range docs {
+		byID[d.ID] = d
+	}
+	var out []agentTask
+	for _, id := range ids {
+		d, ok := byID[id]
+		if !ok {
+			continue
+		}
+		out = append(out, agentTask{Title: d.Title, State: taskPending, DocID: int64(d.ID)})
+	}
+	return out
+}
+
+// batchPrompt 本轮只改清单里的前几篇，避免一次把全部正文读完。
+func (b taskBoard) batchPrompt(n int) string {
+	var lines []string
+	for _, it := range b.items {
+		if it.State == taskDone {
+			continue
+		}
+		if len(lines) >= n {
+			break
+		}
+		if it.DocID > 0 {
+			lines = append(lines, fmt.Sprintf("- id=%d 《%s》", it.DocID, it.Title))
+		} else {
+			lines = append(lines, "- "+it.Title)
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return "[系统编排] 这是多篇修改，清单已列出。本轮只处理下面几篇：每篇先 read_document 再 replace_section 或 update_document。" +
+		"不要读取其他文档，不要调用 declare_tasks，不要等用户确认。其余篇留到用户说「继续」再做。\n" +
+		strings.Join(lines, "\n")
 }
 
 func readIntentTitle(content string) string {
@@ -209,6 +349,12 @@ const aiAutoContinueMax = 3
 // taskNudgeMax 清单里仍有未通过项时，催促模型继续改的次数上限
 const taskNudgeMax = 3
 
+// taskListMax declare_tasks 最多条数。10 篇专题一类需求要能装下。
+const taskListMax = 20
+
+// taskBatchPerTurn 多篇修改时，一轮里实际改的篇数。读和写共用 8 轮工具预算。
+const taskBatchPerTurn = 3
+
 // aiMaxConcurrentGensPerUser 每用户同时进行中的生成上限（多任务并行）
 const aiMaxConcurrentGensPerUser = 3
 
@@ -284,13 +430,16 @@ const (
 )
 
 type agentTask struct {
-	Title string
-	State string
+	Title string `json:"title"`
+	State string `json:"state"`
+	DocID int64  `json:"doc_id,omitempty"`
 }
 
 // taskBoard 本请求内的多步清单。状态只由工具结果和回读更新。
+// turn 是本轮点名的条目下标，核对续跑只看这些，不把后面几篇拉进同一轮。
 type taskBoard struct {
 	items []agentTask
+	turn  []int
 }
 
 func parseDeclareTasks(argsJSON string) ([]string, error) {
@@ -311,8 +460,8 @@ func parseDeclareTasks(argsJSON string) ([]string, error) {
 		}
 		out = append(out, t)
 	}
-	if len(out) < 2 || len(out) > 6 {
-		return nil, fmt.Errorf("任务须为 2–6 条")
+	if len(out) < 2 || len(out) > taskListMax {
+		return nil, fmt.Errorf("任务须为 2–%d 条", taskListMax)
 	}
 	return out, nil
 }
@@ -366,6 +515,74 @@ func (b *taskBoard) finishCurrent(pass bool) {
 	b.items[i].State = taskFailed
 }
 
+func (b *taskBoard) finishDoc(docID int64, pass bool) bool {
+	if docID <= 0 {
+		return false
+	}
+	for i := range b.items {
+		if b.items[i].DocID != docID || b.items[i].State == taskDone {
+			continue
+		}
+		if pass {
+			b.items[i].State = taskDone
+		} else {
+			b.items[i].State = taskFailed
+		}
+		return true
+	}
+	return false
+}
+
+func (b *taskBoard) markDocRunning(docID int64) bool {
+	if docID <= 0 {
+		return false
+	}
+	for i := range b.items {
+		if b.items[i].DocID == docID && b.items[i].State != taskDone {
+			b.items[i].State = taskRunning
+			return true
+		}
+	}
+	return false
+}
+
+// bindTurn 记下本轮要改的前 n 条未完成项。后面的篇目留给用户说「继续」。
+func (b *taskBoard) bindTurn(n int) {
+	b.turn = b.turn[:0]
+	if n <= 0 {
+		return
+	}
+	for i := range b.items {
+		if b.items[i].State == taskDone {
+			continue
+		}
+		b.turn = append(b.turn, i)
+		if len(b.turn) >= n {
+			break
+		}
+	}
+}
+
+func (b *taskBoard) turnUnfinished() bool {
+	for _, i := range b.turn {
+		if i >= 0 && i < len(b.items) && b.items[i].State != taskDone {
+			return true
+		}
+	}
+	return false
+}
+
+func (b *taskBoard) turnSummary() string {
+	var parts []string
+	for _, i := range b.turn {
+		if i < 0 || i >= len(b.items) || b.items[i].State == taskDone {
+			continue
+		}
+		parts = append(parts, b.items[i].Title)
+	}
+	return strings.Join(parts, "；")
+}
+
 func (b *taskBoard) unfinished() bool {
 	for _, it := range b.items {
 		if it.State != taskDone {
@@ -393,7 +610,11 @@ func (b taskBoard) eventJSON() string {
 		if i > 0 {
 			buf.WriteByte(',')
 		}
-		buf.WriteString(`{"title":` + jsonQuote(it.Title) + `,"state":` + jsonQuote(it.State) + `}`)
+		buf.WriteString(`{"title":` + jsonQuote(it.Title) + `,"state":` + jsonQuote(it.State))
+		if it.DocID > 0 {
+			buf.WriteString(`,"doc_id":` + strconv.FormatInt(it.DocID, 10))
+		}
+		buf.WriteString(`}`)
 	}
 	buf.WriteString(`]}`)
 	return buf.String()
@@ -693,7 +914,8 @@ func (a *App) cancelChatGen(sessionID uint) bool {
 func sseEventCritical(payload string) bool {
 	return strings.Contains(payload, `"done"`) ||
 		strings.Contains(payload, `"error"`) ||
-		strings.Contains(payload, `"approval"`)
+		strings.Contains(payload, `"approval"`) ||
+		strings.Contains(payload, `"tasks"`)
 }
 
 // waitSensitiveDecision 等待用户审批。只认 genCtx（停止按钮）和超时。
@@ -946,7 +1168,7 @@ const chatSystemPrompt = "你是 DocShare 文档平台的 AI 助手，用与用�
 	"①读文档：用户要查看/阅读/总结/对比某文档时，直接调用 read_document 读正文后回答；上下文里若已有 [系统预读]/[系统自动读取] 的正文，直接使用，不要重复调 read_document；" +
 	"②改文档：改局部内容用 replace_section，old_text 必须来自上下文最近一段正文（逐字一致）；整体重写才用 update_document，并回传 content_version 作为 base_version；改完汇报改了哪几处。用户已给出明确修改要求时，直接调用工具执行，禁止先 read_document 重读全文，禁止用\"总结要点\"代替执行修改；" +
 	"③执行：凡说要执行的操作，同一条回复直接发起工具调用，禁止只输出计划或要求用户回复「开始/继续」；工具失败就如实告知并按错误提示重试；删除/回滚等敏感操作不用口头确认（系统会弹审批）；" +
-	"【多步任务】用户要求两件及以上彼此独立的写入（多篇文档、先创建再修改、多个交付物）时，先 declare_tasks 列出 2–6 条，然后立即调用工具执行，禁止等用户确认。单篇上的修改不要 declare_tasks。任务是否完成只由服务端根据工具结果和回读正文判定，不要自己把任务标成完成；" +
+	"【多步任务】单篇修改直接改，不要 declare_tasks。多篇或带数量的修改由服务端列出文档清单，你只处理本轮点名的几篇：每篇先读再改，不要一次读完全部文档，不要重列任务。任务是否完成只由服务端根据工具结果和回读正文判定；" +
 	"④歧义：语义无歧义时直接执行，不要列 A/B/C 方案让用户选；只有用户表述确实存在多种理解时才先问一个澄清问题。" +
 	"【链接】引用文档/分享一律原样输出占位符 {{doc:8}}，系统替换为真实链接；不输出任何 http:// 或 https://；没经工具核实的信息（分享链接、密码、过期时间）不输出，先查再说。" +
 	"【上下文感知】历史工具结果可能被服务端裁短到摘要；需要完整正文时直接再调用对应工具，不要凭空补全。" +
@@ -1382,10 +1604,34 @@ func (a *App) ChatCompletions(c *gin.Context) {
 			}
 		}
 	}
+	// 多篇或「继续」沿用会话清单。没有清单时按检索词建一份，本轮只改前几篇。
+	// 普通新问题清掉旧清单，避免上一批专题绑住这次对话。
+	multi := multiDocIntent(intentPlain)
+	resume := continueBoard(intentPlain)
+	board := parseStoredBoard(s.TaskBoard)
+	if multi && !resume {
+		hits := a.listAgentDocs(user, multiDocQuery(intentPlain), aiToolMaxDocs)
+		if len(hits) >= 2 {
+			board.items = hits
+			a.saveTaskBoard(s.ID, board)
+		} else if board.active() {
+			board = taskBoard{}
+			a.saveTaskBoard(s.ID, board)
+			s.TaskBoard = ""
+		}
+	} else if !multi && !resume && s.TaskBoard != "" {
+		board = taskBoard{}
+		a.saveTaskBoard(s.ID, board)
+		s.TaskBoard = ""
+	}
+	if prompt := board.batchPrompt(taskBatchPerTurn); prompt != "" && (multi || resume) {
+		msgs = append(msgs, llm.Message{Role: "user", Content: prompt})
+	}
+
 	// 短句确认修改（如"三期都要改"）：当前消息没有 ID 也没有标题引用，
 	// 但带修改动词 —— 回溯历史找回最近一次预读/读取过的文档，重新注入正文并下达编辑指令。
-	// 不兜底的话模型手里没正文，极易复读旧清单或反问。
-	if !forceAnswer && !createSkillMode && isEdit &&
+	// 多篇修改不走这条，否则「10 个专题」会被收成历史里的一篇。
+	if !multi && !forceAnswer && !createSkillMode && isEdit &&
 		len(extractDocIDs(intentPlain)) == 0 && readIntentTitle(intentPlain) == "" {
 		if id := lastHistoryDocID(history); id > 0 {
 			if docText, err := readDocInject(injectRead, id, aiPrereadMaxChars, intentPlain); err == nil {
@@ -1401,7 +1647,7 @@ func (a *App) ChatCompletions(c *gin.Context) {
 	if slashHandled || createSkillMode || continueCreate {
 		forceAnswer = false
 	}
-	if isEdit && !forceAnswer && len(prereadIDs) > 0 {
+	if isEdit && !multi && !resume && !forceAnswer && len(prereadIDs) > 0 {
 		msgs = append(msgs, llm.Message{Role: "user", Content: "[系统编排] 这是编辑任务：禁止只输出计划；本回复必须直接发起 replace_section（首选）或 update_document；" +
 			"改完用一句话汇报改了哪几处。已预读文档勿再 read_document。"})
 	}
@@ -1482,8 +1728,11 @@ func (a *App) ChatCompletions(c *gin.Context) {
 		var mutEv mutationEvidence       // 本请求写入证据（防口头谎称 / 错工具洗白）
 		autoContinues := 0
 		taskNudges := 0
-		var board taskBoard
-		simpleTurn := isEdit && !createSkillMode && len(prereadIDs) <= 1
+		simpleTurn := isEdit && !multi && !resume && !createSkillMode && len(prereadIDs) <= 1
+		board.bindTurn(taskBatchPerTurn)
+		if board.active() {
+			writeEvent(board.eventJSON())
+		}
 		for round := 0; round < aiToolRounds; round++ {
 			// 仅显式停止（genCtx）中断轮次；刷新不断开 genCtx
 			if genCtx.Err() != nil {
@@ -1527,13 +1776,13 @@ func (a *App) ChatCompletions(c *gin.Context) {
 			}
 			if len(assistant.ToolCalls) == 0 {
 				// 清单里还有未通过回读或未执行的项：继续改，不把模型的口头完成当完成。
-				if tools != nil && board.unfinished() && taskNudges < taskNudgeMax {
+				if tools != nil && board.turnUnfinished() && taskNudges < taskNudgeMax {
 					taskNudges++
 					if rc.Len() > 0 {
 						writeEvent(`{"reset":true}`)
 					}
-					nudge := "[系统核对] 下列任务尚未通过回读或尚未执行：" + board.pendingSummary() +
-						"。请立即调用工具完成或修正，不要向用户确认，不要口头宣布完成。"
+					nudge := "[系统核对] 本轮这几篇尚未通过回读或尚未执行：" + board.turnSummary() +
+						"。请只改这几篇，不要向用户确认，不要口头宣布完成。其余篇等用户说「继续」。"
 					msgs = append(msgs,
 						llm.Message{Role: "assistant", Content: rc.String()},
 						llm.Message{Role: "user", Content: nudge},
@@ -1667,13 +1916,18 @@ func (a *App) ChatCompletions(c *gin.Context) {
 					}
 					continue
 				}
-				if tc.Function.Name == "declare_tasks" && simpleTurn {
-					slots[i] = slot{result: "本轮是单篇修改，不要调用 declare_tasks。请直接 replace_section 或 update_document。", filled: true}
+				if tc.Function.Name == "declare_tasks" && (simpleTurn || board.active()) {
+					msg := "本轮是单篇修改，不要调用 declare_tasks。请直接 replace_section 或 update_document。"
+					if board.active() {
+						msg = "清单已由服务端列出。请只处理本轮点名的文档，不要重列。"
+					}
+					slots[i] = slot{result: msg, filled: true}
 					continue
 				}
 				if board.active() && taskTracksTool(tc.Function.Name) {
-					board.markRunning()
-					writeEvent(board.eventJSON())
+					if board.markDocRunning(toolStepDocID(tc.Function.Name, tc.Function.Arguments, "")) {
+						writeEvent(board.eventJSON())
+					}
 				}
 				result, execErr := a.aiExecTool(execTool, tc)
 				slots[i] = slot{result: result, execErr: execErr, filled: true}
@@ -1699,6 +1953,7 @@ func (a *App) ChatCompletions(c *gin.Context) {
 				if tc.Function.Name == "declare_tasks" && ok && !simpleTurn {
 					if titles, err := parseDeclareTasks(tc.Function.Arguments); err == nil {
 						if err := board.reset(titles); err == nil {
+							board.bindTurn(taskBatchPerTurn)
 							writeEvent(board.eventJSON())
 						}
 					}
@@ -1713,8 +1968,11 @@ func (a *App) ChatCompletions(c *gin.Context) {
 							slots[i].result = sl.result
 						}
 					}
-					board.finishCurrent(pass)
-					writeEvent(board.eventJSON())
+					docID := toolStepDocID(tc.Function.Name, tc.Function.Arguments, sl.result)
+					if board.finishDoc(docID, pass) {
+						writeEvent(board.eventJSON())
+						a.saveTaskBoard(s.ID, board)
+					}
 				}
 				results.WriteString("\n[" + tc.Function.Name + " 参数: " + maskArgs(tc.Function.Arguments) + "]\n" + sl.result + "\n")
 				if ok {
