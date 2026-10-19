@@ -179,6 +179,8 @@
 .chat-s-item:hover{background:var(--bg-soft)}
 .chat-s-item.active{background:rgba(16,185,133,.10);color:var(--chat-accent2);font-weight:600}
 .chat-s-item.active::before{content:"";position:absolute;left:0;top:20%;bottom:20%;width:3px;border-radius:3px;background:var(--chat-accent)}
+.chat-s-item.generating .chat-s-title::after{content:"";display:inline-block;width:7px;height:7px;margin-left:6px;border-radius:50%;background:var(--chat-accent);vertical-align:middle;animation:chat-gen-pulse 1s ease-in-out infinite}
+@keyframes chat-gen-pulse{0%,100%{opacity:.35}50%{opacity:1}}
 .chat-s-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chat-s-del{flex:none;border:none;background:none;color:var(--muted);cursor:pointer;padding:3px;border-radius:7px;display:none;line-height:1}
 .chat-s-item:hover .chat-s-del{display:inline-flex}
@@ -360,8 +362,26 @@
   var sendBtn = document.getElementById('sendBtn');
   var newBtn = document.getElementById('newSessionBtn');
   var currentId = null;
-  var sending = false;
-  var sessionMeta = {}; // id -> { trust_sensitive }
+  // 每会话一路流：最多 3 路并行；不再用页面级唯一 sending 锁死多任务
+  var activeStreams = {}; // sid(string) -> { abortCtrl, reader, lastSent, ai, pendingSteps, pendingApproval }
+  var stoppedLocal = {}; // 停止后忽略一次仍为 true 的 generating 回包
+  var MAX_CONCURRENT = 3;
+  function sidKey(id) { return id == null ? '' : String(id); }
+  function sessionBusy(id) { var k = sidKey(id); return !!(k && activeStreams[k]); }
+  function serverGenerating(id) {
+    var m = id != null ? sessionMeta[id] : null;
+    return !!(m && m.generating);
+  }
+  function busyCount() {
+    var n = Object.keys(activeStreams).length;
+    Object.keys(sessionMeta).forEach(function (id) {
+      if (sessionMeta[id] && sessionMeta[id].generating && !sessionBusy(id)) n++;
+    });
+    return n;
+  }
+  // 本页 SSE 或服务端仍在跑（刷新重进后）都视为忙碌，可点停止
+  function currentBusy() { return sessionBusy(currentId) || serverGenerating(currentId); }
+  var sessionMeta = {}; // id -> { trust_sensitive, title, generating }
   var trustChk = document.getElementById('trustSensitiveChk');
   var pendingImageURL = null; // 粘贴上传后待发送的图
   var pendingImageName = '';
@@ -493,9 +513,13 @@
       sessionMeta = {};
       var sessions = data.sessions || [];
       sessions.forEach(function (s) {
-        sessionMeta[s.id] = { trust_sensitive: !!s.trust_sensitive, title: s.title || '' };
+        var gen = (!!s.generating || sessionBusy(s.id)) && !stoppedLocal[sidKey(s.id)];
+        if (!s.generating) delete stoppedLocal[sidKey(s.id)];
+        sessionMeta[s.id] = { trust_sensitive: !!s.trust_sensitive, title: s.title || '', generating: gen };
         var item = document.createElement('div');
-        item.className = 'chat-s-item' + (String(s.id) === String(currentId) ? ' active' : '');
+        item.className = 'chat-s-item' +
+          (String(s.id) === String(currentId) ? ' active' : '') +
+          (gen ? ' generating' : '');
         item.dataset.id = s.id;
         item.innerHTML = '<span class="chat-s-title">' + esc(s.title) + '</span>' +
           '<button type="button" class="chat-s-del" title="' + UI.t('chat.deleteSession') + '" aria-label="' + UI.t('chat.deleteSession') + '">✕</button>';
@@ -522,8 +546,9 @@
       if (!listEl.children.length) listEl.innerHTML = '<div class="muted chat-empty">' + UI.t('chat.noSession') + '</div>';
       syncTrustCheckbox();
       setTaskTitle(currentId);
+      refreshSendBusy();
       // 首次进入/刷新：自动打开最近会话，便于接上后台仍在生成的回答
-      if (!didAutoOpen && !currentId && !sending && sessions.length) {
+      if (!didAutoOpen && !currentId && !currentBusy() && sessions.length) {
         didAutoOpen = true;
         openSession(sessions[0].id);
       }
@@ -536,7 +561,12 @@
     if (!trustChk) return;
     var meta = currentId ? sessionMeta[currentId] : null;
     trustChk.checked = !!(meta && meta.trust_sensitive);
-    trustChk.disabled = !currentId || sending;
+    trustChk.disabled = !currentId || currentBusy();
+  }
+
+  function refreshSendBusy() {
+    setSendBtnBusy(currentBusy());
+    syncTrustCheckbox();
   }
 
   async function setSessionTrust(on) {
@@ -597,21 +627,18 @@
 
   function pushArtifact(step) {
     if (!artifactList || !step || !step.ok) return;
-    // 仅写入类工具进产物面板；读文档 label 里也有 doc N，不能据此入库
-    var writeTools = { replace_section: 1, update_document: 1, create_document: 1 };
+    // 仅写入类工具 + 工具事件里的真实 id；不信助手正文里的「id=35」
+    var writeTools = { replace_section: 1, update_document: 1, create_document: 1, duplicate_document: 1 };
     if (!writeTools[step.tool]) return;
     var docId = step.diff && step.diff.id ? step.diff.id : null;
-    if (!docId && step.label) {
-      var m = /doc\s+(\d+)/i.exec(step.label);
-      if (m) docId = m[1];
-    }
+    if (!docId) return; // 无工具背书的 id 不进产物
     var empty = artifactList.querySelector('.chat-panel-empty');
     if (empty) empty.remove();
     var card = document.createElement('div');
     card.className = 'chat-artifact';
     var title = step.label || step.tool || UI.t('chat.artifacts');
-    var link = docId ? '<a href="/console/docs/' + encodeURIComponent(docId) + '/edit" target="_blank" rel="noopener">' +
-      esc(UI.t('chat.openDoc')) + ' #' + esc(String(docId)) + '</a>' : '';
+    var link = '<a href="/console/docs/' + encodeURIComponent(docId) + '/edit" target="_blank" rel="noopener">' +
+      esc(UI.t('chat.openDoc')) + ' #' + esc(String(docId)) + '</a>';
     var meta = step.summary ? esc(step.summary) : '';
     card.innerHTML = '<div class="chat-artifact-title">' + esc(title) + '</div>' +
       (meta ? '<div class="chat-artifact-meta">' + meta + '</div>' : '') + link;
@@ -715,7 +742,7 @@
   }
   function clearPendingImage() { setPendingImage(null); }
   function syncSendEnabled() {
-    if (sending) { sendBtn.disabled = false; return; }
+    if (currentBusy()) { sendBtn.disabled = false; return; }
     sendBtn.disabled = !(inputEl.value.trim() || pendingImageURL);
   }
   async function uploadChatImage(file) {
@@ -885,7 +912,7 @@
     for (var i = 0; i < nodes.length; i++) nodes[i].remove();
   }
   function ensureWaitingPill(target, label) {
-    if (!target || !sending) return;
+    if (!target || !target._live) return;
     if (target.runPill) {
       clearWorkingPlaceholder(target);
       return; // 工具进行中已有动画 pill
@@ -912,7 +939,7 @@
     scrollBottom(false);
   }
   function armWaiting(target, immediate) {
-    if (!target || !sending) return;
+    if (!target || !target._live) return;
     if (target.waitTimer) { clearTimeout(target.waitTimer); target.waitTimer = null; }
     var show = function () {
       target.waitTimer = null;
@@ -1108,6 +1135,10 @@
     scrollBottom(false);
 
     function finish(approve) {
+      Object.keys(activeStreams).forEach(function (k) {
+        var st = activeStreams[k];
+        if (st && st.pendingApproval && st.pendingApproval.id === approval.id) st.pendingApproval = null;
+      });
       okBtn.disabled = true;
       noBtn.disabled = true;
       card.classList.add('done');
@@ -1132,22 +1163,49 @@
   // ===== 会话加载与发送 =====
   var pendingPollTimer = null;
   var pendingPollAi = null;
+  function replayStreamBuffers(stream, target) {
+    if (!stream || !target) return;
+    var steps = stream.pendingSteps || [];
+    stream.pendingSteps = [];
+    for (var i = 0; i < steps.length; i++) pushArtifact(steps[i]);
+    if (stream.pendingApproval) {
+      var appr = stream.pendingApproval;
+      stream.pendingApproval = null;
+      showApproval(target, appr);
+    }
+  }
+
   function stopPendingPoll() {
     if (pendingPollTimer) { clearInterval(pendingPollTimer); pendingPollTimer = null; }
     pendingPollAi = null;
   }
-  // 刷新后：若末条是用户消息且后台仍在生成，轮询直到助手回复出现
+  // 刷新/关页后重进：末条是用户消息时轮询，直到后台 LLM 落库助手回复。
+  // 注意：刷新只断 SSE，不调 /cancel；服务端 genCtx 与请求解耦，任务会继续跑完。
   function watchPendingReply(sessionId, afterUserId) {
     stopPendingPoll();
     if (!sessionId) return;
     var ai = addMsg('assistant', '', true);
+    ai._live = true;
     pendingPollAi = ai;
+    armWaiting(ai, true);
     var tries = 0;
+    var maxTries = 300; // 最长约 10 分钟（长任务/多工具）
     pendingPollTimer = setInterval(async function () {
       tries++;
-      if (tries > 90 || currentId !== sessionId || sending) {
+      if (String(currentId) !== String(sessionId)) {
         stopPendingPoll();
-        if (ai && !ai.gotDelta) {
+        return;
+      }
+      // 本页又开了同会话 live SSE 时，交给 SSE，避免双通道抢气泡
+      if (sessionBusy(sessionId) && activeStreams[sidKey(sessionId)] && activeStreams[sidKey(sessionId)].ai !== ai) {
+        stopPendingPoll();
+        if (ai && ai.wrap && ai.wrap.parentNode) ai.wrap.remove();
+        return;
+      }
+      if (tries > maxTries) {
+        stopPendingPoll();
+        if (ai && !ai.gotDelta && String(currentId) === String(sessionId)) {
+          ai._live = false;
           disarmWaiting(ai);
           contentEl(ai).textContent = UI.t('chat.genInterrupted');
         }
@@ -1162,8 +1220,12 @@
         var last = list.length ? list[list.length - 1] : null;
         if (last && last.role === 'assistant' && (!afterUserId || last.id > afterUserId)) {
           stopPendingPoll();
+          ai._live = false;
           if (ai && ai.wrap && ai.wrap.parentNode) ai.wrap.remove();
           addMsg('assistant', last.content, false, { createdAt: last.created_at });
+          loadSessions();
+        } else if (tries % 5 === 0) {
+          // 顺带刷新侧栏 generating 点
           loadSessions();
         }
       } catch (e) { /* 下次再试 */ }
@@ -1172,12 +1234,13 @@
 
   async function openSession(id) {
     if (window.matchMedia('(max-width:900px)').matches) closeDrawer();
-    if (sending) { UI.toast(UI.t('chat.waitStreaming'), 'error'); return; }
+    // 允许切到其他任务；当前任务在生成也不挡切换
     stopPendingPoll();
     currentId = id;
     clearArtifacts();
     clearPendingImage();
     markActive();
+    refreshSendBusy();
     try {
       var res = await fetch('/console/api/chat/sessions/' + id + '/messages', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
       var data = await res.json();
@@ -1189,14 +1252,23 @@
         addMsg(m.role === 'user' ? 'user' : 'assistant', m.content, false, { createdAt: m.created_at });
       });
       var last = msgs.length ? msgs[msgs.length - 1] : null;
-      if (last && last.role === 'user') {
+      var stream = activeStreams[sidKey(id)];
+      if (sessionBusy(id)) {
+        // 清过消息区后重挂占位，并重放切走期间缓冲的产物与审批
+        var liveAi = addMsg('assistant', '', true);
+        liveAi._live = true;
+        stream.ai = liveAi;
+        armWaiting(liveAi, true);
+        replayStreamBuffers(stream, liveAi);
+      } else if (last && last.role === 'user') {
+        // 刷新重进 / 后台仍在跑：轮询等落库（不调 cancel）
         watchPendingReply(id, last.id);
       }
     } catch (e) { UI.alert(UI.t('chat.loadingFailed')); }
   }
 
   function newSession() {
-    if (sending) { UI.toast(UI.t('chat.waitStreaming'), 'error'); return; }
+    // 其他任务可继续后台生成；新建不占用并发槽，直到真正发送
     stopPendingPoll();
     currentId = null;
     clearArtifacts();
@@ -1205,7 +1277,7 @@
     markActive();
     msgsEl.innerHTML = '';
     showHero(true);
-    syncTrustCheckbox();
+    refreshSendBusy();
     inputEl.focus();
   }
 
@@ -1239,24 +1311,24 @@
     return currentId;
   }
 
-  var abortCtrl = null;   // 当前流式请求的中止控制器
-  var streamReader = null; // 用于停止时 cancel 读流
-  var lastSent = '';      // 最近一次发送的内容（用于"重新发送"）
-
-  // 忙碌提示：生成中再次尝试发送时，给用户可见反馈而不是静默吞掉
+  // 忙碌提示：当前任务生成中再次发送时给可见反馈
   var busyTimer = null;
-  function showBusyHint() {
+  function showBusyHint(msg) {
     var hint = document.getElementById('chat-busy-hint');
     if (!hint) {
       hint = document.createElement('div');
       hint.id = 'chat-busy-hint';
       hint.style.cssText = 'position:fixed;left:50%;bottom:110px;transform:translateX(-50%);background:var(--text);color:var(--bg);font-size:12.5px;padding:6px 14px;border-radius:999px;box-shadow:0 4px 12px rgba(0,0,0,.12);z-index:99;opacity:0;transition:opacity .15s';
-      hint.textContent = UI.t('chat.busy');
       document.body.appendChild(hint);
     }
+    hint.textContent = msg || UI.t('chat.busy');
     requestAnimationFrame(function () { hint.style.opacity = '1'; });
     clearTimeout(busyTimer);
     busyTimer = setTimeout(function () { hint.style.opacity = '0'; }, 2000);
+  }
+
+  function streamOnView(sid) {
+    return String(currentId) === String(sid);
   }
 
   async function send(resendText) {
@@ -1270,20 +1342,46 @@
       content = pendingImageURL ? formatChatImageContent(pendingImageURL, text) : text;
     }
     if (!content) return;
-    if (sending) { showBusyHint(); return; }
+    if (currentBusy()) { showBusyHint(); return; }
+    if (busyCount() >= MAX_CONCURRENT) {
+      showBusyHint(UI.t('chat.maxConcurrent'));
+      UI.toast(UI.t('chat.maxConcurrent'), 'error');
+      return;
+    }
     stopPendingPoll();
-    sending = true;
-    lastSent = content;
-    setSendBtnBusy(true);
-    inputEl.value = '';
-    clearPendingImage();
-    autoGrow();
-    showHero(false);
-    addMsg('user', content, false);
-    var ai = addMsg('assistant', '', true);
+    var lastSent = content;
+    var savedInput = inputEl.value;
+    var savedImage = pendingImageURL;
+    var savedImageName = pendingImageName;
+    var sid = null;
+    var ai = null;
+    var userWrap = null;
+    var abortCtrl = new AbortController();
+    var streamReader = null;
+    var everOffView = false; // 曾切走过：结束时若仍在看该会话，重载消息接上落库结果
+    var committed = false;
+    var started = false;
     try {
-      var sid = await ensureSession();
-      abortCtrl = new AbortController();
+      sid = await ensureSession();
+      var sk = sidKey(sid);
+      if (sessionBusy(sid)) {
+        showBusyHint();
+        throw new Error(UI.t('chat.waitStreaming'));
+      }
+      if (busyCount() >= MAX_CONCURRENT) {
+        throw new Error(UI.t('chat.maxConcurrent'));
+      }
+      inputEl.value = '';
+      clearPendingImage();
+      autoGrow();
+      showHero(false);
+      userWrap = addMsg('user', content, false);
+      ai = addMsg('assistant', '', true);
+      ai._live = true;
+      committed = true;
+      activeStreams[sk] = { abortCtrl: abortCtrl, reader: null, lastSent: lastSent, ai: ai, pendingSteps: [], pendingApproval: null };
+      refreshSendBusy();
+      loadSessions();
       var res = await fetch('/console/api/chat/sessions/' + sid + '/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
@@ -1294,7 +1392,9 @@
         var errData = await res.json().catch(function () { return {}; });
         throw new Error((errData && errData.error) || UI.t('chat.sendFailed'));
       }
+      started = true;
       streamReader = res.body.getReader();
+      if (activeStreams[sk]) activeStreams[sk].reader = streamReader;
       var reader = streamReader;
       var decoder = new TextDecoder();
       var buf = '';
@@ -1310,6 +1410,20 @@
           if (line.indexOf('data:') !== 0) continue;
           var payload;
           try { payload = JSON.parse(line.slice(5).trim()); } catch (e) { continue; }
+          // 切到其他任务时不改 DOM；流仍在跑，回来后靠消息/占位衔接
+          var live = activeStreams[sk] && activeStreams[sk].ai;
+          if (!live || !streamOnView(sid)) {
+            everOffView = true;
+            var st = activeStreams[sk];
+            if (st && payload.approval) st.pendingApproval = payload.approval;
+            if (st && payload.tool_step && payload.tool_step.phase === 'end' && payload.tool_step.ok) {
+              st.pendingSteps = st.pendingSteps || [];
+              st.pendingSteps.push(payload.tool_step);
+            }
+            if (payload.done) done = true;
+            continue;
+          }
+          ai = live;
           if (payload.reset) {
             ai.wrap._raw = '';
             ai.gotDelta = false;
@@ -1322,6 +1436,7 @@
           if (payload.tool_step) { onToolStep(ai, payload.tool_step); }
           if (payload.approval) {
             disarmWaiting(ai);
+            if (activeStreams[sk]) activeStreams[sk].pendingApproval = payload.approval;
             showApproval(ai, payload.approval);
           }
           if (payload.think) {
@@ -1336,11 +1451,9 @@
             if (!ai.gotDelta) { ai.wrap._raw = ''; contentEl(ai).textContent = ''; }
             ai.gotDelta = true;
             appendDelta(ai, payload.delta);
-            // 正文间隙（模型停顿组织工具调用）超过约 0.5s 再亮「正在处理」
             armWaiting(ai, false);
           }
           if (payload.usage) {
-            // 贴在回答气泡底部；与 .chat-bubble-body 分离子节点，markdown 重渲不会冲掉
             if (!ai.meta) {
               ai.meta = document.createElement('span');
               ai.meta.className = 'chat-m-meta';
@@ -1352,7 +1465,6 @@
             });
           }
           if (payload.error) {
-            // 尚未有正文时清掉加载动画占位，避免"正在处理…"一直转
             if (!ai.gotDelta) contentEl(ai).textContent = '';
             var errEl = document.createElement('div');
             errEl.className = 'chat-m-error';
@@ -1362,7 +1474,9 @@
               var re = document.createElement('button');
               re.type = 'button'; re.className = 'chat-resend';
               re.textContent = UI.t('chat.resend');
-              re.addEventListener('click', function () { re.remove(); send(lastSent); });
+              (function (msg) {
+                re.addEventListener('click', function () { re.remove(); send(msg); });
+              })(lastSent);
               contentEl(ai).appendChild(re);
             }
           }
@@ -1371,9 +1485,16 @@
       }
     } catch (e) {
       var aborted = e && e.name === 'AbortError';
-      var cel = contentEl(ai);
-      // 停止时保留思考/正文；失败且无正文时清空占位
-      if (cel) {
+      if (committed && !started) {
+        if (userWrap && userWrap.wrap && userWrap.wrap.parentNode) userWrap.wrap.remove();
+        if (ai && ai.wrap && ai.wrap.parentNode) ai.wrap.remove();
+        inputEl.value = savedInput || '';
+        if (savedImage) setPendingImage(savedImage, savedImageName || '');
+        autoGrow();
+        if (!msgsEl.children.length) showHero(true);
+        if (!aborted && e && e.message) UI.toast(e.message, 'error');
+      } else if (streamOnView(sid) && ai && contentEl(ai)) {
+        var cel = contentEl(ai);
         var work = cel.querySelector('.chat-working');
         if (work) work.remove();
         if (!aborted && !ai.gotDelta && !ai.think) cel.innerHTML = '';
@@ -1382,31 +1503,41 @@
         el.textContent = aborted ? UI.t('chat.stopped') : (e.message || UI.t('chat.sendFailed'));
         cel.appendChild(el);
         if (lastSent && !aborted) {
-          var re = document.createElement('button');
-          re.type = 'button'; re.className = 'chat-resend';
-          re.textContent = UI.t('chat.resend');
-          re.addEventListener('click', function () { re.remove(); send(lastSent); });
-          cel.appendChild(re);
+          var re2 = document.createElement('button');
+          re2.type = 'button'; re2.className = 'chat-resend';
+          re2.textContent = UI.t('chat.resend');
+          re2.addEventListener('click', function () { re2.remove(); send(lastSent); });
+          cel.appendChild(re2);
         }
+      } else if (!aborted && e && e.message) {
+        UI.toast(e.message, 'error');
       }
     } finally {
-      sending = false;
-      loadSlashCommands();
-      abortCtrl = null;
-      streamReader = null;
-      // 停止/失败后必须清理 working 状态条，否则它会永远转圈，
-      // 看起来像"停止没生效"
-      disarmWaiting(ai);
-      if (ai.runPill) { ai.runPill.remove(); ai.runPill = null; }
-      if (ai.status) { stopStatusAnim(ai); ai.status.remove(); ai.status = null; }
-      // 仅移除 working 占位，勿清空整段（避免抹掉「已停止」提示或思考块旁的状态）
-      if (!ai.gotDelta && contentEl(ai)) {
-        var w = contentEl(ai).querySelector('.chat-working');
-        if (w) w.remove();
+      var skDone = sidKey(sid);
+      var endAi = ai;
+      if (skDone && activeStreams[skDone] && activeStreams[skDone].abortCtrl === abortCtrl) {
+        // 切会话后可能已重挂过气泡，优先清当前登记的 ai
+        if (activeStreams[skDone].ai) endAi = activeStreams[skDone].ai;
+        delete activeStreams[skDone];
       }
-      setSendBtnBusy(false);
+      if (endAi) {
+        endAi._live = false;
+        disarmWaiting(endAi);
+        if (endAi.runPill) { endAi.runPill.remove(); endAi.runPill = null; }
+        if (endAi.status) { stopStatusAnim(endAi); endAi.status.remove(); endAi.status = null; }
+        if (!endAi.gotDelta && contentEl(endAi)) {
+          var w = contentEl(endAi).querySelector('.chat-working');
+          if (w) w.remove();
+        }
+      }
+      loadSlashCommands();
+      refreshSendBusy();
       loadSessions();
-      scrollBottom(false);
+      if (streamOnView(sid) && sid) {
+        scrollBottom(false);
+        // 中途切走过时 DOM 可能只有占位，重载以接上已落库回答
+        if (everOffView) openSession(sid);
+      }
     }
   }
 
@@ -1427,21 +1558,32 @@
   }
 
   function stopGenerating() {
-    if (!sending && !abortCtrl) return;
-    // 先通知服务端取消后台生成，再断 SSE（仅 abort 在刷新场景下不会停后台）
     var sid = currentId;
-    if (sid) {
-      fetch('/console/api/chat/sessions/' + sid + '/cancel', {
-        method: 'POST',
-        headers: { 'X-Requested-With': 'XMLHttpRequest' }
-      }).catch(function () {});
+    var stream = sid ? activeStreams[sidKey(sid)] : null;
+    if (!sid) return;
+    stoppedLocal[sidKey(sid)] = true;
+    if (sessionMeta[sid]) sessionMeta[sid].generating = false;
+    refreshSendBusy();
+    var pollAi = pendingPollAi;
+    if (!stream) {
+      stopPendingPoll();
+      if (pollAi) {
+        pollAi._live = false;
+        disarmWaiting(pollAi);
+        if (contentEl(pollAi)) contentEl(pollAi).textContent = UI.t('chat.stopped');
+      }
+    } else {
+      if (stream.abortCtrl) {
+        try { stream.abortCtrl.abort(); } catch (e) {}
+      }
+      if (stream.reader) {
+        try { stream.reader.cancel(); } catch (e) {}
+      }
     }
-    if (abortCtrl) {
-      try { abortCtrl.abort(); } catch (e) {}
-    }
-    if (streamReader) {
-      try { streamReader.cancel(); } catch (e) {}
-    }
+    fetch('/console/api/chat/sessions/' + sid + '/cancel', {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    }).catch(function () {}).then(function () { loadSessions(); });
   }
 
   function autoGrow() {
@@ -1465,7 +1607,7 @@
     }
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
-      if (sending) return; // 生成中 Enter 不重发，停止请点按钮
+      if (currentBusy()) return; // 本任务生成中 Enter 不重发，停止请点按钮
       send();
     }
   });
@@ -1484,7 +1626,7 @@
     }
     if (!file) return;
     e.preventDefault();
-    if (sending) { showBusyHint(); return; }
+    if (currentBusy()) { showBusyHint(); return; }
     if (pendingImageURL) {
       UI.toast(UI.t('chat.imageOneOnly'), 'error');
       return;
@@ -1494,7 +1636,7 @@
     });
   });
   if (imgPreviewClear) imgPreviewClear.addEventListener('click', clearPendingImage);
-  sendBtn.addEventListener('click', function () { if (sending) stopGenerating(); else send(); });
+  sendBtn.addEventListener('click', function () { if (currentBusy()) stopGenerating(); else send(); });
   newBtn.addEventListener('click', newSession);
 
   // ===== 移动端抽屉侧栏 / 产物面板遮罩 =====

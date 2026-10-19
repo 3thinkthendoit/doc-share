@@ -205,6 +205,9 @@ const aiToolRounds = 8
 // aiAutoContinueMax Flash 等弱模型「只说话不调工具」时的服务端自动续跑次数上限
 const aiAutoContinueMax = 3
 
+// aiMaxConcurrentGensPerUser 每用户同时进行中的生成上限（多任务并行）
+const aiMaxConcurrentGensPerUser = 3
+
 // chatApprovalTTL 敏感操作等待用户确认的时限
 const chatApprovalTTL = 3 * time.Minute
 
@@ -214,6 +217,85 @@ var reToolUnread = regexp.MustCompile(`请用 offset=\d+ 继续读取`)
 // reWaitUser 模型口头停等用户（说开始/继续）而未发起 tool_calls。
 // 刻意不含「是否继续」——那常见于「已做完，要不要接着做下一件」的合法澄清。
 var reWaitUser = regexp.MustCompile(`(?i)(?:请(?:你)?(?:回复|说|输入).{0,12}(?:开始|继续)|等待(?:你的)?(?:确认|命令|指示)|如果你说|你说[「"']?开始|准备好了吗)`)
+
+// reSideEffectNegate 否定/未完成表述：出现时不当作「已成功侧效」宣称（避免误续跑）
+var reSideEffectNegate = regexp.MustCompile(`(?i)(?:尚未|未(?:曾|有)?(?:创建|生成|保存|写入|落库|复制)|没有(?:创建|生成|保存|写入)|请确认是否|have\s+not|has\s+not|not\s+(?:yet\s+)?(?:been\s+)?(?:created|saved|generated)|was(?:\s+not|n't)\s+successfully)`)
+
+// reCreateClaim 创建/生成类宣称（需 create_document / duplicate_document 成功背书）
+var reCreateClaim = regexp.MustCompile(`(?i)(?:` +
+	`已(?:成功)?(?:创建|生成)(?:了)?(?:一份|一篇)?(?:文档|文件|数独)|` +
+	`文档已(?:创建|生成)|已为你(?:创建|生成)|` +
+	`(?:生成|创建)(?:了|出)(?:一份|一篇)?(?:文档|数独|内容)?[^。\n]{0,40}(?:id\s*=\s*\d+|\{\{doc:\d+\}\})|` +
+	`generated\s+id\s*=\s*\d+|` +
+	`successfully\s+created\s+(?:the\s+)?(?:document|doc)\b|` +
+	`created\s+(?:the\s+)?(?:document|doc)\b` +
+	`)`)
+
+// reWriteClaim 保存/写入/更新类宣称（需任意文档写入类工具成功，且宣称 id 须在证据集内）
+var reWriteClaim = regexp.MustCompile(`(?i)(?:` +
+	`已(?:成功)?(?:保存|写入|落库|更新|修改)(?:了)?(?:文档|文件)?|` +
+	`文档已(?:保存|更新|写入)|已为你(?:保存|更新)|` +
+	`successfully\s+(?:saved|updated)\s+(?:the\s+)?(?:document|doc)\b` +
+	`)`)
+
+// reClaimedDocID 从助手正文提取其声称的文档 id
+var reClaimedDocID = regexp.MustCompile(`(?i)(?:id\s*=\s*|\{\{doc:)(\d+)`)
+
+// reToolResultDocID 从工具结果文案解析文档 id（优先 {{doc:N}} / id=N）
+var reToolResultDocID = regexp.MustCompile(`(?:\{\{doc:|id\s*=\s*)(\d+)`)
+
+// aiCreateTools 创建类写入（「已创建/已生成」必须由此背书）
+var aiCreateTools = map[string]bool{
+	"create_document": true, "duplicate_document": true,
+}
+
+// aiDocWriteTools 文档正文/元数据写入（「已保存/已更新」由此背书；含创建）
+var aiDocWriteTools = map[string]bool{
+	"create_document": true, "duplicate_document": true,
+	"update_document": true, "replace_section": true,
+	"restore_document": true, "restore_revision": true,
+	"apply_template": true,
+}
+
+// aiMutationTools 任意改变世界状态的工具（产物面板 diff.id 等）
+var aiMutationTools = map[string]bool{
+	"create_document": true, "update_document": true, "replace_section": true,
+	"delete_document": true, "restore_document": true, "restore_revision": true,
+	"duplicate_document": true, "purge_document": true, "set_share": true,
+	"create_project": true, "update_project": true, "delete_project": true,
+	"create_category": true, "update_category": true, "delete_category": true,
+	"create_template": true, "update_template": true, "delete_template": true,
+	"apply_template": true, "save_skill": true, "delete_skill": true,
+	"add_comment": true, "delete_comment": true, "label_revision": true,
+	"set_project_share": true, "add_project_member": true,
+	"update_project_member": true, "remove_project_member": true,
+	"review_access_request": true,
+}
+
+// sideEffectCorrection 自动续跑仍无效时，附加到助手终答的系统更正（用户可见）
+const sideEffectCorrection = "\n\n---\n⚠️ **系统更正**：本轮未检测到与表述相符的成功写入工具结果，请勿采信上文中的「已创建/已保存/id=…」等表述。需要落库时请重新说明需求，我会实际调用工具执行。"
+
+// mutationEvidence 本请求内已核实的写入证据（防「错工具洗白」）
+type mutationEvidence struct {
+	createOK bool
+	writeOK  bool
+	docIDs   map[int64]bool
+}
+
+func (e *mutationEvidence) note(tool string, docID int64) {
+	if e.docIDs == nil {
+		e.docIDs = map[int64]bool{}
+	}
+	if aiCreateTools[tool] {
+		e.createOK = true
+	}
+	if aiDocWriteTools[tool] {
+		e.writeOK = true
+	}
+	if docID > 0 && (aiCreateTools[tool] || aiDocWriteTools[tool] || aiMutationTools[tool]) {
+		e.docIDs[docID] = true
+	}
+}
 
 // aiAutoContinueShortRunes 未读完时，助手正文短于此阈值且无实质作答，才视为「卡住」可续跑
 const aiAutoContinueShortRunes = 80
@@ -256,10 +338,14 @@ func injectBudgetPerDoc(n int) int {
 }
 
 // shouldAutoContinue 判断本轮无 tool_calls 时是否应由服务端催促模型继续调工具。
-// 规则：口头停等必续跑；仅「上一轮未读完」时，只在助手几乎没作答时续跑，避免冲掉合法终答。
-func shouldAutoContinue(lastToolResults, assistantText string) bool {
+// 规则：口头停等必续跑；谎称写入成功却无匹配证据必续跑；
+// 「上一轮未读完」时，只在助手几乎没作答时续跑，避免冲掉合法终答。
+func shouldAutoContinue(lastToolResults, assistantText string, ev mutationEvidence) bool {
 	text := strings.TrimSpace(assistantText)
 	if text != "" && reWaitUser.MatchString(text) {
+		return true
+	}
+	if claimsUnverifiedMutation(text, ev) {
 		return true
 	}
 	if !reToolUnread.MatchString(lastToolResults) {
@@ -267,6 +353,67 @@ func shouldAutoContinue(lastToolResults, assistantText string) bool {
 	}
 	// 未读完但已给出较长回答：视为基于已读内容的终答，不再续跑
 	return utf8.RuneCountInString(text) < aiAutoContinueShortRunes
+}
+
+// extractClaimedDocIDs 从助手正文提取声称的文档 id
+func extractClaimedDocIDs(text string) []int64 {
+	ms := reClaimedDocID.FindAllStringSubmatch(text, -1)
+	if len(ms) == 0 {
+		return nil
+	}
+	seen := map[int64]bool{}
+	var out []int64
+	for _, m := range ms {
+		id, _ := strconv.ParseInt(m[1], 10, 64)
+		if id > 0 && !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// idsVerified 宣称中的每个 id 都在证据集内（无具体 id 时视为仅依赖工具类别）
+func idsVerified(claimed []int64, ev mutationEvidence) bool {
+	if len(claimed) == 0 {
+		return true
+	}
+	for _, id := range claimed {
+		if ev.docIDs == nil || !ev.docIDs[id] {
+			return false
+		}
+	}
+	return true
+}
+
+// claimsUnverifiedMutation 助手声称已创建/保存等侧效，但证据不足或不匹配。
+// - 否定句不判谎；创建类宣称需 createOK；保存/更新类需 writeOK；
+// - 若正文带具体 id，每个 id 都必须来自本请求成功的文档写入工具。
+func claimsUnverifiedMutation(assistantText string, ev mutationEvidence) bool {
+	text := strings.TrimSpace(assistantText)
+	if text == "" {
+		return false
+	}
+	if reSideEffectNegate.MatchString(text) {
+		return false
+	}
+	isCreate := reCreateClaim.MatchString(text)
+	isWrite := reWriteClaim.MatchString(text)
+	if !isCreate && !isWrite {
+		return false
+	}
+	claimed := extractClaimedDocIDs(text)
+	if isCreate {
+		if !ev.createOK || !idsVerified(claimed, ev) {
+			return true
+		}
+	}
+	if isWrite && !isCreate {
+		if !ev.writeOK || !idsVerified(claimed, ev) {
+			return true
+		}
+	}
+	return false
 }
 
 // aiExecTool 执行一次工具调用并整理结果：错误转文案回传模型，同时把错误暴露给调用方
@@ -321,24 +468,47 @@ func (a *App) ReviewChatApproval(c *gin.Context) {
 // 值必须可比较：sync.Map.CompareAndDelete 用 == 比对，context.CancelFunc 不可比较，直接存会 panic。
 type chatGenToken struct {
 	cancel context.CancelFunc
+	userID uint
 }
 
-// bindChatGen 登记本会话当前生成；若已有进行中的生成则先取消（同会话不并行烧两轮）
-func (a *App) bindChatGen(sessionID uint, token *chatGenToken) {
-	if prev, ok := a.chatGens.Swap(sessionID, token); ok {
+// tryBindChatGen 登记本会话当前生成。同会话已有生成则取消旧的并替换（不占新槽）；
+// 新会话登记时若该用户并发生成数已达上限则拒绝。成功返回 true。
+func (a *App) tryBindChatGen(sessionID, userID uint, token *chatGenToken) bool {
+	a.userGenMu.Lock()
+	defer a.userGenMu.Unlock()
+	token.userID = userID
+	if prev, ok := a.chatGens.Load(sessionID); ok {
 		if old, ok := prev.(*chatGenToken); ok && old != nil && old.cancel != nil {
 			old.cancel()
 		}
+		a.chatGens.Store(sessionID, token)
+		return true
 	}
+	n := 0
+	a.chatGens.Range(func(_, v any) bool {
+		if t, ok := v.(*chatGenToken); ok && t != nil && t.userID == userID {
+			n++
+		}
+		return true
+	})
+	if n >= aiMaxConcurrentGensPerUser {
+		return false
+	}
+	a.chatGens.Store(sessionID, token)
+	return true
 }
 
 // unbindChatGen 仅当仍是本次 token 时移除，避免误清后来者的登记
 func (a *App) unbindChatGen(sessionID uint, token *chatGenToken) {
+	a.userGenMu.Lock()
+	defer a.userGenMu.Unlock()
 	a.chatGens.CompareAndDelete(sessionID, token)
 }
 
 // cancelChatGen 显式停止该会话正在进行的生成（停止按钮）
 func (a *App) cancelChatGen(sessionID uint) bool {
+	a.userGenMu.Lock()
+	defer a.userGenMu.Unlock()
 	v, ok := a.chatGens.LoadAndDelete(sessionID)
 	if !ok {
 		return false
@@ -348,6 +518,12 @@ func (a *App) cancelChatGen(sessionID uint) bool {
 		return true
 	}
 	return false
+}
+
+// sessionGenerating 该会话是否有进行中的后台生成
+func (a *App) sessionGenerating(sessionID uint) bool {
+	_, ok := a.chatGens.Load(sessionID)
+	return ok
 }
 
 // CancelChatCompletions 用户点击「停止」：取消后台生成。刷新/关页只断 SSE，不走此接口，生成会继续并落库。
@@ -370,7 +546,24 @@ func maskArgs(argsJSON string) string {
 	return argsJSON
 }
 
+// toolStepDocID 从工具参数或成功结果中解析文档 id（供产物面板 / 标签使用）
+func toolStepDocID(name, argsJSON, result string) int64 {
+	var args struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal([]byte(argsJSON), &args)
+	if args.ID > 0 {
+		return args.ID
+	}
+	if m := reToolResultDocID.FindStringSubmatch(result); m != nil {
+		id, _ := strconv.ParseInt(m[1], 10, 64)
+		return id
+	}
+	return 0
+}
+
 // toolStepEndJSON 构造 Cursor 风格工具结束事件：短标签 + 可选 replace 小 diff。
+// 写入类工具成功时带 diff.id，前端产物面板只认工具事件里的 id，不信助手散文。
 func toolStepEndJSON(tc llm.ToolCallMsg, result string, ok bool) string {
 	sum := clipRunes(strings.TrimSpace(result), 120)
 	label := toolStepLabel(tc.Function.Name, tc.Function.Arguments, result, ok)
@@ -379,6 +572,10 @@ func toolStepEndJSON(tc llm.ToolCallMsg, result string, ok bool) string {
 	b.WriteString(`,"ok":` + strconv.FormatBool(ok))
 	b.WriteString(`,"label":` + jsonQuote(label))
 	b.WriteString(`,"summary":` + jsonQuote(sum))
+	docID := int64(0)
+	if ok {
+		docID = toolStepDocID(tc.Function.Name, tc.Function.Arguments, result)
+	}
 	if tc.Function.Name == "replace_section" {
 		var args struct {
 			ID      int64  `json:"id"`
@@ -388,12 +585,19 @@ func toolStepEndJSON(tc llm.ToolCallMsg, result string, ok bool) string {
 		if json.Unmarshal([]byte(tc.Function.Arguments), &args) == nil && (args.OldText != "" || args.NewText != "") {
 			oldN := utf8.RuneCountInString(args.OldText)
 			newN := utf8.RuneCountInString(args.NewText)
-			b.WriteString(`,"diff":{"id":` + strconv.FormatInt(args.ID, 10))
+			if args.ID > 0 {
+				docID = args.ID
+			}
+			b.WriteString(`,"diff":{"id":` + strconv.FormatInt(docID, 10))
 			b.WriteString(`,"old":` + jsonQuote(clipRunes(args.OldText, 280)))
 			b.WriteString(`,"new":` + jsonQuote(clipRunes(args.NewText, 280)))
 			b.WriteString(`,"old_n":` + strconv.Itoa(oldN))
 			b.WriteString(`,"new_n":` + strconv.Itoa(newN) + `}`)
+		} else if docID > 0 {
+			b.WriteString(`,"diff":{"id":` + strconv.FormatInt(docID, 10) + `}`)
 		}
+	} else if docID > 0 && aiMutationTools[tc.Function.Name] {
+		b.WriteString(`,"diff":{"id":` + strconv.FormatInt(docID, 10) + `}`)
 	}
 	b.WriteString(`}}`)
 	return b.String()
@@ -432,7 +636,21 @@ func toolStepLabel(name, argsJSON, result string, ok bool) string {
 	case "search_documents":
 		return "Searched documents"
 	case "create_document":
+		if !ok {
+			return "create_document failed"
+		}
+		if id := toolStepDocID(name, argsJSON, result); id > 0 {
+			return fmt.Sprintf("Created document · doc %d", id)
+		}
 		return "Created document"
+	case "duplicate_document":
+		if !ok {
+			return "duplicate_document failed"
+		}
+		if id := toolStepDocID(name, argsJSON, result); id > 0 {
+			return fmt.Sprintf("Duplicated document · doc %d", id)
+		}
+		return "Duplicated document"
 	case "delete_document":
 		return "Deleted document"
 	case "restore_document":
@@ -467,8 +685,6 @@ func toolStepLabel(name, argsJSON, result string, ok bool) string {
 		return "Updated template"
 	case "delete_template":
 		return "Deleted template"
-	case "duplicate_document":
-		return "Duplicated document"
 	case "purge_document":
 		return "Purged document"
 	case "label_revision":
@@ -533,6 +749,7 @@ const chatSystemPrompt = "你是 DocShare 文档平台的 AI 助手，用与用�
 	"【上下文感知】历史工具结果可能被服务端裁短到摘要；需要完整正文时直接再调用对应工具，不要凭空补全。" +
 	"【回答纪律】只回答用户最新一条问题：用户追问 id/链接/某字段等具体信息时，直接从上下文工具结果中摘出作答（如「《周报》id=3」），不要整段重复先前的回复，也不要重新调用工具再列一遍；列举文档/项目/模板时必须带上 id=N，便于用户引用。" +
 	"【实事求是】只基于工具返回的真实结果作答，字段以实际返回为准；不确定就说\"不确定\"并去查证，绝不编造。" +
+	"【侧效】禁止在未收到对应写入类工具的成功结果前声称已创建/已保存/已生成文档或编造 id；没有工具成功结果就如实说尚未执行。" +
 	"【项目与分类】用 list/create/update/delete_project 与 list/create/update/delete_category 管理；删除需用户确认。只有文档属主能在 update_document 里改 project_id、category_id（与正文同事务），0 表示清空，且只能挂到自己的项目或分类。" +
 	"【协作】项目成员用 list/add/update/remove_project_member；项目分享用 get/set_project_share；访问申请用 list/review_access_request。移除成员、开启项目分享、审批申请需用户确认。" +
 	"【模板】用 list/get/create/update/delete_template 与 apply_template 管理；apply 支持 markdown 与画布类型。" +
@@ -664,7 +881,7 @@ func (a *App) ChatPage(c *gin.Context) {
 	})
 }
 
-// ListSessions 当前用户的会话列表（按最近更新排序）
+// ListSessions 当前用户的会话列表（按最近更新排序）；附带 generating 供前端多任务态展示
 func (a *App) ListChatSessions(c *gin.Context) {
 	user := middleware.CurrentUser(c)
 	var sessions []model.ChatSession
@@ -672,7 +889,21 @@ func (a *App) ListChatSessions(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "加载会话失败"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"sessions": sessions})
+	out := make([]gin.H, 0, len(sessions))
+	for _, s := range sessions {
+		out = append(out, gin.H{
+			"id":              s.ID,
+			"user_id":         s.UserID,
+			"title":           s.Title,
+			"agent_id":        s.AgentID,
+			"trust_sensitive": s.TrustSensitive,
+			"creating_skill":  s.CreatingSkill,
+			"created_at":      s.CreatedAt,
+			"updated_at":      s.UpdatedAt,
+			"generating":      a.sessionGenerating(s.ID),
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"sessions": out})
 }
 
 // CreateSession 新建会话
@@ -797,6 +1028,20 @@ func (a *App) ChatCompletions(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "chat.llmNotConfigured")})
 		return
 	}
+
+	// 生成上下文与 HTTP 请求解耦：刷新/关页只断 SSE，后台仍跑完并落库；
+	// 只有「停止」接口或同会话新请求会 cancelChatGen。先占并发槽，超限直接拒绝。
+	genCtx, genCancel := context.WithCancel(context.Background())
+	token := &chatGenToken{cancel: genCancel}
+	if !a.tryBindChatGen(s.ID, user.ID, token) {
+		genCancel()
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": a.tr(c, "chat.maxConcurrent")})
+		return
+	}
+	defer func() {
+		genCancel()
+		a.unbindChatGen(s.ID, token)
+	}()
 
 	// 先落库用户消息；标题为默认值时改为内容摘要
 	userMsg := model.ChatMessage{SessionID: s.ID, Role: "user", Content: content}
@@ -949,15 +1194,6 @@ func (a *App) ChatCompletions(c *gin.Context) {
 		execTool = wrapExecSkipReread(execTool, prereadIDs)
 	}
 
-	// 生成上下文与 HTTP 请求解耦：刷新/关页只断 SSE，后台仍跑完并落库；
-	// 只有「停止」接口或同会话新请求会 cancelChatGen。
-	genCtx, genCancel := context.WithCancel(context.Background())
-	token := &chatGenToken{cancel: genCancel}
-	a.bindChatGen(s.ID, token)
-	defer func() {
-		genCancel()
-		a.unbindChatGen(s.ID, token)
-	}()
 	clientAlive := func() bool { return c.Request.Context().Err() == nil }
 
 	// SSE 响应头
@@ -965,10 +1201,17 @@ func (a *App) ChatCompletions(c *gin.Context) {
 	c.Writer.Header().Set("Cache-Control", "no-cache")
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	flusher, canFlush := c.Writer.(http.Flusher)
+	// writeEvent 必须吞掉断连错误/ErrAbortHandler：刷新或关页只断 SSE，
+	// 若 Write/Flush panic 冒泡出会跑到 defer genCancel，误杀后台 LLM。
 	writeEvent := func(payload string) {
 		if !clientAlive() {
 			return
 		}
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[llm] SSE write aborted (client gone), gen continues session=%d: %v", s.ID, r)
+			}
+		}()
 		if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", payload); err != nil {
 			return
 		}
@@ -993,6 +1236,7 @@ func (a *App) ChatCompletions(c *gin.Context) {
 	startedAt := time.Now()
 	toolCache := map[string]string{} // 重复的相同调用直接复用结果，防止模型原地打转
 	var lastToolResults string       // 上一轮工具结果（用于无 tool_call 时的自动续跑判断）
+	var mutEv mutationEvidence       // 本请求写入证据（防口头谎称 / 错工具洗白）
 	autoContinues := 0
 	for round := 0; round < aiToolRounds; round++ {
 		// 仅显式停止（genCtx）中断轮次；刷新不断开 genCtx
@@ -1036,19 +1280,24 @@ func (a *App) ChatCompletions(c *gin.Context) {
 			break
 		}
 		if len(assistant.ToolCalls) == 0 {
-			// Flash 常见：口述「说开始再读/再改」或上一页未读完却不调工具 —— 服务端自动续跑，不把球踢回用户
-			if tools != nil && autoContinues < aiAutoContinueMax && shouldAutoContinue(lastToolResults, rc.String()) {
+			// Flash 常见：口述「说开始再读/再改」、谎称已创建却未调工具、或上一页未读完却不调工具 —— 服务端自动续跑
+			if tools != nil && autoContinues < aiAutoContinueMax && shouldAutoContinue(lastToolResults, rc.String(), mutEv) {
 				autoContinues++
 				if rc.Len() > 0 {
 					writeEvent(`{"reset":true}`)
 				}
+				nudge := "[系统] 不要只输出计划或等待用户确认。请立即发起工具调用继续执行未完成操作；" +
+					"若文档未读完，直接调用 read_document 并带上正确的 offset；若已有完整正文，直接 replace_section / update_document。" +
+					"禁止要求用户回复「开始/继续」。"
+				if claimsUnverifiedMutation(rc.String(), mutEv) {
+					nudge = "[系统] 你刚才声称已创建/保存/生成了文档，但本轮没有与表述相符的写入工具成功结果（创建类须 create_document/duplicate_document）。" +
+						"请立即调用正确工具实际执行；禁止编造 id 或用其它工具结果洗白。"
+				}
 				msgs = append(msgs,
 					llm.Message{Role: "assistant", Content: rc.String()},
-					llm.Message{Role: "user", Content: "[系统] 不要只输出计划或等待用户确认。请立即发起工具调用继续执行未完成操作；" +
-						"若文档未读完，直接调用 read_document 并带上正确的 offset；若已有完整正文，直接 replace_section / update_document。" +
-						"禁止要求用户回复「开始/继续」。"},
+					llm.Message{Role: "user", Content: nudge},
 				)
-				log.Printf("[llm] 自动续跑 #%d session=%d（未读完或口头停等）", autoContinues, s.ID)
+				log.Printf("[llm] 自动续跑 #%d session=%d（未读完/口头停等/未核实侧效）", autoContinues, s.ID)
 				writeEvent(`{"tool":` + jsonQuote("auto_continue") + `}`)
 				continue
 			}
@@ -1189,6 +1438,9 @@ func (a *App) ChatCompletions(c *gin.Context) {
 			}
 			writeEvent(toolStepEndJSON(tc, sl.result, ok))
 			results.WriteString("\n[" + tc.Function.Name + " 参数: " + maskArgs(tc.Function.Arguments) + "]\n" + sl.result + "\n")
+			if ok {
+				mutEv.note(tc.Function.Name, toolStepDocID(tc.Function.Name, tc.Function.Arguments, sl.result))
+			}
 			if ok && tc.Function.Name == "save_skill" && s.CreatingSkill {
 				if err := a.DB.Model(&model.ChatSession{}).Where("id = ? AND user_id = ?", s.ID, user.ID).
 					Update("creating_skill", false).Error; err != nil {
@@ -1233,6 +1485,11 @@ func (a *App) ChatCompletions(c *gin.Context) {
 		}
 		reply = a.tr(c, "chat.generateFailed")
 		writeEvent(`{"error":` + jsonQuote(a.tr(c, "chat.generateFailed")) + `}`)
+	}
+	// 仍含未核实侧效宣称：附加系统更正，避免用户采信假成功
+	if claimsUnverifiedMutation(reply, mutEv) {
+		reply += sideEffectCorrection
+		writeEvent(`{"delta":` + jsonQuote(sideEffectCorrection) + `}`)
 	}
 	assistantMsg := model.ChatMessage{SessionID: s.ID, Role: "assistant", Content: reply}
 	if err := a.DB.Create(&assistantMsg).Error; err != nil {

@@ -40,6 +40,7 @@ type App struct {
 
 	approvals sync.Map // AI 敏感操作待审批表：approvalID -> chatApproval
 	chatGens  sync.Map // 会话级生成取消：sessionID(uint) -> *chatGenToken；刷新不断开生成，停止按钮显式取消
+	userGenMu sync.Mutex // 保护「每用户并发生成数」的登记/释放，避免超限竞态
 }
 
 // chatApproval 一次待用户确认的敏感工具调用
