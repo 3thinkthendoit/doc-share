@@ -547,8 +547,8 @@
       syncTrustCheckbox();
       setTaskTitle(currentId);
       refreshSendBusy();
-      // 首次进入/刷新：自动打开最近会话，便于接上后台仍在生成的回答
-      if (!didAutoOpen && !currentId && !currentBusy() && sessions.length) {
+      // 首次进入/刷新：自动打开最近会话（含后台仍 generating 的），便于接上回答
+      if (!didAutoOpen && !currentId && sessions.length) {
         didAutoOpen = true;
         openSession(sessions[0].id);
       }
@@ -1179,8 +1179,24 @@
     if (pendingPollTimer) { clearInterval(pendingPollTimer); pendingPollTimer = null; }
     pendingPollAi = null;
   }
-  // 刷新/关页后重进：末条是用户消息时轮询，直到后台 LLM 落库助手回复。
-  // 注意：刷新只断 SSE，不调 /cancel；服务端 genCtx 与请求解耦，任务会继续跑完。
+  function showInterruptedPlaceholder(afterUserId) {
+    var ai = addMsg('assistant', '', false);
+    contentEl(ai).textContent = UI.t('chat.genInterrupted');
+    var re = document.createElement('button');
+    re.type = 'button';
+    re.className = 'chat-resend';
+    re.textContent = UI.t('chat.resend');
+    re.addEventListener('click', function () {
+      // 重发最近一条用户消息
+      var users = msgsEl.querySelectorAll('.chat-m.user');
+      var lastUser = users.length ? users[users.length - 1] : null;
+      var raw = lastUser && lastUser._raw;
+      if (raw) send(raw);
+    });
+    contentEl(ai).appendChild(re);
+  }
+
+  // 刷新/关页后重进：仅当服务端仍 generating 时轮询；否则立刻提示可重发，避免假「正在处理」。
   function watchPendingReply(sessionId, afterUserId) {
     stopPendingPoll();
     if (!sessionId) return;
@@ -1196,7 +1212,6 @@
         stopPendingPoll();
         return;
       }
-      // 本页又开了同会话 live SSE 时，交给 SSE，避免双通道抢气泡
       if (sessionBusy(sessionId) && activeStreams[sidKey(sessionId)] && activeStreams[sidKey(sessionId)].ai !== ai) {
         stopPendingPoll();
         if (ai && ai.wrap && ai.wrap.parentNode) ai.wrap.remove();
@@ -1224,9 +1239,24 @@
           if (ai && ai.wrap && ai.wrap.parentNode) ai.wrap.remove();
           addMsg('assistant', last.content, false, { createdAt: last.created_at });
           loadSessions();
-        } else if (tries % 5 === 0) {
-          // 顺带刷新侧栏 generating 点
-          loadSessions();
+          return;
+        }
+        // 每 2 次拉会话列表看 generating；后台已停且仍无助手回复 → 立刻结束假忙碌
+        if (tries === 1 || tries % 2 === 0) {
+          var listRes = await fetch('/console/api/chat/sessions', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+          var listData = await listRes.json();
+          var row = (listData.sessions || []).find(function (s) { return String(s.id) === String(sessionId); });
+          var gen = !!(row && row.generating);
+          if (sessionMeta[sessionId]) sessionMeta[sessionId].generating = gen;
+          refreshSendBusy();
+          if (!gen && tries >= 2) {
+            stopPendingPoll();
+            ai._live = false;
+            disarmWaiting(ai);
+            if (ai.wrap && ai.wrap.parentNode) ai.wrap.remove();
+            showInterruptedPlaceholder(afterUserId);
+            loadSessions();
+          }
         }
       } catch (e) { /* 下次再试 */ }
     }, 2000);
@@ -1261,8 +1291,12 @@
         armWaiting(liveAi, true);
         replayStreamBuffers(stream, liveAi);
       } else if (last && last.role === 'user') {
-        // 刷新重进 / 后台仍在跑：轮询等落库（不调 cancel）
-        watchPendingReply(id, last.id);
+        // 仅服务端仍在生成时转圈；已停则直接提示，避免假「正在处理」
+        if (serverGenerating(id) || (sessionMeta[id] && sessionMeta[id].generating)) {
+          watchPendingReply(id, last.id);
+        } else {
+          showInterruptedPlaceholder(last.id);
+        }
       }
     } catch (e) { UI.alert(UI.t('chat.loadingFailed')); }
   }

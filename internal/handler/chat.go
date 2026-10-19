@@ -1029,8 +1029,8 @@ func (a *App) ChatCompletions(c *gin.Context) {
 		return
 	}
 
-	// 生成上下文与 HTTP 请求解耦：刷新/关页只断 SSE，后台仍跑完并落库；
-	// 只有「停止」接口或同会话新请求会 cancelChatGen。先占并发槽，超限直接拒绝。
+	// 生成与 HTTP 完全解耦：刷新只停 SSE 泵。占槽须在落库用户消息之前，避免超限仍写入。
+	// 禁止在本 handler 上 defer genCancel——客户端断连返回时会误杀后台 LLM。
 	genCtx, genCancel := context.WithCancel(context.Background())
 	token := &chatGenToken{cancel: genCancel}
 	if !a.tryBindChatGen(s.ID, user.ID, token) {
@@ -1038,14 +1038,12 @@ func (a *App) ChatCompletions(c *gin.Context) {
 		c.JSON(http.StatusTooManyRequests, gin.H{"error": a.tr(c, "chat.maxConcurrent")})
 		return
 	}
-	defer func() {
-		genCancel()
-		a.unbindChatGen(s.ID, token)
-	}()
 
 	// 先落库用户消息；标题为默认值时改为内容摘要
 	userMsg := model.ChatMessage{SessionID: s.ID, Role: "user", Content: content}
 	if err := a.DB.Create(&userMsg).Error; err != nil {
+		genCancel()
+		a.unbindChatGen(s.ID, token)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存消息失败"})
 		return
 	}
@@ -1194,41 +1192,46 @@ func (a *App) ChatCompletions(c *gin.Context) {
 		execTool = wrapExecSkipReread(execTool, prereadIDs)
 	}
 
-	clientAlive := func() bool { return c.Request.Context().Err() == nil }
+	clientCtx := c.Request.Context() // 仅表示 SSE 客户端是否还在；与 genCtx 无关
+	failMsg := a.tr(c, "chat.generateFailed")
+	resolveDelta, flushDelta := a.newLinkResolver(c, user)
 
 	// SSE 响应头
 	c.Writer.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	flusher, canFlush := c.Writer.(http.Flusher)
-	// writeEvent 必须吞掉断连错误/ErrAbortHandler：刷新或关页只断 SSE，
-	// 若 Write/Flush panic 冒泡出会跑到 defer genCancel，误杀后台 LLM。
+
+	events := make(chan string, 64)
 	writeEvent := func(payload string) {
-		if !clientAlive() {
-			return
-		}
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("[llm] SSE write aborted (client gone), gen continues session=%d: %v", s.ID, r)
-			}
-		}()
-		if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", payload); err != nil {
-			return
-		}
-		if canFlush {
-			flusher.Flush()
+		select {
+		case events <- payload:
+		default:
+			// 客户端慢/已走：丢弃推流，绝不阻塞后台 LLM
 		}
 	}
 
-	// 流式链接替换：模型输出占位符 {{doc:id}}/{{share:id}}，此处查库换成真实链接
-	resolveDelta, flushDelta := a.newLinkResolver(c, user)
-	emitDelta := func(delta string) string {
-		out := resolveDelta(delta)
-		if out != "" {
-			writeEvent(`{"delta":` + jsonQuote(out) + `}`)
+	log.Printf("[llm] background gen start session=%d user=%d", s.ID, user.ID)
+	go func() {
+		defer close(events)
+		defer func() {
+			genCancel()
+			a.unbindChatGen(s.ID, token)
+			log.Printf("[llm] background gen end session=%d", s.ID)
+		}()
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[llm] gen panic session=%d: %v", s.ID, r)
+			}
+		}()
+
+		emitDelta := func(delta string) string {
+			out := resolveDelta(delta)
+			if out != "" {
+				writeEvent(`{"delta":` + jsonQuote(out) + `}`)
+			}
+			return out
 		}
-		return out
-	}
 
 	var final strings.Builder // 最终轮正文（唯一落库/外显的内容）
 	var anyEmitted bool       // 是否有任何正文流出过（用于错误兜底判断）
@@ -1388,8 +1391,8 @@ func (a *App) ChatCompletions(c *gin.Context) {
 				// 用户点停止
 				timeoutMsg = "用户已停止生成，操作未执行。"
 				approvedSensitive = false
-			case <-c.Request.Context().Done():
-				// 刷新/关页：审批 UI 已不可用，拒绝敏感操作但继续让非敏感路径收尾
+			case <-clientCtx.Done():
+				// 刷新/关页：审批 UI 已不可用，拒绝敏感操作但生成继续（非敏感工具仍执行）
 				timeoutMsg = "连接已断开，敏感操作未执行。"
 				approvedSensitive = false
 			}
@@ -1476,15 +1479,20 @@ func (a *App) ChatCompletions(c *gin.Context) {
 		}
 	}
 	stopped := genCtx.Err() != nil
-	userGone := !clientAlive() // 刷新/关页（未必点了停止）
 	if strings.TrimSpace(reply) == "" {
-		if stopped || userGone {
-			// 停止或断开且无正文：不落假回复；用户消息保留，刷新后可重发或等后台若已有内容
-			log.Printf("[llm] 无正文结束 stopped=%v gone=%v session=%d", stopped, userGone, s.ID)
+		if stopped {
+			// 显式停止且无正文：不落假回复
+			log.Printf("[llm] 无正文结束 stopped=true session=%d", s.ID)
 			return
 		}
-		reply = a.tr(c, "chat.generateFailed")
-		writeEvent(`{"error":` + jsonQuote(a.tr(c, "chat.generateFailed")) + `}`)
+		// 刷新断连也要落库一条，否则前端会永远「正在处理」
+		if lastToolResults != "" || mutEv.writeOK || mutEv.createOK {
+			reply = "（后台已跑完工具步骤，但未生成文字说明。请刷新查看文档是否已更新；需要的话可让我继续说明改动。）"
+		} else {
+			reply = failMsg
+			writeEvent(`{"error":` + jsonQuote(failMsg) + `}`)
+		}
+		log.Printf("[llm] 空正文已兜底落库 session=%d tools=%v", s.ID, lastToolResults != "")
 	}
 	// 仍含未核实侧效宣称：附加系统更正，避免用户采信假成功
 	if claimsUnverifiedMutation(reply, mutEv) {
@@ -1497,6 +1505,34 @@ func (a *App) ChatCompletions(c *gin.Context) {
 	}
 	a.DB.Model(&model.ChatSession{}).Where("id = ?", s.ID).UpdateColumn("updated_at", a.DB.NowFunc())
 	writeEvent(fmt.Sprintf(`{"done":true,"message_id":%d}`, assistantMsg.ID))
+	}() // end background gen goroutine
+
+	// SSE 泵：客户端离开立即返回，后台生成继续；Write/Flush panic 不得冒泡杀进程逻辑
+	writeSSE := func(payload string) {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[llm] SSE write aborted session=%d: %v", s.ID, r)
+			}
+		}()
+		if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", payload); err != nil {
+			return
+		}
+		if canFlush {
+			flusher.Flush()
+		}
+	}
+	for payload := range events {
+		if clientCtx.Err() != nil {
+			// 刷新/关页：停泵，丢弃后续事件（writeEvent 非阻塞），生成在后台收尾
+			go func() {
+				for range events {
+				}
+			}()
+			log.Printf("[llm] SSE client gone, gen continues in background session=%d", s.ID)
+			return
+		}
+		writeSSE(payload)
+	}
 }
 
 // ownSession 取本人会话；不存在时写 404 并返回 false

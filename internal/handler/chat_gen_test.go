@@ -1,6 +1,9 @@
 package handler
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestUnbindChatGenDoesNotPanicAndKeepsNewer(t *testing.T) {
 	a := &App{}
@@ -78,6 +81,31 @@ func TestTryBindChatGenUserCap(t *testing.T) {
 	again := &chatGenToken{cancel: func() {}}
 	if !a.tryBindChatGen(99, 42, again) {
 		t.Fatal("释放后应可再绑定")
+	}
+}
+
+// TestGenCtxIndependentOfClientCtx 回归：刷新取消的是 clientCtx，不得带动 genCtx。
+// 后台生成必须用 context.Background 衍生的 genCtx，否则断 SSE 会停 LLM。
+func TestGenCtxIndependentOfClientCtx(t *testing.T) {
+	genCtx, genCancel := context.WithCancel(context.Background())
+	defer genCancel()
+	clientCtx, clientCancel := context.WithCancel(context.Background())
+	clientCancel() // 模拟刷新/关页
+	if clientCtx.Err() == nil {
+		t.Fatal("clientCtx 应已取消")
+	}
+	if genCtx.Err() != nil {
+		t.Fatal("genCtx 不得随客户端断连而取消")
+	}
+	select {
+	case <-clientCtx.Done():
+	default:
+		t.Fatal("client Done 未触发")
+	}
+	select {
+	case <-genCtx.Done():
+		t.Fatal("gen Done 不应触发")
+	default:
 	}
 }
 
