@@ -1205,6 +1205,7 @@
   "set.llmAPIKey": "API Key",
   "set.llmAPIKeyKeep": "Leave blank to keep current value",
   "set.llmModel": "Model name",
+  "set.llmModelTip": "Pick from the upstream list when it exists, or type a name. If there is no list, type it.",
   "set.llmTemp": "Temperature (lower is stricter)",
   "set.llmTempPlaceholder": "Blank = provider default",
   "set.llmDefault": "Default",

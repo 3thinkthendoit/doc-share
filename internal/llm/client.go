@@ -248,6 +248,65 @@ func (c Config) newRequest(ctx context.Context, body any) (*http.Request, error)
 	return req, nil
 }
 
+// modelsTimeout 拉取上游模型列表的超时。失败不阻断保存。
+const modelsTimeout = 15 * time.Second
+
+// ListModels 读取 OpenAI 兼容的 GET /models。上游没有该接口或返回空时给出空列表。
+func (c Config) ListModels(ctx context.Context) ([]string, error) {
+	base := strings.TrimRight(strings.TrimSpace(c.BaseURL), "/")
+	if base == "" {
+		return nil, fmt.Errorf("请先填写接口地址")
+	}
+	ctx, cancel := context.WithTimeout(ctx, modelsTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/models", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	if strings.TrimSpace(c.APIKey) != "" {
+		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(c.APIKey))
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("无法连接: %w", err)
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("服务返回 %d", resp.StatusCode)
+	}
+	names := parseModelIDs(data)
+	return names, nil
+}
+
+// parseModelIDs 从 OpenAI 风格 {"data":[{"id":"..."}]} 取出模型名。无法识别时为空。
+func parseModelIDs(data []byte) []string {
+	var body struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(data, &body); err != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, item := range body.Data {
+		id := strings.TrimSpace(item.ID)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+		if len(out) >= 200 {
+			break
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // pingTimeout 连通性测试整体超时
 const pingTimeout = 20 * time.Second
 

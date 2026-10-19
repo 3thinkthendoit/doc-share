@@ -12,6 +12,33 @@ import (
 
 func cfgAt(url string) Config { return Config{BaseURL: url, APIKey: "k", Model: "m"} }
 
+func TestParseModelIDs(t *testing.T) {
+	got := parseModelIDs([]byte(`{"data":[{"id":"glm-5.3"},{"id":" glm-5.3 "},{"id":""},{"id":"qwen"}]}`))
+	if len(got) != 2 || got[0] != "glm-5.3" || got[1] != "qwen" {
+		t.Fatalf("ids: %#v", got)
+	}
+	if parseModelIDs([]byte(`{"object":"list"}`)) != nil {
+		t.Fatal("missing data should be empty")
+	}
+}
+
+func TestListModels(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/models" {
+			t.Fatalf("path %s", r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer k" {
+			t.Fatal("missing bearer")
+		}
+		_, _ = w.Write([]byte(`{"data":[{"id":"b"},{"id":"a"}]}`))
+	}))
+	defer srv.Close()
+	got, err := (Config{BaseURL: srv.URL, APIKey: "k"}).ListModels(context.Background())
+	if err != nil || len(got) != 2 || got[0] != "a" || got[1] != "b" {
+		t.Fatalf("list: %v %#v", err, got)
+	}
+}
+
 func TestStreamTimeoutDefault(t *testing.T) {
 	if got := (Config{}).streamTimeout(); got != defaultStreamTimeout {
 		t.Fatalf("zero timeout: got %s", got)

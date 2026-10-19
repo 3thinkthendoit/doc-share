@@ -268,7 +268,9 @@
             <input type="text" name="name" required maxlength="64" placeholder="DeepSeek / Ollama" autocomplete="off">
           </label>
           <label>{{$.T "set.llmModel"}}
-            <input type="text" name="model" required maxlength="128" placeholder="deepseek-chat" autocomplete="off">
+            <input type="text" name="model" required maxlength="128" placeholder="deepseek-chat" autocomplete="off" list="llmModelList">
+            <datalist id="llmModelList"></datalist>
+            <span class="muted" style="font-size:12px">{{$.T "set.llmModelTip"}}</span>
           </label>
         </div>
         <label>{{$.T "set.llmBaseURL"}}
@@ -504,6 +506,48 @@
     if (!modal || !llmForm || !tbody) return;
     // form.id / form.name 会被 HTMLFormElement 内建属性遮蔽，必须走 elements
     function lf() { return llmForm.elements; }
+    var modelList = document.getElementById('llmModelList');
+    var modelSeq = 0;
+    var modelAbort = null;
+    function fillModelList(names) {
+      if (!modelList) return;
+      modelList.innerHTML = '';
+      (names || []).forEach(function (name) {
+        if (!name) return;
+        var opt = document.createElement('option');
+        opt.value = name;
+        modelList.appendChild(opt);
+      });
+    }
+    async function loadModelList() {
+      var seq = ++modelSeq;
+      if (modelAbort) {
+        modelAbort.abort();
+        modelAbort = null;
+      }
+      var f = lf();
+      var base = f.base_url.value.trim();
+      fillModelList([]);
+      if (!base) return;
+      var ac = new AbortController();
+      modelAbort = ac;
+      try {
+        var res = await fetch('/console/api/llm-configs/models', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+          body: JSON.stringify({
+            id: parseInt(f.id.value, 10) || 0,
+            base_url: base,
+            api_key: f.api_key.value
+          }),
+          signal: ac.signal
+        });
+        if (seq !== modelSeq) return;
+        var data = await res.json();
+        if (seq !== modelSeq || !res.ok) return;
+        fillModelList(data.models || []);
+      } catch (e) { /* 过期或取消的请求不回写列表 */ }
+    }
     UI.bindModal(modal);
 
     function esc(s) {
@@ -571,7 +615,10 @@
       // 已是默认：隐藏「设为默认」勾选（保持默认不变）
       if (defWrap) defWrap.hidden = !!(row && row.is_default);
       UI.openModal(modal);
+      loadModelList();
     }
+    lf().base_url.addEventListener('change', loadModelList);
+    lf().api_key.addEventListener('change', loadModelList);
 
     function rowData(tr) {
       return {

@@ -68,6 +68,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.GET("/api/llm-configs", middleware.RequireAdmin(), app.ListLLMConfigs)
 		admin.POST("/api/llm-configs", middleware.RequireAdmin(), app.CreateLLMConfig)
 		admin.POST("/api/llm-configs/test", middleware.RequireAdmin(), app.TestLLMConfig)
+		admin.POST("/api/llm-configs/models", middleware.RequireAdmin(), app.ListLLMModels)
 		admin.PUT("/api/llm-configs/:id", middleware.RequireAdmin(), app.UpdateLLMConfig)
 		admin.DELETE("/api/llm-configs/:id", middleware.RequireAdmin(), app.DeleteLLMConfig)
 		admin.POST("/api/llm-configs/:id/default", middleware.RequireAdmin(), app.SetDefaultLLMConfig)

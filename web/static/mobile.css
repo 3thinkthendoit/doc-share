@@ -64,9 +64,44 @@
 }
 
 /* ============================================================
-   ≤900px：全站通用（iOS 输入缩放、modal、触控目标、json-mount）
+   ≤900px：全站通用（禁止整页横滑、iOS 输入缩放、modal、触控目标、json-mount）
    ============================================================ */
 @media (max-width: 900px) {
+  /* 整页禁止左右滑动：宽表 / 长词 / 离屏 transform 层不得撑开文档宽度。
+     表格、代码块仍在各自容器内横向滚动（.panel overflow-x、pre overflow）。 */
+  html, body {
+    max-width: 100%;
+    overflow-x: hidden;
+    overscroll-behavior-x: none;
+  }
+  .topnav,
+  .l-nav,
+  .container,
+  .container.wide,
+  .container.docs-wrap,
+  .container.doc-wrap,
+  main.container,
+  .reader,
+  .comments,
+  .panel,
+  .stat-grid,
+  .page-head,
+  .json-edit-head {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  /* 100vw 含滚动条宽度，窄屏上常比 100% 多几像素，改用 100% */
+  .container,
+  .container.wide,
+  .container.docs-wrap,
+  .container.doc-wrap {
+    max-width: 100%;
+  }
+  .auth-card,
+  .share-gate {
+    max-width: calc(100% - 32px);
+  }
+
   /* iOS Safari 聚焦 input 时若 font-size < 16px 会触发页面缩放，全站统一提升。
      chat.html 已显式设 16px，无冲突；桌面端不受影响。
      注：json_edit .input-ver 等页面内联样式特异性更高，自然抵抗此规则，无需额外例外。 */
@@ -91,6 +126,38 @@
   /* 抽屉底部 safe-area（刘海屏手势条） */
   .nav-drawer-links { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
   .l-nav-drawer-links { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+
+  /* 未卡片化的宽表：锁在 panel 内横滑，不带动整页 */
+  .panel { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .panel.panel-cards,
+  .panel:has(> .table.table-cards) { overflow-x: visible; }
+
+  /* 卡片行长标题 / 链接强制断行，避免撑破两列网格 */
+  .table.table-cards a,
+  .table.table-cards .table-card-val {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  /* 历史版本 / MCP 等未走 table-cards 的表：容器内横滑 */
+  .revision-table,
+  .mcp-table {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* 页头按钮组：内联 style 的 flex 也要允许换行 */
+  .page-head > div {
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+  .json-edit-head .input-title {
+    min-width: 0;
+    flex: 1 1 160px;
+  }
 }
 
 /* ============================================================

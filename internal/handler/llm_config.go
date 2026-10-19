@@ -334,6 +334,48 @@ func (a *App) TestLLMConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// ListLLMModels 拉取上游模型名，供设置页下拉提示。手填不受此列表限制。
+func (a *App) ListLLMModels(c *gin.Context) {
+	var req llmTestReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+	var row *model.LLMConfig
+	if req.ID > 0 {
+		var found model.LLMConfig
+		if err := a.DB.First(&found, req.ID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "配置不存在"})
+			return
+		}
+		row = &found
+	}
+	base := strings.TrimSpace(req.BaseURL)
+	apiKey := strings.TrimSpace(req.APIKey)
+	if row != nil {
+		saved := llmConfigFromRow(*row)
+		if base == "" {
+			base = saved.BaseURL
+		}
+		if apiKey == "" {
+			apiKey = saved.APIKey
+		}
+	}
+	if base == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请先填写接口地址"})
+		return
+	}
+	names, err := (llm.Config{BaseURL: base, APIKey: apiKey}).ListModels(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"models": []string{}, "error": err.Error()})
+		return
+	}
+	if names == nil {
+		names = []string{}
+	}
+	c.JSON(http.StatusOK, gin.H{"models": names})
+}
+
 func (a *App) loadLLMConfig(c *gin.Context) (model.LLMConfig, bool) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || id == 0 {

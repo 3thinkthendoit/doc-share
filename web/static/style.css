@@ -296,10 +296,11 @@ html[data-theme="light"] .theme-toggle .i-moon{display:none}
 .auth-foot{position:absolute;bottom:16px;left:0;right:0;display:flex;justify-content:center;gap:16px;font-size:12px;color:var(--muted)}
 .auth-foot a{color:var(--muted);text-decoration:none}
 .auth-foot a:hover{color:var(--text);text-decoration:none}
-/* 后台页面公共 footer：内容不足一屏时钉在视口底部，超出时随内容下移 */
-body:has(.admin-foot){min-height:100vh;display:flex;flex-direction:column}
-body:has(.admin-foot) main.container{flex:1 0 auto;width:100%}
-.admin-foot{display:flex;justify-content:center;gap:16px;margin:40px 0 24px;margin-top:auto;padding-top:24px;font-size:12px;color:var(--muted)}
+/* 后台页面公共 footer：内容不足一屏时钉在视口底部，超出时随内容下移。
+   min-width:0：flex 子项默认 min-width:auto，宽表/长标题会按内容最小宽度撑开整页横向滚动。 */
+body:has(.admin-foot){min-height:100vh;display:flex;flex-direction:column;max-width:100%;overflow-x:hidden}
+body:has(.admin-foot) main.container{flex:1 0 auto;width:100%;min-width:0;max-width:100%}
+.admin-foot{display:flex;justify-content:center;gap:16px;margin:40px 0 24px;margin-top:auto;padding-top:24px;font-size:12px;color:var(--muted);max-width:100%;flex-wrap:wrap}
 .admin-foot a{color:var(--muted);text-decoration:none}
 .admin-foot a:hover{color:var(--text);text-decoration:none}
 .btn-link{background:none;border:none;color:var(--primary);cursor:pointer;font-size:13px;padding:0}

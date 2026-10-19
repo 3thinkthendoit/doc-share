@@ -101,7 +101,9 @@ html[data-theme="light"] {
   font-size: 15px;
   line-height: 1.7;
   -webkit-font-smoothing: antialiased;
+  max-width: 100%;
   overflow-x: hidden;
+  overscroll-behavior-x: none;
 }
 
 .l-site a { color: inherit; text-decoration: none; }

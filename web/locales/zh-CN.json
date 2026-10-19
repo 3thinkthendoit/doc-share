@@ -1205,6 +1205,7 @@
   "set.llmAPIKey": "API Key",
   "set.llmAPIKeyKeep": "留空则保留原值",
   "set.llmModel": "模型名称",
+  "set.llmModelTip": "上游提供模型列表时可点选，也可直接填写。没有列表时只手填。",
   "set.llmTemp": "采样温度（越低越严谨）",
   "set.llmTempPlaceholder": "留空 = 上游默认",
   "set.llmDefault": "默认",
