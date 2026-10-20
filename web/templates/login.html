@@ -5,7 +5,7 @@
 <body class="auth-body has-site-nav">
   {{template "siteNav" .}}
   <div class="auth-card">
-    <h1 class="auth-title">{{.SiteName}}</h1>
+    <h1 class="auth-title">{{$.T "login.title"}}</h1>
     <div class="alert alert-error" id="loginError" {{if not .error}}hidden{{end}}>{{.error}}</div>
     <form id="loginForm" novalidate onsubmit="event.preventDefault()">
       <div id="loginCred" {{if .totpStep}}hidden{{end}}>

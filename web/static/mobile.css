@@ -97,9 +97,10 @@
   .container.doc-wrap {
     max-width: 100%;
   }
+  /* 父级 .auth-body 已有左右 padding，卡片用 100% 即可，勿再用 100vw */
   .auth-card,
   .share-gate {
-    max-width: calc(100% - 32px);
+    max-width: 100%;
   }
 
   /* iOS Safari 聚焦 input 时若 font-size < 16px 会触发页面缩放，全站统一提升。
