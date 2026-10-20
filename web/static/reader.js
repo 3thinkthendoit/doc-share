@@ -10,6 +10,19 @@
   }
   function t(s) { return window.UI ? UI.t(s) : s; }
 
+  /* ---- 阅读中文档有更新：轮询 content_version（见 doc_update.js） ---- */
+  if (window.DocUpdate) {
+    DocUpdate.start({
+      metaURL: api('/meta'),
+      contentVersion: R.contentVersion,
+      onAdopt: function (v) { R.contentVersion = v; }
+    });
+  }
+  function adoptVersion(ver) {
+    if (window.DocUpdate) DocUpdate.adopt(ver);
+    else if (typeof ver === 'number' && !isNaN(ver)) R.contentVersion = ver;
+  }
+
   /* ---- 顶栏 PDF/DOCX：fetch 触发下载，失败提示（避免浏览器直接打开 JSON） ---- */
   document.querySelectorAll('.doc-export-btn').forEach(function (a) {
     a.addEventListener('click', async function (e) {
@@ -110,6 +123,9 @@
           var data = await res.json();
           if (!res.ok) { UI.alert((data && data.error) || '保存失败'); saveBtn.disabled = false; return; }
           UI.toast('已保存', 'success');
+          // 自己保存成功后抬高本地版本，避免立刻弹出「文档有更新」
+          if (typeof data.content_version === 'number') adoptVersion(data.content_version);
+          else adoptVersion((parseInt(R.contentVersion, 10) || 0) + 1);
           raw.value = content;
           previewEl.hidden = false;
           editArea.hidden = true;

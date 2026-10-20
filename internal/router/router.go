@@ -170,6 +170,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.DELETE("/api/docs/:id/comments/:cid", app.DocDeleteComment)
 		admin.GET("/api/docs/:id/mention-candidates", app.DocMentionCandidates)
 		admin.POST("/api/docs/:id/chat-session", app.DocOpenChatSession)
+		admin.GET("/api/docs/:id/meta", app.DocContentMeta)
 
 		// 版本修订（内容覆盖前自动快照，可回滚；支持作者给快照打版本标签如 v1.0.1）
 		admin.GET("/api/docs/:id/revisions", app.ListRevisions)
@@ -265,6 +266,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 	r.POST("/s/:token/comments", app.ShareAddComment)
 	r.GET("/s/:token/mention-candidates", app.ShareMentionCandidates)
 	r.POST("/s/:token/chat-session", app.ShareOpenChatSession)
+	r.GET("/s/:token/meta", app.ShareContentMeta)
 	r.PUT("/s/:token/content", app.ShareSaveContent)
 	r.GET("/s/:token/export", app.ShareExport)
 	// HTML 整站文件（分享侧）：/s/:token/raw/<sig>/<path>。
@@ -283,6 +285,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 	r.POST("/ps/:token/d/:docId/comments", app.ProjectShareAddComment)
 	r.GET("/ps/:token/d/:docId/mention-candidates", app.ProjectShareMentionCandidates)
 	r.POST("/ps/:token/d/:docId/chat-session", app.ProjectShareOpenChatSession)
+	r.GET("/ps/:token/d/:docId/meta", app.ProjectShareContentMeta)
 	r.PUT("/ps/:token/d/:docId/content", app.ProjectShareSaveContent)
 	// HTML 整站文件（项目分享侧）：凭路径内短时签名，理由同 /s/:token/raw
 	r.GET("/ps/:token/d/:docId/raw/*path", app.ProjectShareRaw)

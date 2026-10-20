@@ -1022,6 +1022,7 @@ func (a *App) PreviewDoc(c *gin.Context) {
 			"user":         user,
 			"shareCanEdit": false,
 			"token":        "",
+			"metaURL":      contentMetaPath(doc.ID, "", ""),
 		})
 		return
 	}
@@ -1038,6 +1039,7 @@ func (a *App) PreviewDoc(c *gin.Context) {
 			"entryURL":    a.adminEntryURL(doc.ID),
 			// 预览承诺“不计浏览数”，只读展示最近访客，不写访客记录
 			"visitors": a.recentVisitors(doc.ID),
+			"metaURL":  contentMetaPath(doc.ID, "", ""),
 		})
 		return
 	}

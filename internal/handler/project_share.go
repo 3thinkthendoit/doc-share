@@ -404,6 +404,7 @@ func (a *App) serveProjectDoc(c *gin.Context, ps *model.ProjectShare, doc *model
 			"shareCanEdit": canEdit,
 			"token":        token,
 			"contentApi":   apiBase + "/content",
+			"metaURL":      contentMetaPath(doc.ID, token, apiBase),
 		})
 		return
 	}
@@ -417,6 +418,7 @@ func (a *App) serveProjectDoc(c *gin.Context, ps *model.ProjectShare, doc *model
 			"canModerate": canModerate,
 			"entryURL":    a.psEntryURL(token, doc.ID),
 			"visitors":    a.recordVisitor(c, doc),
+			"metaURL":     contentMetaPath(doc.ID, token, apiBase),
 		})
 		return
 	}

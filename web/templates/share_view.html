@@ -8,6 +8,11 @@
 </head>
 <body class="reader-body">
   {{template "siteNav" .}}
+  <div id="docUpdateBanner" class="doc-update-banner" hidden role="status">
+    <span class="doc-update-banner-text">{{$.T "reader.updateHint"}}</span>
+    <button type="button" id="docUpdateReload" class="btn btn-sm btn-primary">{{$.T "reader.updateReload"}}</button>
+    <button type="button" id="docUpdateDismiss" class="btn-link doc-update-dismiss">{{$.T "reader.updateDismiss"}}</button>
+  </div>
   <article class="reader">
     <div class="doc-title-row">
       <h1 class="doc-title">{{.doc.Title}}</h1>
@@ -115,6 +120,7 @@
       canModerate: {{.canModerate}},
       loggedIn: {{if .user}}true{{else}}false{{end}},
       userId: {{if .user}}{{.user.ID}}{{else}}0{{end}},
+      contentVersion: {{.doc.ContentVersion}},
       loginURL: "/login?next=" + encodeURIComponent(location.pathname + location.search)
     };
   </script>
@@ -128,6 +134,7 @@
   <script src="/static/drawio_editor.js"></script>
   <script src="/static/embeds.js"></script>
   <script src="/static/render.js"></script>
+  <script src="/static/doc_update.js"></script>
   <script src="/static/reader.js"></script>
   <script src="/static/reader_chat.js"></script>
 </body>

@@ -647,6 +647,17 @@ body.modal-open{overflow:hidden}
 .visitor-avatar img{width:100%;height:100%;object-fit:cover;display:block}
 .visitor-fallback{line-height:1}
 .visitor-tip{margin:-20px 0 18px;padding:6px 10px;background:var(--bg-soft);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12.5px;color:var(--text)}
+/* 阅读中文档有更新：贴在顶栏（66px）下方，不抢焦点 */
+.doc-update-banner{position:sticky;top:66px;z-index:30;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:10px 14px;padding:10px 16px;background:var(--warn-bg);border-bottom:1px solid var(--warn-border);color:var(--warn-text);font-size:13.5px;box-sizing:border-box}
+.doc-update-banner[hidden]{display:none!important}
+.doc-update-banner-text{flex:1 1 auto;min-width:0;text-align:center}
+.doc-update-dismiss{color:var(--warn-text);font-size:13px}
+/* 画布 / HTML 全屏页无顶栏：固定贴顶 */
+.doc-update-banner--fixed{position:fixed;top:0;left:0;right:0;z-index:60}
+@media (max-width:600px){
+  .doc-update-banner{padding:10px 12px;gap:8px;font-size:13px}
+  .doc-update-banner-text{flex:1 1 100%;text-align:left}
+}
 /* 阅读页：分享编辑条与编辑器 */
 .doc-editbar{display:flex;align-items:center;gap:8px;margin-bottom:16px}
 .reader-editor{width:100%;min-height:420px;resize:vertical;padding:16px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;font-size:13.5px;line-height:1.7;background:var(--input-bg);color:var(--text);margin-bottom:12px}
@@ -688,7 +699,13 @@ body.modal-open{overflow:hidden}
 .reader-chat-bubble{max-width:92%;padding:8px 12px;border-radius:12px;font-size:13.5px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
 .reader-chat-bubble.is-user{align-self:flex-end;background:var(--primary-soft);color:var(--text)}
 .reader-chat-bubble.is-assistant{align-self:flex-start;background:var(--bg-soft);color:var(--text)}
-.reader-chat-bubble.is-streaming::after{content:"|";animation:reader-chat-blink 1s step-end infinite}
+.reader-chat-body:empty:not(:only-child){display:none}
+.reader-chat-body.is-waiting{color:var(--muted);font-size:12.5px}
+.reader-chat-bubble.is-streaming .reader-chat-body:not(:empty):not(.is-waiting)::after{content:"|";animation:reader-chat-blink 1s step-end infinite}
+.reader-chat-think{margin:0 0 6px;border:none;background:transparent;font-size:12px;color:var(--muted);white-space:normal}
+.reader-chat-think summary{cursor:pointer;padding:0 0 2px;user-select:none;list-style:none;opacity:.9}
+.reader-chat-think summary::-webkit-details-marker{display:none}
+.reader-chat-think-body{padding:0 0 2px;max-height:120px;overflow-y:auto;white-space:pre-wrap;line-height:1.5}
 @keyframes reader-chat-blink{50%{opacity:0}}
 .reader-chat-form{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border-top:1px solid var(--border)}
 .reader-chat-form textarea{width:100%;resize:none;border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;font:inherit;font-size:13.5px;background:var(--input-bg);color:var(--text);box-sizing:border-box}

@@ -81,6 +81,45 @@
     return div;
   }
 
+  // 流式助手气泡：可挂思考过程（与完整对话页同源 SSE 的 think 事件）
+  function appendAssistantStream() {
+    var empty = msgsEl.querySelector('.muted');
+    if (empty && !msgsEl.querySelector('.reader-chat-bubble')) msgsEl.innerHTML = '';
+    var wrap = document.createElement('div');
+    wrap.className = 'reader-chat-bubble is-assistant is-streaming';
+    var body = document.createElement('div');
+    body.className = 'reader-chat-body is-waiting';
+    body.textContent = t('chat.working');
+    wrap.appendChild(body);
+    msgsEl.appendChild(wrap);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+    return { wrap: wrap, body: body, think: null, thinkBody: null, waiting: true };
+  }
+  function clearWaiting(ai) {
+    if (!ai.waiting) return;
+    ai.waiting = false;
+    ai.body.classList.remove('is-waiting');
+    ai.body.textContent = '';
+  }
+  function showThink(ai, s) {
+    if (!ai.think) {
+      ai.think = document.createElement('details');
+      ai.think.className = 'reader-chat-think';
+      ai.think.open = true;
+      var sum = document.createElement('summary');
+      sum.textContent = t('chat.thinking');
+      ai.thinkBody = document.createElement('div');
+      ai.thinkBody.className = 'reader-chat-think-body';
+      ai.think.appendChild(sum);
+      ai.think.appendChild(ai.thinkBody);
+      ai.wrap.insertBefore(ai.think, ai.body);
+    }
+    if (!ai.think.open) ai.think.open = true;
+    ai.thinkBody.textContent += s;
+    ai.thinkBody.scrollTop = ai.thinkBody.scrollHeight;
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+
   async function loadMessages() {
     if (!sessionId) return;
     try {
@@ -110,8 +149,7 @@
 
   async function streamCompletion(content) {
     appendBubble('user', content);
-    var bubble = appendBubble('assistant', '');
-    bubble.classList.add('is-streaming');
+    var ai = appendAssistantStream();
     busy = true;
     sendBtn.disabled = true;
     try {
@@ -122,14 +160,16 @@
       });
       if (!res.ok) {
         var err = await res.json().catch(function () { return {}; });
-        bubble.textContent = (err && err.error) || t('readerChat.sendFail');
-        bubble.classList.remove('is-streaming');
+        clearWaiting(ai);
+        ai.body.textContent = (err && err.error) || t('readerChat.sendFail');
+        ai.wrap.classList.remove('is-streaming');
         return;
       }
       var reader = res.body && res.body.getReader();
       if (!reader) {
-        bubble.textContent = t('readerChat.sendFail');
-        bubble.classList.remove('is-streaming');
+        clearWaiting(ai);
+        ai.body.textContent = t('readerChat.sendFail');
+        ai.wrap.classList.remove('is-streaming');
         return;
       }
       var decoder = new TextDecoder();
@@ -148,15 +188,27 @@
           if (!payload || payload === '[DONE]') continue;
           try {
             var ev = JSON.parse(payload);
-            if (ev.delta) {
+            if (ev.think) {
+              clearWaiting(ai);
+              showThink(ai, ev.think);
+            } else if (ev.delta) {
+              clearWaiting(ai);
+              if (ai.think) ai.think.open = false;
               acc += ev.delta;
-              bubble.textContent = acc;
+              ai.body.textContent = acc;
               msgsEl.scrollTop = msgsEl.scrollHeight;
             } else if (ev.error) {
-              bubble.textContent = ev.error;
+              clearWaiting(ai);
+              ai.body.textContent = ev.error;
             } else if (ev.reset) {
               acc = '';
-              bubble.textContent = '';
+              clearWaiting(ai);
+              ai.body.textContent = '';
+              if (ai.think) {
+                ai.think.remove();
+                ai.think = null;
+                ai.thinkBody = null;
+              }
             } else if (ev.approval && ev.approval.id) {
               var tip = t('readerChat.approve') + ' ' + (ev.approval.tool || '');
               var ok = window.UI && UI.confirm
@@ -173,11 +225,15 @@
           } catch (_) { /* ignore malformed */ }
         }
       }
-      if (!acc) bubble.textContent = bubble.textContent || t('readerChat.emptyReply');
-      bubble.classList.remove('is-streaming');
+      if (!acc && !ai.think) {
+        clearWaiting(ai);
+        ai.body.textContent = t('readerChat.emptyReply');
+      }
+      ai.wrap.classList.remove('is-streaming');
     } catch (e) {
-      bubble.textContent = t('readerChat.sendFail');
-      bubble.classList.remove('is-streaming');
+      clearWaiting(ai);
+      ai.body.textContent = t('readerChat.sendFail');
+      ai.wrap.classList.remove('is-streaming');
     } finally {
       busy = false;
       sendBtn.disabled = false;

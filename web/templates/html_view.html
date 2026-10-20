@@ -11,6 +11,11 @@ html,body{height:100%;margin:0}
 </style>
 </head>
 <body>
+  <div id="docUpdateBanner" class="doc-update-banner doc-update-banner--fixed" hidden role="status">
+    <span class="doc-update-banner-text">{{$.T "reader.updateHint"}}</span>
+    <button type="button" id="docUpdateReload" class="btn btn-sm btn-primary">{{$.T "reader.updateReload"}}</button>
+    <button type="button" id="docUpdateDismiss" class="btn-link doc-update-dismiss">{{$.T "reader.updateDismiss"}}</button>
+  </div>
   {{/*
     sandbox 不含 allow-same-origin：整站脚本运行在隔离源，无法读写本站 cookie / 调用 /console API。
     允许 scripts/forms/popups/downloads 以兼容常见打包产物（vite/webpack dist 等）。
@@ -19,6 +24,15 @@ html,body{height:100%;margin:0}
     sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"
     referrerpolicy="no-referrer" title="{{.doc.Title}}"></iframe>
   {{if .doc.CreatorRegion}}<div class="creator-region">{{$.T "share.region" .doc.CreatorRegion}}</div>{{end}}
+  <script src="/static/doc_update.js"></script>
+  <script>
+    if (window.DocUpdate) {
+      DocUpdate.start({
+        metaURL: "{{if .metaURL}}{{.metaURL}}{{end}}",
+        contentVersion: {{.doc.ContentVersion}}
+      });
+    }
+  </script>
 </body>
 </html>
 {{end}}

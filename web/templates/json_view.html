@@ -16,6 +16,11 @@ html,body{height:100%;margin:0}
 </style>
 </head>
 <body>
+  <div id="docUpdateBanner" class="doc-update-banner doc-update-banner--fixed" hidden role="status">
+    <span class="doc-update-banner-text">{{$.T "reader.updateHint"}}</span>
+    <button type="button" id="docUpdateReload" class="btn btn-sm btn-primary">{{$.T "reader.updateReload"}}</button>
+    <button type="button" id="docUpdateDismiss" class="btn-link doc-update-dismiss">{{$.T "reader.updateDismiss"}}</button>
+  </div>
   <div id="jsonViewMount" class="json-view-mount {{if eq .docKind "mindmap"}}embed-mount embed-mount-mindmap{{else if eq .docKind "drawio"}}json-view-mount-drawio{{else}}embed-mount embed-mount-excalidraw{{end}}"></div>
   {{if .doc.CreatorRegion}}<div class="creator-region">{{$.T "share.region" .doc.CreatorRegion}}</div>{{end}}
   <div id="jsonSaveStatus" class="json-save-status" hidden></div>
@@ -27,6 +32,7 @@ html,body{height:100%;margin:0}
       canEdit: {{if .shareCanEdit}}true{{else}}false{{end}},
       token: "{{.token}}",
       contentApi: "{{if .contentApi}}{{.contentApi}}{{end}}",
+      metaURL: "{{if .metaURL}}{{.metaURL}}{{end}}",
       contentVersion: {{.doc.ContentVersion}}
     };
     window.DRAWIO_URL = {{.DrawioURL}};
@@ -34,6 +40,7 @@ html,body{height:100%;margin:0}
   <script src="/static/mindmap_toolbar.js"></script>
   <script src="/static/drawio_editor.js"></script>
   <script src="/static/json_editor.js"></script>
+  <script src="/static/doc_update.js"></script>
   <script>
   (function () {
     if (!window.JsonDoc) return;
@@ -44,6 +51,14 @@ html,body{height:100%;margin:0}
     var lastVersion = window.JSON_DOC.contentVersion || 0;
     var saving = false, paused = false, ready = false;
     var AUTO_SAVE_CHECK = 4000;
+
+    if (window.DocUpdate && window.JSON_DOC.metaURL) {
+      DocUpdate.start({
+        metaURL: window.JSON_DOC.metaURL,
+        contentVersion: lastVersion,
+        onAdopt: function (v) { lastVersion = v; window.JSON_DOC.contentVersion = v; }
+      });
+    }
 
     function setStatus(text, cls) {
       if (!statusEl) return;
@@ -89,6 +104,7 @@ html,body{height:100%;margin:0}
         saving = false;
         if (r.ok) {
           lastVersion = (r.data && r.data.content_version) || lastVersion + 1;
+          if (window.DocUpdate) DocUpdate.adopt(lastVersion);
           lastJSON = currentJSON();
           paused = false;
           setStatus('已保存');

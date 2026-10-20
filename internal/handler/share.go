@@ -363,6 +363,7 @@ func (a *App) serveDoc(c *gin.Context, doc *model.Document, share *model.Share, 
 			"visitors":     a.recordVisitor(c, doc),
 			"shareCanEdit": user != nil && share != nil && share.CanEdit,
 			"token":        token,
+			"metaURL":      contentMetaPath(doc.ID, token, ""),
 		})
 		return
 	}
@@ -382,6 +383,7 @@ func (a *App) serveDoc(c *gin.Context, doc *model.Document, share *model.Share, 
 			"canModerate": user != nil && (user.ID == doc.OwnerID || user.IsAdmin()),
 			"entryURL":    entry,
 			"visitors":    a.recordVisitor(c, doc),
+			"metaURL":     contentMetaPath(doc.ID, token, ""),
 		})
 		return
 	}

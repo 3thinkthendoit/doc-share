@@ -437,6 +437,68 @@ func (a *App) addComment(c *gin.Context, doc *model.Document, limitKey string) {
 	c.JSON(http.StatusOK, gin.H{"ok": true, "id": cm.ID})
 }
 
+// contentMetaPath 阅读页轮询入口：项目分享 apiBase > 文档分享 token > 管理端预览
+func contentMetaPath(docID uint, shareToken, apiBase string) string {
+	if apiBase != "" {
+		return apiBase + "/meta"
+	}
+	if shareToken != "" {
+		return "/s/" + shareToken + "/meta"
+	}
+	return "/console/api/docs/" + strconv.FormatUint(uint64(docID), 10) + "/meta"
+}
+
+// writeDocContentMeta 返回阅读页轮询用的轻量元数据（不含正文）
+func (a *App) writeDocContentMeta(c *gin.Context, doc *model.Document) {
+	if doc == nil {
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"content_version": doc.ContentVersion,
+		"version":         doc.Version,
+		"updated_at":      doc.UpdatedAt,
+	})
+}
+
+// DocContentMeta 预览页：当前内容版本（供阅读中「有更新」提示）
+func (a *App) DocContentMeta(c *gin.Context) {
+	doc := a.loadDoc(c)
+	if doc == nil {
+		return
+	}
+	a.writeDocContentMeta(c, doc)
+}
+
+// ShareContentMeta 分享页：当前内容版本（需解锁）
+func (a *App) ShareContentMeta(c *gin.Context) {
+	token := c.Param("token")
+	doc, share := a.loadShare(c, token)
+	if doc == nil {
+		return
+	}
+	if !a.shareUnlocked(c, token, doc, share) {
+		return
+	}
+	a.writeDocContentMeta(c, doc)
+}
+
+// ProjectShareContentMeta 项目分享文档页：当前内容版本
+func (a *App) ProjectShareContentMeta(c *gin.Context) {
+	token := c.Param("token")
+	project, ps := a.loadProjectShare(c, token)
+	if project == nil {
+		return
+	}
+	doc := a.loadProjectShareDoc(c, project)
+	if doc == nil {
+		return
+	}
+	if !a.psUnlocked(c, token, project, ps) {
+		return
+	}
+	a.writeDocContentMeta(c, doc)
+}
+
 // DocDeleteComment 删除评论（属主级操作：文档属主或管理员）
 func (a *App) DocDeleteComment(c *gin.Context) {
 	doc := a.loadDoc(c)
