@@ -1328,6 +1328,7 @@ func (a *App) ListChatSessions(c *gin.Context) {
 		row := gin.H{
 			"id":              s.ID,
 			"user_id":         s.UserID,
+			"document_id":     s.DocumentID,
 			"title":           s.Title,
 			"agent_id":        s.AgentID,
 			"trust_sensitive": s.TrustSensitive,
@@ -1350,7 +1351,7 @@ func (a *App) ListChatSessions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"sessions": out})
 }
 
-// CreateSession 新建会话
+// CreateSession 新建会话（全局会话；文档绑定会话请走 Doc/Share OpenChatSession）
 func (a *App) CreateChatSession(c *gin.Context) {
 	user := middleware.CurrentUser(c)
 	var req struct {
@@ -1367,6 +1368,94 @@ func (a *App) CreateChatSession(c *gin.Context) {
 	}
 	s := model.ChatSession{UserID: user.ID, Title: title, AgentID: req.AgentID}
 	if err := a.DB.Create(&s).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建会话失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"session": s})
+}
+
+// openOrCreateDocChatSession 复用用户在该文档下最近会话，否则新建（标题带文档名）
+func (a *App) openOrCreateDocChatSession(user *model.User, doc *model.Document) (model.ChatSession, error) {
+	var s model.ChatSession
+	err := a.DB.Where("user_id = ? AND document_id = ?", user.ID, doc.ID).
+		Order("updated_at desc").First(&s).Error
+	if err == nil {
+		return s, nil
+	}
+	title := "关于「" + clipRunes(doc.Title, 40) + "」"
+	if utf8.RuneCountInString(title) > 100 {
+		title = string([]rune(title)[:100])
+	}
+	s = model.ChatSession{
+		UserID:     user.ID,
+		DocumentID: doc.ID,
+		Title:      title,
+	}
+	if err := a.DB.Create(&s).Error; err != nil {
+		return s, err
+	}
+	return s, nil
+}
+
+// DocOpenChatSession 预览页：打开/复用绑定当前文档的对话会话
+func (a *App) DocOpenChatSession(c *gin.Context) {
+	user := middleware.CurrentUser(c)
+	doc := a.loadDoc(c)
+	if doc == nil {
+		return
+	}
+	s, err := a.openOrCreateDocChatSession(user, doc)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建会话失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"session": s})
+}
+
+// ShareOpenChatSession 分享页：登录用户打开绑定当前分享文档的对话
+func (a *App) ShareOpenChatSession(c *gin.Context) {
+	user := a.sessionUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "请先登录后再打开对话"})
+		return
+	}
+	token := c.Param("token")
+	doc, share := a.loadShare(c, token)
+	if doc == nil {
+		return
+	}
+	if !a.shareUnlocked(c, token, doc, share) {
+		return
+	}
+	s, err := a.openOrCreateDocChatSession(user, doc)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建会话失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"session": s})
+}
+
+// ProjectShareOpenChatSession 项目分享文档页：登录用户打开绑定该文档的对话
+func (a *App) ProjectShareOpenChatSession(c *gin.Context) {
+	user := a.sessionUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "请先登录后再打开对话"})
+		return
+	}
+	token := c.Param("token")
+	project, ps := a.loadProjectShare(c, token)
+	if project == nil {
+		return
+	}
+	doc := a.loadProjectShareDoc(c, project)
+	if doc == nil {
+		return
+	}
+	if !a.psUnlocked(c, token, project, ps) {
+		return
+	}
+	s, err := a.openOrCreateDocChatSession(user, doc)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建会话失败"})
 		return
 	}
@@ -1546,12 +1635,32 @@ func (a *App) ChatCompletions(c *gin.Context) {
 	tools, execTool, injectRead := a.chatTools(user, c.ClientIP())
 	prereadIDs := map[int64]bool{} // 本轮已注入的文档，禁止模型重复 read
 
+	// 文档绑定会话（预览/分享「打开对话」）：每轮强制预读该文，并限定助手只围绕该文作答
+	forceAnswer := false
+	if s.DocumentID > 0 {
+		docID := int64(s.DocumentID)
+		docText, err := readDocInject(injectRead, docID, aiPrereadMaxChars, intentPlain)
+		if err != nil {
+			var doc model.Document
+			if a.DB.First(&doc, s.DocumentID).Error == nil {
+				docText = buildDocInjectBody(doc.Title, doc.ContentVersion, doc.Content, intentPlain, aiPrereadMaxChars)
+				err = nil
+			}
+		}
+		if err == nil && docText != "" {
+			msgs = append(msgs, llm.Message{Role: "user", Content: "[系统编排] 本会话已绑定文档 id=" + strconv.FormatInt(docID, 10) +
+				"。请只围绕这篇文档回答与操作；不要检索或改动其他文档，除非用户明确要求离开本文。" +
+				"下面是当前预读正文（未标注截断时勿再 read_document）：\n\n" + docText})
+			prereadIDs[docID] = true
+			log.Printf("[llm] 文档绑定会话 session=%d 注入文档 %d（%d 字符）", s.ID, docID, utf8.RuneCountInString(docText))
+		}
+	}
+
 	// 确定性兜底：用户消息里提到任何文档 ID 时，服务端把对应正文预读到本轮上下文，
 	// 解决"模型要改文档却手上没有完整原文"导致的反复列清单/瞎猜。
 	// 同时：若命中明确的"阅读"意图（带动词），进一步禁用本轮工具，强制基于正文作答。
 	// /create-skill 与显式 /skill 不做「禁工具」：skill 往往还要继续调用工具。
 	// 显式斜杠且无补充正文时 intentPlain 为空，避免合成句误触发阅读/编辑预读。
-	forceAnswer := false
 	isEdit := !createSkillMode && intentPlain != "" && reEditVerb.MatchString(intentPlain)
 	if !createSkillMode && intentPlain != "" {
 		if id := readIntentID(intentPlain); id > 0 {

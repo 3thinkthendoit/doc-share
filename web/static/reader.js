@@ -316,17 +316,32 @@
     });
   }
 
+  function appendMentionedText(body, text) {
+    if (!text) return;
+    var re = /@([A-Za-z0-9_\u4e00-\u9fff.-]{1,64})/g;
+    var last = 0;
+    var m;
+    while ((m = re.exec(text))) {
+      if (m.index > last) body.appendChild(document.createTextNode(text.slice(last, m.index)));
+      var mark = el('span', 'comment-mention', m[0]);
+      body.appendChild(mark);
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) body.appendChild(document.createTextNode(text.slice(last)));
+  }
+
   // isReply 时传入被回复的顶层评论昵称，内容前展示 @昵称
   function commentNode(c, isReply, parentName) {
-    var item = el('div', 'comment-item' + (isReply ? ' is-reply' : ''));
+    var item = el('div', 'comment-item' + (isReply ? ' is-reply' : '') + (c.is_bot ? ' is-bot' : ''));
     var head = el('div', 'comment-head');
     head.appendChild(avatarNode(c.name, c.avatar));
     var name = el('span', 'comment-name', c.name);
     head.appendChild(name);
-    if (c.is_guest) head.appendChild(el('span', 'comment-guest-tag', t('游客')));
+    if (c.is_bot) head.appendChild(el('span', 'comment-bot-tag', t('comments.bot')));
+    else if (c.is_guest) head.appendChild(el('span', 'comment-guest-tag', t('游客')));
     head.appendChild(el('span', 'comment-time', fmtTime(c.created_at)));
     var actions = el('span', 'comment-actions');
-    // 不能回复自己：自己的评论不出现回复按钮（游客无稳定身份，不限制）
+    // 不能回复自己：自己的评论不出现回复按钮（游客无稳定身份，不限制）；智能体可回复
     var isSelf = c.user_id > 0 && c.user_id === R.userId;
     if (!isSelf) {
       var replyBtn = el('button', 'btn-link', t('回复'));
@@ -359,7 +374,7 @@
       body.appendChild(at);
       body.appendChild(document.createTextNode(' '));
     }
-    if (c.content) body.appendChild(document.createTextNode(c.content));
+    if (c.content) appendMentionedText(body, c.content);
     item.appendChild(body);
     var imgs = Array.isArray(c.images) ? c.images : [];
     if (imgs.length) {
@@ -407,6 +422,7 @@
   }
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
+    hideMentionPopup();
     var content = contentEl.value.trim();
     var images = pendingImages.filter(function (x) { return x.url && !x.uploading; }).map(function (x) { return x.url; });
     if (pendingImages.some(function (x) { return x.uploading; })) {
@@ -414,6 +430,12 @@
       return;
     }
     if (!content && !images.length) { contentEl.focus(); return; }
+    var wantsAgent = /@DocShare\b/i.test(content);
+    if (wantsAgent && !R.loggedIn) {
+      if (window.UI && UI.alert) UI.alert(t('comments.loginForAgent'));
+      else alert(t('comments.loginForAgent'));
+      return;
+    }
     var btn = form.querySelector('button[type=submit]');
     btn.disabled = true;
     try {
@@ -430,11 +452,142 @@
       replyTo = 0;
       replyingEl.hidden = true;
       await load();
+      if (wantsAgent) pollAgentReply(data && data.id, 8);
     } catch (err) {
       UI.alert('发表失败：网络错误');
     } finally {
       btn.disabled = false;
     }
   });
+
+  /* ---- @ 提及自动补全 ---- */
+  var mentionPopup = document.getElementById('mentionPopup');
+  var mentionItems = [];
+  var mentionIndex = -1;
+  var mentionTimer = null;
+  var mentionActive = null; // { start, end }
+
+  function hideMentionPopup() {
+    if (mentionPopup) mentionPopup.hidden = true;
+    mentionItems = [];
+    mentionIndex = -1;
+    mentionActive = null;
+  }
+
+  function mentionQueryAt(text, caret) {
+    var before = text.slice(0, caret);
+    var m = /(^|[\s\u3000])@([A-Za-z0-9_\u4e00-\u9fff.-]{0,64})$/.exec(before);
+    if (!m) return null;
+    return { start: caret - m[2].length - 1, end: caret, q: m[2] };
+  }
+
+  function renderMentionPopup(list) {
+    if (!mentionPopup) return;
+    mentionItems = list || [];
+    mentionIndex = mentionItems.length ? 0 : -1;
+    mentionPopup.innerHTML = '';
+    if (!mentionItems.length) {
+      mentionPopup.hidden = true;
+      return;
+    }
+    mentionItems.forEach(function (item, i) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'mention-item' + (i === mentionIndex ? ' is-active' : '');
+      btn.setAttribute('role', 'option');
+      var label = item.kind === 'bot'
+        ? '@' + item.username + ' · ' + t('comments.bot')
+        : '@' + item.username + (item.nickname && item.nickname !== item.username ? '（' + item.nickname + '）' : '');
+      btn.textContent = label;
+      btn.addEventListener('mousedown', function (ev) {
+        ev.preventDefault();
+        pickMention(item);
+      });
+      mentionPopup.appendChild(btn);
+    });
+    mentionPopup.hidden = false;
+  }
+
+  function pickMention(item) {
+    if (!contentEl || !mentionActive) return;
+    var v = contentEl.value;
+    var insert = '@' + item.username + ' ';
+    contentEl.value = v.slice(0, mentionActive.start) + insert + v.slice(mentionActive.end);
+    var pos = mentionActive.start + insert.length;
+    contentEl.focus();
+    contentEl.setSelectionRange(pos, pos);
+    hideMentionPopup();
+  }
+
+  async function fetchMentions(q) {
+    try {
+      var res = await fetch(api('/mention-candidates?q=' + encodeURIComponent(q || '')), {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      });
+      var data = await res.json();
+      return (data && data.candidates) || [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function scheduleMentionLookup() {
+    if (!contentEl || !mentionPopup) return;
+    var caret = contentEl.selectionStart || 0;
+    var hit = mentionQueryAt(contentEl.value, caret);
+    if (!hit) { hideMentionPopup(); return; }
+    mentionActive = hit;
+    clearTimeout(mentionTimer);
+    mentionTimer = setTimeout(async function () {
+      var list = await fetchMentions(hit.q);
+      if (!mentionActive || mentionActive.start !== hit.start) return;
+      renderMentionPopup(list);
+    }, 120);
+  }
+
+  if (contentEl && mentionPopup) {
+    contentEl.addEventListener('input', scheduleMentionLookup);
+    contentEl.addEventListener('click', scheduleMentionLookup);
+    contentEl.addEventListener('keyup', function (e) {
+      if (e.key === 'Escape') { hideMentionPopup(); return; }
+      if (mentionPopup.hidden) {
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') scheduleMentionLookup();
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        mentionIndex = Math.min(mentionIndex + 1, mentionItems.length - 1);
+        renderMentionPopup(mentionItems);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        mentionIndex = Math.max(mentionIndex - 1, 0);
+        renderMentionPopup(mentionItems);
+      } else if (e.key === 'Enter' || e.key === 'Tab') {
+        if (mentionIndex >= 0 && mentionItems[mentionIndex]) {
+          e.preventDefault();
+          pickMention(mentionItems[mentionIndex]);
+        }
+      } else {
+        scheduleMentionLookup();
+      }
+    });
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('.comment-compose')) hideMentionPopup();
+    });
+  }
+
+  function pollAgentReply(commentId, left) {
+    if (!commentId || left <= 0) return;
+    setTimeout(async function () {
+      await load();
+      // 智能体回复挂在顶层评论下；派工可能是顶层也可能是回复
+      var hasBot = comments.some(function (c) {
+        return c.is_bot && c.id > commentId;
+      });
+      if (hasBot) return;
+      pollAgentReply(commentId, left - 1);
+    }, 2500);
+ }
+
   load();
 })();

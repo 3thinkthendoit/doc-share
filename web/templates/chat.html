@@ -563,10 +563,19 @@
       if (!listEl.children.length) listEl.innerHTML = '<div class="muted chat-empty">' + UI.t('chat.noSession') + '</div>';
       setTaskTitle(currentId);
       refreshSendBusy();
-      // 首次进入/刷新：自动打开最近会话（含后台仍 generating 的），便于接上回答
+      // 首次进入/刷新：优先打开 URL ?sid=（阅读器「完整对话」跳转），否则最近会话
       if (!didAutoOpen && !currentId && sessions.length) {
         didAutoOpen = true;
-        openSession(sessions[0].id);
+        var wantSid = '';
+        try {
+          wantSid = new URLSearchParams(location.search).get('sid') || '';
+        } catch (e) { wantSid = ''; }
+        var target = sessions[0].id;
+        if (wantSid) {
+          var hit = sessions.find(function (s) { return String(s.id) === String(wantSid); });
+          if (hit) target = hit.id;
+        }
+        openSession(target);
       }
     } catch (e) {
       listEl.innerHTML = '<div class="muted chat-empty">' + UI.t('chat.loadingFailed') + '</div>';

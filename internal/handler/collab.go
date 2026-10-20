@@ -109,6 +109,7 @@ type commentView struct {
 	Name      string    `json:"name"`
 	Avatar    string    `json:"avatar"`
 	IsGuest   bool      `json:"is_guest"`
+	IsBot     bool      `json:"is_bot"` // DocShare 智能体回复
 	Content   string    `json:"content"`
 	Images    []string  `json:"images"`
 	CreatedAt time.Time `json:"created_at"`
@@ -234,7 +235,9 @@ func (a *App) listCommentViews(docID uint) []commentView {
 			ID: cm.ID, ParentID: cm.ParentID, UserID: cm.UserID,
 			Content: cm.Content, Images: imgs, CreatedAt: cm.CreatedAt,
 		}
-		if u, ok := users[cm.UserID]; cm.UserID > 0 && ok {
+		if isDocShareBotComment(&cm) {
+			v.Name, v.IsBot = model.DocShareBotName, true
+		} else if u, ok := users[cm.UserID]; cm.UserID > 0 && ok {
 			v.Name, v.Avatar = u.DisplayName(), u.Avatar
 		} else {
 			v.Name, v.IsGuest = cm.GuestName, true
@@ -389,6 +392,13 @@ func (a *App) addComment(c *gin.Context, doc *model.Document, limitKey string) {
 		}
 	}
 
+	// @DocShare 派工仅登录用户可用（须在写游客 cookie 之前判定）
+	wantsAgent := contentMentionsDocShare(content)
+	if wantsAgent && user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "登录后才能 @DocShare 派工"})
+		return
+	}
+
 	cm := model.Comment{DocumentID: doc.ID, ParentID: req.ParentID, Content: content}
 	if len(images) > 0 {
 		b, _ := json.Marshal(images)
@@ -406,6 +416,7 @@ func (a *App) addComment(c *gin.Context, doc *model.Document, limitKey string) {
 		cm.GuestName = guest
 		actorName = guest
 	}
+
 	if err := a.DB.Create(&cm).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "发表失败"})
 		return
@@ -413,7 +424,16 @@ func (a *App) addComment(c *gin.Context, doc *model.Document, limitKey string) {
 	if limitID != "" {
 		a.Limiter.Fail(limitID, limitKey) // 占用一次限额
 	}
-	a.notifyNewComment(doc, &cm, actorName, parent)
+	var actorID uint
+	if user != nil {
+		actorID = user.ID
+	}
+	mentioned := a.resolveMentionedUserIDs(doc, content, actorID)
+	a.notifyNewComment(doc, &cm, actorName, parent, mentioned)
+	a.notifyCommentMentions(doc, &cm, actorName, mentioned)
+	if wantsAgent {
+		a.maybeEnqueueDocShareAgent(doc, &cm, user)
+	}
 	c.JSON(http.StatusOK, gin.H{"ok": true, "id": cm.ID})
 }
 

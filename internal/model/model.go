@@ -328,8 +328,9 @@ type Comment struct {
 	ID         uint      `gorm:"primaryKey" json:"id"`
 	DocumentID uint      `gorm:"index;not null" json:"document_id"`
 	ParentID   uint      `gorm:"index;not null;default:0" json:"parent_id"` // 0=顶层，否则为被回复的评论 ID（仅一级回复）
-	UserID     uint      `gorm:"index;not null;default:0" json:"user_id"`   // 0=游客
-	GuestName  string    `gorm:"size:64" json:"guest_name"`                 // 游客昵称（UserID=0 时有效）
+	UserID     uint      `gorm:"index;not null;default:0" json:"user_id"`   // 0=游客或智能体
+	GuestName  string    `gorm:"size:64" json:"guest_name"`                 // 游客昵称；IsBot 时为 DocShareBotName
+	IsBot      bool      `gorm:"not null;default:false;index" json:"is_bot"` // DocShare 智能体回复
 	Content    string    `gorm:"size:1000;not null" json:"content"`
 	Images     string    `gorm:"type:text" json:"-"` // JSON 数组，最多 3 个本站上传图 URL
 	CreatedAt  time.Time `json:"created_at"`
@@ -342,12 +343,16 @@ const (
 	MsgAccessRejected = "access_rejected" // 申请已拒绝
 	MsgComment        = "comment"         // 文档新评论
 	MsgCommentReply   = "comment_reply"   // 评论被回复
+	MsgCommentMention = "comment_mention" // 评论中被 @ 提及
 	MsgProjectAdded   = "project_added"   // 被加入项目
 	MsgProjectRole    = "project_role"    // 项目角色变更
 	MsgProjectRemoved = "project_removed" // 被移出项目
 	MsgShareEdited    = "share_edited"    // 分享页协作编辑保存
 	MsgDocUpdated     = "doc_updated"     // 他人更新了你的文档
 )
+
+// DocShareBotName 评论区智能体提及名（@DocShare）；回复时 GuestName 同此值、UserID=0
+const DocShareBotName = "DocShare"
 
 // Message 站内消息：投递给登录用户；邮件为可选旁路（有邮箱且 SMTP 已配置时异步发送）
 type Message struct {

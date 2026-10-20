@@ -221,7 +221,7 @@ func (a *App) notifyAccessReviewed(req *model.ShareAccessRequest, doc *model.Doc
 	a.notify(p)
 }
 
-func (a *App) notifyNewComment(doc *model.Document, cm *model.Comment, actorName string, parent *model.Comment) {
+func (a *App) notifyNewComment(doc *model.Document, cm *model.Comment, actorName string, parent *model.Comment, mentioned ...[]uint) {
 	if doc == nil || cm == nil {
 		return
 	}
@@ -234,22 +234,33 @@ func (a *App) notifyNewComment(doc *model.Document, cm *model.Comment, actorName
 		snippet = "[图片]"
 	}
 	link := a.docNotifyLink(doc)
-	// 回复：通知被回复的登录用户
-	if parent != nil && parent.UserID > 0 && parent.UserID != cm.UserID {
-		a.notify(notifyPayload{
-			UserID:  parent.UserID,
-			Kind:    model.MsgCommentReply,
-			Title:   "收到评论回复",
-			Body:    fmt.Sprintf("%s 回复了你在「%s」的评论：%s", name, clipRunes(doc.Title, 60), snippet),
-			Link:    link,
-			RefType: "comment",
-			RefID:   cm.ID,
-		})
+	mentionedSet := map[uint]struct{}{}
+	if len(mentioned) > 0 {
+		for _, uid := range mentioned[0] {
+			mentionedSet[uid] = struct{}{}
+		}
 	}
-	// 文档属主（非自己评论时）
+	// 回复：通知被回复的登录用户（若已在 @ 提及中则跳过，避免双通知）
+	if parent != nil && parent.UserID > 0 && parent.UserID != cm.UserID {
+		if _, dup := mentionedSet[parent.UserID]; !dup {
+			a.notify(notifyPayload{
+				UserID:  parent.UserID,
+				Kind:    model.MsgCommentReply,
+				Title:   "收到评论回复",
+				Body:    fmt.Sprintf("%s 回复了你在「%s」的评论：%s", name, clipRunes(doc.Title, 60), snippet),
+				Link:    link,
+				RefType: "comment",
+				RefID:   cm.ID,
+			})
+		}
+	}
+	// 文档属主（非自己评论时；已 @ 或已作为被回复者则跳过）
 	if doc.OwnerID > 0 && doc.OwnerID != cm.UserID {
 		if parent != nil && parent.UserID == doc.OwnerID {
-			return // 属主已作为被回复者收到回复通知
+			return
+		}
+		if _, dup := mentionedSet[doc.OwnerID]; dup {
+			return
 		}
 		a.notify(notifyPayload{
 			UserID:  doc.OwnerID,
