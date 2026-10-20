@@ -1022,8 +1022,7 @@
   "msg.loadFail": "載入失敗",
   "share.createdAt": "建立於 {0}",
   "share.updatedAt": "更新於 {0}",
-  "share.region": "歸屬地 {0}"
-,
+  "share.region": "{0}",
   "html.uploadBtn": "上傳 HTML 站點",
   "html.dropZone": "拖曳 zip 或整站資料夾到此處",
   "html.dropHint": "站點根須含 index.html；zip 被單層目錄包裹時自動剝落",

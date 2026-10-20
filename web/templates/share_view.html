@@ -28,6 +28,13 @@
       {{if .doc.Owner}}
       <span class="user-avatar user-avatar-sm">{{if .doc.Owner.Avatar}}<img src="{{.doc.Owner.Avatar}}" alt="">{{else}}{{avatar .doc.Owner.Nickname .doc.Owner.Username}}{{end}}</span>
       <span class="doc-author-name">{{if .doc.Owner.Nickname}}{{.doc.Owner.Nickname}}{{else}}{{.doc.Owner.Username}}{{end}}</span>
+      {{if .doc.CreatorRegion}}
+      <span class="doc-author-dot">·</span>
+      <span>{{$.T "share.region" .doc.CreatorRegion}}</span>
+      {{end}}
+      <span class="doc-author-dot">·</span>
+      {{else if .doc.CreatorRegion}}
+      <span>{{$.T "share.region" .doc.CreatorRegion}}</span>
       <span class="doc-author-dot">·</span>
       {{end}}
       {{/* 创建后未再修改（精确到分相同）只显示创建时间；更新过则只显示更新时间 */}}
@@ -38,10 +45,6 @@
       {{end}}
       <span class="doc-author-dot">·</span>
       <span>{{$.T "share.views" .doc.ViewCount}}</span>
-      {{if .doc.CreatorRegion}}
-      <span class="doc-author-dot">·</span>
-      <span>{{$.T "share.region" .doc.CreatorRegion}}</span>
-      {{end}}
       {{if .visitors}}
       <span class="doc-author-dot">·</span>
       <span class="doc-visitors">

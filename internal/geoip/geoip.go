@@ -32,7 +32,7 @@ func initSearcher() {
 	})
 }
 
-// Lookup 返回可读归属地（如「中国 广东 深圳」）；查不到或内网未识别时返回空串。
+// Lookup 返回可读归属地（国内多为省名如「广东」；国外为国家/省/市简写）；查不到返回空串。
 // 仅支持 IPv4；IPv6 / 非法 IP 返回空。
 func Lookup(ip string) string {
 	ip = strings.TrimSpace(ip)
@@ -56,6 +56,25 @@ func Lookup(ip string) string {
 	return formatRegion(raw)
 }
 
+// ShortRegion 将已存归属地压成作者行展示：国内「中国 广东 深圳」→「广东」；其余原样。
+func ShortRegion(region string) string {
+	region = strings.TrimSpace(region)
+	if region == "" || region == "内网" {
+		return region
+	}
+	fields := strings.Fields(region)
+	if len(fields) == 0 {
+		return region
+	}
+	if fields[0] == "中国" {
+		if len(fields) >= 2 {
+			return fields[1]
+		}
+		return "中国"
+	}
+	return region
+}
+
 // formatRegion 将 ip2region 原始「国家|省份|城市|ISP|iso」压成展示用归属地。
 func formatRegion(raw string) string {
 	parts := strings.Split(raw, "|")
@@ -65,16 +84,27 @@ func formatRegion(raw string) string {
 			return "内网"
 		}
 	}
+	partAt := func(i int) string {
+		if i >= len(parts) {
+			return ""
+		}
+		p := strings.TrimSpace(parts[i])
+		if p == "" || p == "0" {
+			return ""
+		}
+		return p
+	}
+	country, province, city := partAt(0), partAt(1), partAt(2)
+	if country == "中国" {
+		if province != "" {
+			return province
+		}
+		return "中国"
+	}
 	var out []string
 	seen := map[string]bool{}
-	// 前三段：国家 / 省 / 市；跳过 0 与空
-	limit := 3
-	if len(parts) < limit {
-		limit = len(parts)
-	}
-	for i := 0; i < limit; i++ {
-		p := strings.TrimSpace(parts[i])
-		if p == "" || p == "0" || seen[p] {
+	for _, p := range []string{country, province, city} {
+		if p == "" || seen[p] {
 			continue
 		}
 		seen[p] = true

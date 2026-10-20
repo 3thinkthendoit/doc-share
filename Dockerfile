@@ -16,7 +16,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o main .
 FROM alpine
 
 # ca-certificates：外链图片/HTTPS 必需；tzdata：日志时间用东八区
-# Noto Sans SC（fontsource 简体子集）：纯 Go PDF 导出中文；体积远小于 chromium + 全量 CJK
+# Noto Sans SC（fontsource 简体子集）：Markdown/应急 HTML PDF；故意不装 Chromium（镜像再涨 ~200MB+）。
+# HTML 导出默认需要 Chrome：挂载宿主机浏览器并设 DOC_SHARE_CHROME_PATH；勿静默用 htmlpdf（会叠字）。
+# 应急：DOC_SHARE_HTML_PDF_LEGACY=1 才允许纯 Go 回退。
 ARG NOTO_SC_VER=5.2.5
 RUN apk add --no-cache ca-certificates tzdata wget \
     && mkdir -p /usr/share/fonts/noto-sc \
@@ -59,6 +61,8 @@ EXPOSE 8080
 #   DOC_SHARE_ADMIN_USER/_PASSWORD —— 首次启动创建的默认管理员
 #   DOC_SHARE_DEV                 —— 前端热载，生产保持 false
 #   DOC_SHARE_FONT_DIR            —— PDF 导出中文字体目录（镜像默认已含 Noto Sans SC）
+#   DOC_SHARE_CHROME_PATH         —— HTML→PDF 推荐；指向 chrome/chromium（镜像未内置）
+#   DOC_SHARE_HTML_PDF_LEGACY     —— 1/true 时无 Chrome 才回退 htmlpdf（排版差，仅应急）
 #   DOC_SHARE_DB_LOG              —— true 时输出 GORM SQL（默认关闭）
 ENTRYPOINT ["/app/main"]
 CMD ["-config", "/etc/doc-share/config.yaml"]

@@ -690,7 +690,7 @@
   "share.views": "浏览 {0} 次",
   "share.createdAt": "创建于 {0}",
   "share.updatedAt": "更新于 {0}",
-  "share.region": "归属地 {0}",
+  "share.region": "{0}",
   "share.pwHint": "输入访问密码后即可查看文档内容",
   "share.ownerShare": "{0} 给你分享了文档",
   "key.info": "密钥信息",

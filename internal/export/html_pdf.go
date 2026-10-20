@@ -2,6 +2,7 @@ package export
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/zlfzx/htmlpdf"
 )
+
+const htmlEntryName = "index.html"
 
 // htmlScriptRe 导出前剥离 script（引擎不执行 JS，避免干扰解析）
 var htmlScriptRe = regexp.MustCompile(`(?is)<script\b[^>]*>.*?</script>`)
@@ -22,17 +25,15 @@ var (
 	htmlSrcsetSQ  = regexp.MustCompile(`(?i)(\bsrcset\s*=\s*')([^']*)(')`)
 	cssURLRe      = regexp.MustCompile(`(?i)(url\s*\(\s*)(["']?)([^"')]+)(["']?)(\s*\))`)
 	cssImportRe   = regexp.MustCompile(`(?i)@import\s+(?:url\s*\([^)]*\)|["'][^"']*["'])\s*;?`)
+	// 阅读页绝对路径 → 站点相对路径（导出物化目录内可直接打开）
+	siteRawPathRe = regexp.MustCompile(`(?i)^/(?:console/raw/\d+|s/[^/]+/raw|ps/[^/]+/d/\d+/raw)/[^/]+/(.+)$`)
 )
 
-// ExportHTML 将完整 HTML 页面转为 PDF（纯 Go，无 Chromium）。
-// basePath 为站点文件根目录（相对资源/图片从此解析）；可为空（仅内联/data:image 资源）。
-// 导出前会沙箱化资源引用：禁止远程拉取与目录穿越，对齐 Markdown 导出的安全模型。
+// ExportHTML 将完整 HTML 页面转为 PDF。
+// 优先无头 Chrome/Chromium（复杂 CSS/彩图排版正确）；找不到浏览器时回退纯 Go htmlpdf（排版能力有限）。
+// basePath 为站点文件根目录（相对资源/图片从此解析）。
 func ExportHTML(ctx context.Context, html, title, basePath string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	ff, err := resolveFonts()
-	if err != nil {
 		return nil, err
 	}
 	title = SanitizeMetaTitle(title)
@@ -43,13 +44,59 @@ func ExportHTML(ctx context.Context, html, title, basePath string) ([]byte, erro
 	if html == "" {
 		return nil, fmt.Errorf("HTML 内容为空")
 	}
-	if basePath != "" {
-		if err := sanitizeExportTree(basePath); err != nil {
-			return nil, err
-		}
+	if basePath == "" {
+		return nil, fmt.Errorf("HTML 导出需要站点工作目录")
+	}
+
+	// Chrome 路径：保留本地资源，把 /console/raw| /s/…/raw 改回相对路径；禁外链
+	if err := prepareSiteTreeForChrome(basePath); err != nil {
+		return nil, err
+	}
+	html = prepareHTMLForChromePDF(html, basePath, title)
+	entryPath := filepath.Join(basePath, htmlEntryName)
+	if err := os.WriteFile(entryPath, []byte(html), 0o644); err != nil {
+		return nil, err
+	}
+
+	pdf, err := exportHTMLChrome(ctx, basePath, title)
+	if err == nil {
+		return pdf, nil
+	}
+	if !errors.Is(err, errChromeUnavailable) {
+		return nil, err
+	}
+	// 默认不静默回退：复杂页用 htmlpdf 会「成功但叠字」。仅显式开启 LEGACY 时回退。
+	if !htmlPDFLegacyEnabled() {
+		return nil, fmt.Errorf("HTML 导出需要 Chrome/Chromium：%w（安装浏览器，或设置 DOC_SHARE_CHROME_PATH；应急可设 DOC_SHARE_HTML_PDF_LEGACY=1）", err)
+	}
+	return exportHTMLLegacy(ctx, html, title, basePath)
+}
+
+func htmlPDFLegacyEnabled() bool {
+	v := strings.TrimSpace(os.Getenv("DOC_SHARE_HTML_PDF_LEGACY"))
+	return v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "yes")
+}
+
+// prepareHTMLForChromePDF 本地化资源引用；保留 script（布局可能依赖）；写入 <title>。
+func prepareHTMLForChromePDF(html, basePath, title string) string {
+	html = localizeHTMLResources(html, basePath)
+	return ensureHTMLDocumentTitle(html, title)
+}
+
+// prepareHTMLForPDF 纯 Go 回退：剥 script、非 BMP、沙箱化资源并注入中文字体。
+func prepareHTMLForPDF(html, basePath string) string {
+	html = htmlScriptRe.ReplaceAllString(html, "")
+	html = stripNonBMPRunes(html)
+	html = sanitizeHTMLResources(html, basePath)
+	return ensureHTMLFontFamily(html, fontFamilyNotoSC)
+}
+
+func exportHTMLLegacy(ctx context.Context, html, title, basePath string) ([]byte, error) {
+	ff, err := resolveFonts()
+	if err != nil {
+		return nil, fmt.Errorf("未检测到 Chrome，且回退引擎缺中文字体: %w（请安装 Chrome 或设置 DOC_SHARE_CHROME_PATH）", err)
 	}
 	html = prepareHTMLForPDF(html, basePath)
-
 	opts := htmlpdf.Options{
 		PageSize:          htmlpdf.A4,
 		Orientation:       htmlpdf.Portrait,
@@ -60,13 +107,17 @@ func ExportHTML(ctx context.Context, html, title, basePath string) ([]byte, erro
 		DPI:               96,
 		Title:             title,
 		BasePath:          basePath,
-		// 故意不设 BaseURL：避免相对路径被解析成可拉取的绝对 URL
 	}
 	conv := htmlpdf.New(opts)
 	conv.RegisterFontFamily(fontFamilyNotoSC, ff.Regular, ff.Bold, ff.Regular, ff.Bold)
 
 	var data []byte
-	err = runWithContext(ctx, func() error {
+	err = runWithContext(ctx, func() (err error) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				err = fmt.Errorf("HTML 转 PDF 失败（引擎异常）: %v", rec)
+			}
+		}()
 		out, e := conv.ConvertToBytes(html)
 		if e != nil {
 			return fmt.Errorf("HTML 转 PDF 失败: %w", e)
@@ -83,15 +134,18 @@ func ExportHTML(ctx context.Context, html, title, basePath string) ([]byte, erro
 	return data, nil
 }
 
-// prepareHTMLForPDF 剥离 script 并沙箱化资源，再注入默认中文字体。
-func prepareHTMLForPDF(html, basePath string) string {
-	html = htmlScriptRe.ReplaceAllString(html, "")
-	html = sanitizeHTMLResources(html, basePath)
-	return ensureHTMLFontFamily(html, fontFamilyNotoSC)
+// stripNonBMPRunes 将基本多文种平面之外的码点替换为 U+FFFD，避免 go-pdf/fpdf 字宽表越界。
+func stripNonBMPRunes(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r >= 0x10000 {
+			return '\uFFFD'
+		}
+		return r
+	}, s)
 }
 
-// sanitizeExportTree 导出前净化工作目录内 html/css，堵住外链样式/@import 的二次拉取。
-func sanitizeExportTree(root string) error {
+// prepareSiteTreeForChrome 导出前把目录内 html/css 的站内绝对路径改成相对路径，并禁外链。
+func prepareSiteTreeForChrome(root string) error {
 	root = filepath.Clean(root)
 	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -112,9 +166,9 @@ func sanitizeExportTree(root string) error {
 		}
 		var out string
 		if ext == ".css" {
-			out = sanitizeCSSResources(string(raw), root)
+			out = localizeCSSResources(string(raw), root)
 		} else {
-			out = sanitizeHTMLResources(string(raw), root)
+			out = localizeHTMLResources(string(raw), root)
 		}
 		if out == string(raw) {
 			return nil
@@ -123,7 +177,40 @@ func sanitizeExportTree(root string) error {
 	})
 }
 
-// sanitizeHTMLResources 仅保留安全相对路径与 data:image；远程/绝对/穿越一律中和。
+// localizeHTMLResources 站内 raw 绝对路径→相对路径；外链→#。
+func localizeHTMLResources(html, basePath string) string {
+	html = htmlAttrURLDQ.ReplaceAllStringFunc(html, func(m string) string {
+		sub := htmlAttrURLDQ.FindStringSubmatch(m)
+		if len(sub) < 4 {
+			return m
+		}
+		return sub[1] + localizeResourceRef(sub[2], basePath) + sub[3]
+	})
+	html = htmlAttrURLSQ.ReplaceAllStringFunc(html, func(m string) string {
+		sub := htmlAttrURLSQ.FindStringSubmatch(m)
+		if len(sub) < 4 {
+			return m
+		}
+		return sub[1] + localizeResourceRef(sub[2], basePath) + sub[3]
+	})
+	html = htmlSrcsetDQ.ReplaceAllStringFunc(html, func(m string) string {
+		sub := htmlSrcsetDQ.FindStringSubmatch(m)
+		if len(sub) < 4 {
+			return m
+		}
+		return sub[1] + localizeSrcset(sub[2], basePath) + sub[3]
+	})
+	html = htmlSrcsetSQ.ReplaceAllStringFunc(html, func(m string) string {
+		sub := htmlSrcsetSQ.FindStringSubmatch(m)
+		if len(sub) < 4 {
+			return m
+		}
+		return sub[1] + localizeSrcset(sub[2], basePath) + sub[3]
+	})
+	return localizeCSSResources(html, basePath)
+}
+
+// sanitizeHTMLResources 纯 Go 回退用：仅相对路径与 data:image。
 func sanitizeHTMLResources(html, basePath string) string {
 	html = htmlAttrURLDQ.ReplaceAllStringFunc(html, func(m string) string {
 		sub := htmlAttrURLDQ.FindStringSubmatch(m)
@@ -156,6 +243,18 @@ func sanitizeHTMLResources(html, basePath string) string {
 	return sanitizeCSSResources(html, basePath)
 }
 
+func localizeCSSResources(css, basePath string) string {
+	css = cssImportRe.ReplaceAllString(css, "/* import blocked */")
+	return cssURLRe.ReplaceAllStringFunc(css, func(m string) string {
+		sub := cssURLRe.FindStringSubmatch(m)
+		if len(sub) < 6 {
+			return m
+		}
+		ref := localizeResourceRef(strings.TrimSpace(sub[3]), basePath)
+		return sub[1] + sub[2] + ref + sub[4] + sub[5]
+	})
+}
+
 func sanitizeCSSResources(css, basePath string) string {
 	css = cssImportRe.ReplaceAllString(css, "/* import blocked */")
 	return cssURLRe.ReplaceAllStringFunc(css, func(m string) string {
@@ -168,7 +267,15 @@ func sanitizeCSSResources(css, basePath string) string {
 	})
 }
 
+func localizeSrcset(srcset, basePath string) string {
+	return mapSrcset(srcset, basePath, localizeResourceRef)
+}
+
 func sanitizeSrcset(srcset, basePath string) string {
+	return mapSrcset(srcset, basePath, safeResourceOrHash)
+}
+
+func mapSrcset(srcset, basePath string, mapRef func(string, string) string) string {
 	parts := strings.Split(srcset, ",")
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
@@ -180,7 +287,7 @@ func sanitizeSrcset(srcset, basePath string) string {
 		if len(fields) == 0 {
 			continue
 		}
-		u := safeResourceOrHash(fields[0], basePath)
+		u := mapRef(fields[0], basePath)
 		if u == "#" {
 			continue
 		}
@@ -191,6 +298,53 @@ func sanitizeSrcset(srcset, basePath string) string {
 		}
 	}
 	return strings.Join(out, ", ")
+}
+
+// localizeResourceRef 导出用：站内 /console|/s|/ps raw 绝对路径改为相对路径；外链拒绝。
+func localizeResourceRef(ref, basePath string) string {
+	ref = strings.TrimSpace(ref)
+	if ref == "" || ref == "#" || strings.HasPrefix(ref, "#") {
+		return ref
+	}
+	lower := strings.ToLower(ref)
+	if strings.HasPrefix(lower, "data:image/") {
+		return ref
+	}
+	if strings.HasPrefix(lower, "//") ||
+		strings.HasPrefix(lower, "http:") ||
+		strings.HasPrefix(lower, "https:") ||
+		strings.HasPrefix(lower, "file:") ||
+		strings.HasPrefix(lower, "filesystem:") ||
+		strings.HasPrefix(lower, "javascript:") ||
+		strings.HasPrefix(lower, "vbscript:") ||
+		strings.HasPrefix(lower, "data:") {
+		return "#"
+	}
+	// /console/raw/…/sig/a.png → a.png
+	if strings.HasPrefix(ref, "/") {
+		if m := siteRawPathRe.FindStringSubmatch(ref); len(m) == 2 {
+			ref = m[1]
+		} else {
+			return "#"
+		}
+	}
+	if i := strings.Index(ref, ":"); i >= 0 {
+		return "#"
+	}
+	if strings.HasPrefix(ref, `\`) {
+		return "#"
+	}
+	rel := filepath.ToSlash(ref)
+	if !SafeSiteRelPath(rel) {
+		return "#"
+	}
+	if basePath != "" {
+		joined := filepath.Join(basePath, filepath.FromSlash(rel))
+		if !pathUnderRoot(basePath, joined) {
+			return "#"
+		}
+	}
+	return ref
 }
 
 // safeResourceOrHash 允许：空、#fragment、data:image/*、工作目录内相对路径。
@@ -263,6 +417,31 @@ func ensureHTMLFontFamily(html, family string) string {
 		return html[:i] + inject + html[i:]
 	}
 	return inject + html
+}
+
+// ensureHTMLDocumentTitle 保证 <title> 存在（Chrome PrintToPDF 元数据/标签用）。
+func ensureHTMLDocumentTitle(html, title string) string {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return html
+	}
+	// 极简转义，避免打断标签
+	esc := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(title)
+	tag := "<title>" + esc + "</title>"
+	lower := strings.ToLower(html)
+	if start := strings.Index(lower, "<title"); start >= 0 {
+		if end := strings.Index(lower[start:], "</title>"); end >= 0 {
+			end += start + len("</title>")
+			return html[:start] + tag + html[end:]
+		}
+	}
+	if i := strings.Index(lower, "</head>"); i >= 0 {
+		return html[:i] + tag + html[i:]
+	}
+	if i := strings.Index(lower, "<body"); i >= 0 {
+		return html[:i] + tag + html[i:]
+	}
+	return tag + html
 }
 
 // SafeSiteRelPath 站点相对路径：拒绝穿越、绝对路径、盘符、反斜杠（与上传校验同口径）。

@@ -171,6 +171,12 @@ func (a *App) DocsPage(c *gin.Context) {
 			d.Project.Linked = true
 		}
 	}
+	// 侧栏项目文档数：同权限 + 回收站 + origin；不受当前 project/category/关键词/分享筛选影响
+	projCounts, docCountAll := a.projectDocCounts(params)
+	for i := range projects {
+		projects[i].DocCount = projCounts[projects[i].ID]
+	}
+	docCountUngrouped := projCounts[0]
 	extra := ""
 	if q != "" {
 		extra += "&q=" + url.QueryEscape(q)
@@ -210,26 +216,51 @@ func (a *App) DocsPage(c *gin.Context) {
 	sideQS := strings.Join(sideParts, "&")
 
 	data := gin.H{
-		"title":      "文档管理",
-		"docs":       docs,
-		"q":          q,
-		"origin":     origin,
-		"project":    c.Query("project"),
-		"category":   c.Query("category"),
-		"shared":     c.Query("shared"),
-		"trash":      trash,
-		"projects":   projects,
-		"categories": categories,
-		"canEdit":    canEdit,
-		"hlTitle":    hlTitle,
-		"snippets":   snippets,
-		"embedTags":  embedTags,
-		"sideQS":     sideQS,
+		"title":             "文档管理",
+		"docs":              docs,
+		"q":                 q,
+		"origin":            origin,
+		"project":           c.Query("project"),
+		"category":          c.Query("category"),
+		"shared":            c.Query("shared"),
+		"trash":             trash,
+		"projects":          projects,
+		"categories":        categories,
+		"canEdit":           canEdit,
+		"hlTitle":           hlTitle,
+		"snippets":          snippets,
+		"embedTags":         embedTags,
+		"sideQS":            sideQS,
+		"docCountAll":       docCountAll,
+		"docCountUngrouped": docCountUngrouped,
 	}
 	for k, v := range pagerFields(pg, "/console/docs", extra) {
 		data[k] = v
 	}
 	a.render(c, "docs.html", data)
+}
+
+// projectDocCounts 按 project_id 统计可见文档数（侧栏用）。
+// 保留 Trash/Origin/权限；忽略 ProjectID/CategoryID/Shared/关键词，避免侧栏数字随筛选项乱跳。
+// 返回 map[projectID]count 与全部合计；未分组为 key 0。
+func (a *App) projectDocCounts(params search.Params) (map[uint]int64, int64) {
+	p := params
+	p.ProjectID = -1
+	p.CategoryID = -1
+	p.Shared = -1
+	p.Query = ""
+	var rows []struct {
+		K   uint
+		Cnt int64
+	}
+	a.searchSvc().ScopeQuery(p).Select("project_id AS k, COUNT(*) AS cnt").Group("project_id").Scan(&rows)
+	out := make(map[uint]int64, len(rows))
+	var total int64
+	for _, r := range rows {
+		out[r.K] = r.Cnt
+		total += r.Cnt
+	}
+	return out, total
 }
 
 // titleHighlighter 返回一个「给标题打高亮」的闭包：正则只编译一次，逐篇调用仅做替换。
@@ -1012,6 +1043,7 @@ func (a *App) PreviewDoc(c *gin.Context) {
 		c.String(http.StatusForbidden, "无权查看该文档")
 		return
 	}
+	a.prepareCreatorRegion(&doc)
 	// 结构化画布（思维导图/画板/drawio 图表）：预览页固定只读（编辑走 /edit 页）
 	if model.IsCanvasType(doc.Type) {
 		a.render(c, "json_view.html", gin.H{

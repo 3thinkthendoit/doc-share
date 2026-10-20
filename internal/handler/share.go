@@ -347,6 +347,7 @@ func (a *App) loadShare(c *gin.Context, token string) (*model.Document, *model.S
 
 // serveDoc 渲染文档阅读页并累加浏览量；share 可为 nil（如管理端预览）
 func (a *App) serveDoc(c *gin.Context, doc *model.Document, share *model.Share, token string) {
+	a.prepareCreatorRegion(doc)
 	a.DB.Model(&model.Document{}).Where("id = ?", doc.ID).
 		UpdateColumn("view_count", gorm.Expr("view_count + 1"))
 	doc.ViewCount++

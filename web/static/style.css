@@ -218,6 +218,7 @@ html[data-theme="light"] .theme-toggle .i-moon{display:none}
 .docs-side a{display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden}
 .docs-side a .side-name{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .docs-side a .tag{flex:none;padding:0 6px;font-size:10px;line-height:16px}
+.docs-side a .side-count{flex:none;margin-left:auto;font-variant-numeric:tabular-nums;color:var(--faint);font-size:11px}
 .docs-main{flex:1;min-width:0}
 /* 页头以下小一号：继承字 15→14，已写死的字号各减 1px；不波及 .page-head */
 .docs-layout{font-size:14px}

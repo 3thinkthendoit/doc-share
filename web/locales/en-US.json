@@ -1022,8 +1022,7 @@
   "msg.loadFail": "Failed to load",
   "share.createdAt": "Created {0}",
   "share.updatedAt": "Updated {0}",
-  "share.region": "Location {0}"
-,
+  "share.region": "{0}",
   "html.uploadBtn": "Upload HTML site",
   "html.dropZone": "Drop a zip or a site folder here",
   "html.dropHint": "Site root must contain index.html; a single top-level folder in the zip is stripped automatically",

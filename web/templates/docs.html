@@ -22,11 +22,11 @@
   <div class="docs-layout">
     <aside class="doc-side docs-side" aria-label="{{$.T "docs.sideProjects"}}">
       <div class="docs-side-label">{{$.T "docs.sideProjects"}}</div>
-      <a href="/console/docs?{{.sideQS}}" class="{{if eq .project ""}}active{{end}}">{{$.T "docs.sideAll"}}</a>
-      <a href="/console/docs?project=0&amp;{{.sideQS}}" class="{{if eq .project "0"}}active{{end}}">{{$.T "未分组"}}</a>
+      <a href="/console/docs?{{.sideQS}}" class="{{if eq .project ""}}active{{end}}"><span class="side-name">{{$.T "docs.sideAll"}}</span><span class="side-count">{{.docCountAll}}</span></a>
+      <a href="/console/docs?project=0&amp;{{.sideQS}}" class="{{if eq .project "0"}}active{{end}}"><span class="side-name">{{$.T "未分组"}}</span><span class="side-count">{{.docCountUngrouped}}</span></a>
       {{range .projects}}
       <a href="/console/docs?project={{.ID}}&amp;{{$.sideQS}}" class="{{if eq $.project (print .ID)}}active{{end}}" title="{{.Name}}">
-        <span class="side-name">{{.Name}}</span>{{if .Linked}}<span class="tag tag-linked">{{$.T "docs.linked"}}</span>{{end}}
+        <span class="side-name">{{.Name}}</span>{{if .Linked}}<span class="tag tag-linked">{{$.T "docs.linked"}}</span>{{end}}<span class="side-count">{{.DocCount}}</span>
       </a>
       {{end}}
     </aside>
@@ -36,9 +36,9 @@
         <input type="hidden" name="size" value="{{.size}}">
         {{if .trash}}<input type="hidden" name="trash" value="1">{{end}}
         <select name="project" class="docs-project-mobile">
-          <option value="">{{$.T "全部项目"}}</option>
-          <option value="0" {{if eq .project "0"}}selected{{end}}>{{$.T "未分组"}}</option>
-          {{range .projects}}<option value="{{.ID}}" {{if eq $.project (print .ID)}}selected{{end}}>{{.Name}}{{if .Linked}} · {{$.T "docs.linked"}}{{end}}</option>{{end}}
+          <option value="">{{$.T "全部项目"}} ({{.docCountAll}})</option>
+          <option value="0" {{if eq .project "0"}}selected{{end}}>{{$.T "未分组"}} ({{.docCountUngrouped}})</option>
+          {{range .projects}}<option value="{{.ID}}" {{if eq $.project (print .ID)}}selected{{end}}>{{.Name}}{{if .Linked}} · {{$.T "docs.linked"}}{{end}} ({{.DocCount}})</option>{{end}}
         </select>
         <input type="text" name="q" placeholder="{{$.T "搜索标题 / slug / 正文"}}" value="{{.q}}">
         <select name="category">

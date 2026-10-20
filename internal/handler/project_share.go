@@ -384,6 +384,7 @@ func (a *App) ProjectShareDocView(c *gin.Context) {
 
 // serveProjectDoc 渲染项目分享上下文的文档页并累加浏览量（markdown / 画布 / HTML 整站）
 func (a *App) serveProjectDoc(c *gin.Context, ps *model.ProjectShare, doc *model.Document, token string) {
+	a.prepareCreatorRegion(doc)
 	a.DB.Model(&model.Document{}).Where("id = ?", doc.ID).
 		UpdateColumn("view_count", gorm.Expr("view_count + 1"))
 	doc.ViewCount++

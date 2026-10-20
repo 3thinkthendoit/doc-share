@@ -21,14 +21,35 @@ func TestFormatRegion(t *testing.T) {
 	cases := []struct {
 		in, want string
 	}{
-		{"中国|广东|深圳|电信|CN", "中国 广东 深圳"},
+		{"中国|广东|深圳|电信|CN", "广东"},
 		{"0|0|0|内网IP|0", "内网"},
 		{"中国|0|0|联通|CN", "中国"},
+		{"中国|北京|北京|联通|CN", "北京"},
+		{"美国|加利福尼亚|洛杉矶|0|US", "美国 加利福尼亚 洛杉矶"},
 		{"", ""},
 	}
 	for _, c := range cases {
 		if got := formatRegion(c.in); got != c.want {
 			t.Errorf("formatRegion(%q)=%q want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestShortRegion(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"中国 广东 深圳", "广东"},
+		{"中国 北京", "北京"},
+		{"中国", "中国"},
+		{"广东", "广东"},
+		{"内网", "内网"},
+		{"美国 加利福尼亚", "美国 加利福尼亚"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := ShortRegion(c.in); got != c.want {
+			t.Errorf("ShortRegion(%q)=%q want %q", c.in, got, c.want)
 		}
 	}
 }

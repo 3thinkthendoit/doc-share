@@ -31,3 +31,33 @@ func stampCreatorGeoFromCtx(c *gin.Context, doc *model.Document) {
 	}
 	stampCreatorGeo(doc, c.ClientIP())
 }
+
+// prepareCreatorRegion 阅读/预览前补齐并缩短展示用归属地。
+// 空 region 且有 CreatorIP 时离线反查并落库；已存「中国 省 市」缩成省名后写回。
+func (a *App) prepareCreatorRegion(doc *model.Document) {
+	if doc == nil {
+		return
+	}
+	if doc.CreatorRegion == "" {
+		ip := strings.TrimSpace(doc.CreatorIP)
+		if ip == "" {
+			return
+		}
+		r := geoip.Lookup(ip)
+		if r == "" {
+			return
+		}
+		doc.CreatorRegion = r
+		a.DB.Model(&model.Document{}).Where("id = ? AND creator_region = ?", doc.ID, "").
+			UpdateColumn("creator_region", r)
+		return
+	}
+	short := geoip.ShortRegion(doc.CreatorRegion)
+	if short == "" || short == doc.CreatorRegion {
+		return
+	}
+	prev := doc.CreatorRegion
+	doc.CreatorRegion = short
+	a.DB.Model(&model.Document{}).Where("id = ? AND creator_region = ?", doc.ID, prev).
+		UpdateColumn("creator_region", short)
+}

@@ -86,6 +86,7 @@ func TestPagesRender(t *testing.T) {
 			v := withPager(base(), "/console/docs")
 			v["docs"], v["q"] = []model.Document{doc}, ""
 			v["project"], v["category"], v["projects"], v["categories"] = "", "", []model.Project{pj}, []model.Category{ct}
+			v["docCountAll"], v["docCountUngrouped"] = int64(1), int64(0)
 			v["hlTitle"] = map[uint]template.HTML{doc.ID: template.HTML(doc.Title)}
 			v["snippets"] = map[uint]template.HTML{}
 			return v
@@ -94,6 +95,7 @@ func TestPagesRender(t *testing.T) {
 			v := withPager(base(), "/console/docs")
 			v["docs"], v["q"] = []model.Document{doc}, "design"
 			v["project"], v["category"], v["projects"], v["categories"] = "", "", []model.Project{pj}, []model.Category{ct}
+			v["docCountAll"], v["docCountUngrouped"] = int64(1), int64(0)
 			v["hlTitle"] = map[uint]template.HTML{doc.ID: template.HTML("<mark>Design</mark> Doc")}
 			v["snippets"] = map[uint]template.HTML{doc.ID: template.HTML("...the <mark>design</mark> goals...")}
 			return v
