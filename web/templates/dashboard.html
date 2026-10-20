@@ -7,10 +7,21 @@
 <main class="container">
   <h1>{{$.T "仪表盘"}}</h1>
   <div class="stat-grid">
-    <div class="stat-card"><div class="stat-num">{{.docCount}}</div><div class="stat-label">{{if .isAdmin}}{{$.T "文档总数"}}{{else}}{{$.T "我的文档"}}{{end}}</div></div>
+    <a href="/console/docs" class="stat-card"><div class="stat-num">{{.docCount}}</div><div class="stat-label">{{if .isAdmin}}{{$.T "文档总数"}}{{else}}{{$.T "我的文档"}}{{end}}</div></a>
     {{if .isAdmin}}<div class="stat-card"><div class="stat-num">{{.userCount}}</div><div class="stat-label">{{$.T "用户总数"}}</div></div>{{end}}
     <div class="stat-card"><div class="stat-num">{{.shareCount}}</div><div class="stat-label">{{if .isAdmin}}{{$.T "分享链接"}}{{else}}{{$.T "我的分享"}}{{end}}</div></div>
-    {{if not .isAdmin}}<div class="stat-card"><div class="stat-num">{{.projectCount}}</div><div class="stat-label">{{$.T "dash.projects"}}</div></div>{{end}}
+    {{if not .isAdmin}}
+    <a href="/console/projects" class="stat-card stat-card-split">
+      <div class="stat-num">{{.projectCount}}</div>
+      <div class="stat-split-meta">
+        <div class="stat-label">{{$.T "dash.projects"}}</div>
+        <div class="stat-split-side" title="{{$.T "dash.linked"}}">
+          <span class="stat-side-label">{{$.T "dash.linked"}}</span>
+          <span class="stat-side-num">{{.linkedProjectCount}}</span>
+        </div>
+      </div>
+    </a>
+    {{end}}
     <button type="button" class="stat-card stat-card-action" id="openPendingApply" aria-label="{{$.T "dash.pendingApply"}}">
       <div class="stat-num" id="pendingApplyCount">{{.pendingApplyCount}}</div>
       <div class="stat-label">{{$.T "dash.pendingApply"}}</div>
@@ -89,7 +100,7 @@
   }
 
   async function loadPending() {
-    list.innerHTML = '<div class="empty-block"><div class="empty-tip">' + UI.t('加载中…') + '</div></div>';
+    list.innerHTML = UI.loadingHTML('加载中…');
     try {
       var res = await fetch('/console/api/access-requests?status=pending', {
         headers: { 'X-Requested-With': 'XMLHttpRequest' }

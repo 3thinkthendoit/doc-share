@@ -161,7 +161,7 @@
           <span>{{$.T "msg.title"}}</span>
           <button type="button" class="btn-link" id="msgReadAll">{{$.T "msg.readAll"}}</button>
         </div>
-        <div class="msg-dropdown-list" id="msgList"><div class="muted msg-empty">{{$.T "msg.loading"}}</div></div>
+        <div class="msg-dropdown-list" id="msgList"><div class="ui-loading is-compact" role="status" aria-live="polite"><span class="ui-loading-spinner" aria-hidden="true"></span><span class="ui-loading-text">{{$.T "msg.loading"}}</span></div></div>
       </div>
     </div>
     {{end}}

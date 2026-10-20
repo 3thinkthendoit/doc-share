@@ -23,9 +23,11 @@ auth:
   # 生产：设置 DOC_SHARE_SESSION_SECRET 为随机长字符串（>=32 位）
   # 本地调试：也可设置 DOC_SHARE_ALLOW_INSECURE_DEFAULTS=true 临时放行
   session_secret: "${DOC_SHARE_SESSION_SECRET}"
-  # 首次启动自动创建的默认管理员
+  # 首次启动自动创建的默认管理员（弱默认口令 admin123 在无 ALLOW_INSECURE 时拒绝落库）
   default_admin: "${DOC_SHARE_ADMIN_USER:-admin}"
   default_password: "${DOC_SHARE_ADMIN_PASSWORD:-admin123}"
+  # HTTPS 部署请设 true，为会话/分享 Cookie 开启 Secure（防明文嗅探）
+  cookie_secure: ${DOC_SHARE_COOKIE_SECURE:-false}
 
 upload:
   # 图片本地存储目录（映射到 /uploads 路径，备份该目录即可）

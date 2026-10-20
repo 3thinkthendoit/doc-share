@@ -495,10 +495,32 @@ window.UI = (function () {
     });
   }
 
+  // 加载占位：转圈 + 文案（msg 走 t()；compact 用于下拉/窄面板）
+  function loadingHTML(msg, opts) {
+    opts = opts || {};
+    var text = t(msg || '加载中…');
+    var cls = 'ui-loading' + (opts.compact ? ' is-compact' : '');
+    var safe = String(text)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+    return '<div class="' + cls + '" role="status" aria-live="polite">' +
+      '<span class="ui-loading-spinner" aria-hidden="true"></span>' +
+      '<span class="ui-loading-text">' + safe + '</span></div>';
+  }
+  function loadingEl(msg, opts) {
+    var wrap = document.createElement('div');
+    wrap.innerHTML = loadingHTML(msg, opts);
+    return wrap.firstChild;
+  }
+
   return {
     t: t,
     lang: window.__LANG || 'zh-CN',
     toast: toast,
+    loadingHTML: loadingHTML,
+    loadingEl: loadingEl,
     validateForm: validateForm,
     bindFormValidation: bindFormValidation,
     bindFilterNav: bindFilterNav,
@@ -824,7 +846,7 @@ document.addEventListener('DOMContentLoaded', function () {
       } catch (e) { /* ignore */ }
     }
     async function loadList() {
-      list.innerHTML = '<div class="muted msg-empty">' + UI.t('msg.loading') + '</div>';
+      list.innerHTML = UI.loadingHTML('msg.loading', { compact: true });
       try {
         var res = await fetch('/console/api/messages?limit=30', {
           headers: { 'X-Requested-With': 'XMLHttpRequest' }

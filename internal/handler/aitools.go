@@ -1485,12 +1485,17 @@ func (a *App) chatTools(user *model.User, clientIP string) (
 			if ce, ok := args["can_edit"].(bool); ok {
 				share.CanEdit = ce
 			}
+			pwdChanged := false
 			if rm, ok := args["remove_password"].(bool); ok && rm {
+				if share.Password != "" {
+					pwdChanged = true
+				}
 				share.Password = "" // 显式清除已设密码
 			}
 			if pw := argStr("password"); pw != "" {
 				hash, _ := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
 				share.Password = string(hash)
+				pwdChanged = true
 			}
 			exp, err := applyExpire(share.ExpireAt)
 			if err != nil {
@@ -1504,6 +1509,9 @@ func (a *App) chatTools(user *model.User, clientIP string) (
 				return tx.Model(&model.Document{}).Where("id = ?", doc.ID).Update("is_shared", true).Error
 			}); err != nil {
 				return "", fmt.Errorf("分享设置失败: %v", err)
+			}
+			if pwdChanged {
+				a.revokeApprovedDocAccess(doc.ID)
 			}
 			a.reindexDocAsync(doc.ID)
 			note := ""
@@ -2256,10 +2264,15 @@ func (a *App) chatTools(user *model.User, clientIP string) (
 			if v, ok := args["can_edit"].(bool); ok {
 				ps.CanEdit = v
 			}
+			pwdChanged := false
 			if pwd := argStr("password"); pwd != "" {
 				hash, _ := bcrypt.GenerateFromPassword([]byte(pwd), bcrypt.DefaultCost)
 				ps.Password = string(hash)
+				pwdChanged = true
 			} else if v, ok := args["remove_password"].(bool); ok && v {
+				if ps.Password != "" {
+					pwdChanged = true
+				}
 				ps.Password = ""
 			} else if !found {
 				ps.Password = ""
@@ -2271,6 +2284,9 @@ func (a *App) chatTools(user *model.User, clientIP string) (
 			ps.ExpireAt = exp
 			if err := a.DB.Save(&ps).Error; err != nil {
 				return "", fmt.Errorf("分享设置失败: %v", err)
+			}
+			if pwdChanged {
+				a.revokeApprovedProjectAccess(p.ID)
 			}
 			note := ""
 			if ps.CanEdit {

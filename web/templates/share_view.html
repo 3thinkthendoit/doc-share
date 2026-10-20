@@ -71,7 +71,7 @@
 
   <section class="comments">
     <h2 class="comments-title">{{$.T "comments.title"}}</h2>
-    <div id="commentList" class="comment-list"><div class="muted">{{$.T "comments.loading"}}</div></div>
+    <div id="commentList" class="comment-list"><div class="ui-loading is-compact" role="status" aria-live="polite"><span class="ui-loading-spinner" aria-hidden="true"></span><span class="ui-loading-text">{{$.T "comments.loading"}}</span></div></div>
     <form id="commentForm" class="comment-form">
       <div class="comment-compose{{if .user}} has-img-tool{{end}}">
         <div id="commentImagePreviews" class="comment-img-previews" hidden></div>

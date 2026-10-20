@@ -342,7 +342,7 @@ func (a *App) issueSession(c *gin.Context, user *model.User) {
 	_ = a.clearLoginLock(user)
 	// 开启全站 TOTP 时，会话必须带验证标记；否则旧会话在中间件会被拒绝
 	token := a.Signer.MakeUserToken(user.ID, sessionTTL, a.Settings().TOTPEnabled)
-	setCookie(c, middleware.CookieSession, token, int(sessionTTL.Seconds()))
+	a.setCookie(c, middleware.CookieSession, token, int(sessionTTL.Seconds()))
 	if isAjax(c) {
 		c.JSON(http.StatusOK, gin.H{"ok": true, "redirect": "/console"})
 		return

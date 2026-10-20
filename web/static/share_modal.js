@@ -125,7 +125,7 @@ window.ShareModal = (function () {
   function loadAccessRequests(docId) {
     var list = el('accessReqList');
     if (!list || !docId) return;
-    list.innerHTML = '<div class="muted">' + t('加载中…') + '</div>';
+    list.innerHTML = UI.loadingHTML('加载中…');
     fetch('/console/api/docs/' + docId + '/access-requests', {
       headers: { 'X-Requested-With': 'XMLHttpRequest' }
     }).then(function (res) {

@@ -3,6 +3,7 @@ package database
 import (
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -43,7 +44,7 @@ func Init(cfg *config.Config) (*gorm.DB, error) {
 
 	if err := db.AutoMigrate(&model.User{}, &model.Project{}, &model.Category{}, &model.ApiKey{}, &model.Document{}, &model.Share{}, &model.ProjectShare{}, &model.ShareAccessRequest{}, &model.SystemSetting{},
 		&model.DocumentRevision{}, &model.Comment{}, &model.DocumentVisitor{}, &model.ProjectMember{}, &model.Message{}, &model.DocTemplate{},
-		&model.ChatSession{}, &model.ChatMessage{}, &model.ChatSkill{}, &model.LLMConfig{}); err != nil {
+		&model.ChatSession{}, &model.ChatMessage{}, &model.ChatSkill{}, &model.LLMConfig{}, &model.OpenAPINonce{}); err != nil {
 		return nil, fmt.Errorf("auto migrate: %w", err)
 	}
 
@@ -241,6 +242,8 @@ func backfillCategoryTimes(db *gorm.DB) error {
 	return nil
 }
 
+const weakDefaultAdminPassword = "admin123"
+
 // seedAdmin 首次运行时创建默认管理员
 func seedAdmin(db *gorm.DB, cfg *config.Config) error {
 	var count int64
@@ -249,6 +252,12 @@ func seedAdmin(db *gorm.DB, cfg *config.Config) error {
 	}
 	if count > 0 {
 		return nil
+	}
+	// 拒绝弱默认口令落库（已有管理员的存量部署不受影响）
+	if cfg.Auth.DefaultPassword == "" || cfg.Auth.DefaultPassword == weakDefaultAdminPassword {
+		if os.Getenv("DOC_SHARE_ALLOW_INSECURE_DEFAULTS") != "true" {
+			return fmt.Errorf("首次创建管理员拒绝使用弱默认口令 admin123；请设置 DOC_SHARE_ADMIN_PASSWORD，本地调试可设 DOC_SHARE_ALLOW_INSECURE_DEFAULTS=true")
+		}
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(cfg.Auth.DefaultPassword), bcrypt.DefaultCost)

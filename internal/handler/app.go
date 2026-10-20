@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"io/fs"
 	"log"
+	"net/http"
 	"path"
 	"strings"
 	"sync"
@@ -207,7 +208,12 @@ func ParseTemplates(templatesFS fs.FS) (*template.Template, error) {
 	return t.ParseFS(templatesFS, patterns...)
 }
 
-// setCookie 统一设置 Cookie
-func setCookie(c *gin.Context, name, value string, maxAge int) {
-	c.SetCookie(name, value, maxAge, "/", "", false, true)
+// setCookie 统一设置 Cookie：HttpOnly + SameSite=Lax；Secure 由配置决定（HTTPS 生产务必开启）。
+func (a *App) setCookie(c *gin.Context, name, value string, maxAge int) {
+	secure := false
+	if a != nil && a.Cfg != nil {
+		secure = a.Cfg.Auth.CookieSecure
+	}
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(name, value, maxAge, "/", "", secure, true)
 }

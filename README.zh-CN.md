@@ -95,7 +95,8 @@ CREATE DATABASE doc_share DEFAULT CHARSET utf8mb4;
 | `DOC_SHARE_DB_DSN` | 否 | MySQL DSN（默认 `root:root@tcp(127.0.0.1:3306)/doc_share?charset=utf8mb4&parseTime=True&loc=Local`） |
 | `DOC_SHARE_PORT` | 否 | 监听地址（默认 `:8080`） |
 | `DOC_SHARE_ADMIN_USER` | 否 | 首次启动自动创建的管理员用户名（默认 `admin`） |
-| `DOC_SHARE_ADMIN_PASSWORD` | 否 | 管理员初始密码（默认 `admin123`） |
+| `DOC_SHARE_ADMIN_PASSWORD` | 首次无管理员时实质必填 | 管理员初始密码；默认占位 `admin123` 会在首次建号时被拒绝（除非 `DOC_SHARE_ALLOW_INSECURE_DEFAULTS=true`） |
+| `DOC_SHARE_COOKIE_SECURE` | 否 | HTTPS 时设 `true`，为会话/分享 Cookie 加 `Secure`（默认 `false`） |
 | `DOC_SHARE_UPLOAD_DIR` | 否 | 图片上传目录（默认 `./uploads`） |
 | `DOC_SHARE_UPLOAD_MAX_MB` | 否 | 单张图片大小上限 MB（默认 `10`） |
 | `DOC_SHARE_DEV` | 否 | `true` = 模板/静态资源直读磁盘，前端热载 |

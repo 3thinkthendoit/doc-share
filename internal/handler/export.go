@@ -1,10 +1,14 @@
 package handler
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -63,13 +67,20 @@ func (a *App) PreviewExport(c *gin.Context) {
 }
 
 func (a *App) writeDocExport(c *gin.Context, doc *model.Document, limitKey string) {
-	if doc.Type != model.DocTypeMarkdown {
-		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "share.exportUnsupported")})
-		return
-	}
 	format := strings.ToLower(strings.TrimSpace(c.Query("format")))
-	if format != export.FormatPDF && format != export.FormatDOCX {
-		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "share.exportBadFormat")})
+	switch doc.Type {
+	case model.DocTypeMarkdown:
+		if format != export.FormatPDF && format != export.FormatDOCX {
+			c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "share.exportBadFormat")})
+			return
+		}
+	case model.DocTypeHTML:
+		if format != export.FormatPDF {
+			c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "share.exportHTMLPdfOnly")})
+			return
+		}
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "share.exportUnsupported")})
 		return
 	}
 
@@ -95,17 +106,24 @@ func (a *App) writeDocExport(c *gin.Context, doc *model.Document, limitKey strin
 		return
 	}
 
-	uploadDir := ""
-	if a.Cfg != nil {
-		uploadDir = a.Cfg.Upload.Dir
+	var data []byte
+	var ctype string
+	var err error
+	if doc.Type == model.DocTypeHTML {
+		data, ctype, err = a.exportHTMLDocPDF(c.Request.Context(), doc)
+	} else {
+		uploadDir := ""
+		if a.Cfg != nil {
+			uploadDir = a.Cfg.Upload.Dir
+		}
+		data, ctype, err = export.Export(c.Request.Context(), format, export.Options{
+			Title:      doc.Title,
+			Markdown:   doc.Content,
+			BaseURL:    a.siteBaseURL(c),
+			UploadDir:  uploadDir,
+			ImageHosts: a.exportImageHosts(c),
+		})
 	}
-	data, ctype, err := export.Export(c.Request.Context(), format, export.Options{
-		Title:      doc.Title,
-		Markdown:   doc.Content,
-		BaseURL:    a.siteBaseURL(c),
-		UploadDir:  uploadDir,
-		ImageHosts: a.exportImageHosts(c),
-	})
 	if err != nil {
 		log.Printf("export doc=%d format=%s: %v", doc.ID, format, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": a.tr(c, "share.exportFail")})
@@ -117,6 +135,68 @@ func (a *App) writeDocExport(c *gin.Context, doc *model.Document, limitKey strin
 	c.Header("Content-Disposition", contentDisposition(name))
 	c.Header("Cache-Control", "no-store")
 	c.Data(http.StatusOK, ctype, data)
+}
+
+// exportHTMLDocPDF 物化整站到临时目录后转 PDF（相对图片/CSS 可解析）。
+func (a *App) exportHTMLDocPDF(ctx context.Context, doc *model.Document) ([]byte, string, error) {
+	m, err := parseHTMLManifest(doc.Content)
+	if err != nil {
+		return nil, "", fmt.Errorf("站点清单无效: %w", err)
+	}
+	backend, err := a.fileStorage()
+	if err != nil {
+		return nil, "", err
+	}
+	work, err := os.MkdirTemp("", "docshare-html-export-*")
+	if err != nil {
+		return nil, "", err
+	}
+	defer os.RemoveAll(work)
+
+	capBytes := a.htmlSiteMaxBytes()
+	var total int64
+	var entryHTML string
+	for _, name := range m.Files {
+		if !export.SafeSiteRelPath(name) {
+			return nil, "", fmt.Errorf("站点路径非法: %s", name)
+		}
+		remain := capBytes - total
+		if remain <= 0 {
+			return nil, "", fmt.Errorf("站点文件过大")
+		}
+		key := m.Prefix + name
+		rc, _, err := backend.Get(ctx, key)
+		if err != nil {
+			return nil, "", fmt.Errorf("读取 %s 失败: %w", name, err)
+		}
+		data, err := io.ReadAll(io.LimitReader(rc, remain+1))
+		rc.Close()
+		if err != nil {
+			return nil, "", err
+		}
+		if int64(len(data)) > remain {
+			return nil, "", fmt.Errorf("站点文件过大")
+		}
+		total += int64(len(data))
+		if err := export.WriteTempFile(work, name, data); err != nil {
+			return nil, "", err
+		}
+		if name == m.Entry || (m.Entry == "" && name == htmlEntryName) {
+			entryHTML = string(data)
+		}
+	}
+	if entryHTML == "" {
+		b, err := os.ReadFile(filepath.Join(work, filepath.FromSlash(htmlEntryName)))
+		if err != nil {
+			return nil, "", fmt.Errorf("缺少入口 %s", htmlEntryName)
+		}
+		entryHTML = string(b)
+	}
+	pdf, err := export.ExportHTML(ctx, entryHTML, doc.Title, work)
+	if err != nil {
+		return nil, "", err
+	}
+	return pdf, "application/pdf", nil
 }
 
 // exportImageHosts 导出时可拉取远程图片的主机白名单：站点域名 + 对象存储 endpoint。

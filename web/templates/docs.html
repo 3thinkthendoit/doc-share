@@ -26,7 +26,7 @@
       <a href="/console/docs?project=0&amp;{{.sideQS}}" class="{{if eq .project "0"}}active{{end}}">{{$.T "未分组"}}</a>
       {{range .projects}}
       <a href="/console/docs?project={{.ID}}&amp;{{$.sideQS}}" class="{{if eq $.project (print .ID)}}active{{end}}" title="{{.Name}}">
-        <span class="side-name">{{.Name}}</span>{{if .Linked}}<span class="tag">{{$.T "docs.linked"}}</span>{{end}}
+        <span class="side-name">{{.Name}}</span>{{if .Linked}}<span class="tag tag-linked">{{$.T "docs.linked"}}</span>{{end}}
       </a>
       {{end}}
     </aside>
@@ -71,7 +71,7 @@
             {{if eq .Type "html"}}<span class="tag tag-embed">HTML</span>{{else if eq .Type "mindmap"}}<span class="tag tag-embed">{{$.T "docs.tagMindmap"}}</span>{{else if eq .Type "board"}}<span class="tag tag-embed">{{$.T "docs.tagBoard"}}</span>{{else if eq .Type "drawio"}}<span class="tag tag-embed">{{$.T "docs.tagDrawio"}}</span>{{end}}
           </div>
           {{with index $.snippets .ID}}<div class="sr-snippet">{{.}}</div>{{end}}
-          <div class="sr-meta muted">{{if .Project}}{{.Project.Name}}{{if .Project.Linked}} <span class="tag">{{$.T "docs.linked"}}</span>{{end}} · {{end}}{{if .Category}}{{.Category.Name}} · {{end}}{{if .Version}}{{.Version}} · {{end}}{{if $.trash}}<span data-ts="{{.DeletedAt.Time.Unix}}">{{.DeletedAt.Time.Format "2006-01-02 15:04"}}</span>{{else}}<span data-ts="{{.UpdatedAt.Unix}}">{{.UpdatedAt.Format "2006-01-02 15:04"}}</span>{{end}}</div>
+          <div class="sr-meta muted">{{if .Project}}{{.Project.Name}}{{if .Project.Linked}} <span class="tag tag-linked">{{$.T "docs.linked"}}</span>{{end}} · {{end}}{{if .Category}}{{.Category.Name}} · {{end}}{{if .Version}}{{.Version}} · {{end}}{{if $.trash}}<span data-ts="{{.DeletedAt.Time.Unix}}">{{.DeletedAt.Time.Format "2006-01-02 15:04"}}</span>{{else}}<span data-ts="{{.UpdatedAt.Unix}}">{{.UpdatedAt.Format "2006-01-02 15:04"}}</span>{{end}}</div>
           {{/* 搜索态保留行操作：回收站可还原/彻底删除，普通视图可分享/编辑/删除（JS 委托在 .ops-item / [data-trash-op]） */}}
           <div class="sr-ops">
             {{if $.trash}}
@@ -114,7 +114,7 @@
               </td>
               <td>{{if eq .Type "html"}}<span class="tag tag-embed">HTML</span>{{else if eq .Type "mindmap"}}<span class="tag tag-embed">{{$.T "docs.tagMindmap"}}</span>{{else if eq .Type "board"}}<span class="tag tag-embed">{{$.T "docs.tagBoard"}}</span>{{else if eq .Type "drawio"}}<span class="tag tag-embed">{{$.T "docs.tagDrawio"}}</span>{{else}}<span class="muted">Markdown</span>{{end}}</td>
               <td>{{if .Version}}<span class="tag">{{.Version}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
-              <td class="cell-clip" {{if .Project}}title="{{.Project.Name}}"{{end}}>{{if .Project}}{{.Project.Name}}{{if .Project.Linked}} <span class="tag">{{$.T "docs.linked"}}</span>{{end}}{{else}}<span class="muted">—</span>{{end}}</td>
+              <td class="cell-clip" {{if .Project}}title="{{.Project.Name}}"{{end}}>{{if .Project}}{{.Project.Name}}{{if .Project.Linked}} <span class="tag tag-linked">{{$.T "docs.linked"}}</span>{{end}}{{else}}<span class="muted">—</span>{{end}}</td>
               <td class="cell-clip" {{if .Category}}title="{{.Category.Name}}"{{end}}>{{if .Category}}{{.Category.Name}}{{else}}<span class="muted">—</span>{{end}}</td>
               <td class="cell-clip">{{if .Owner.ID}}{{if and $.user (eq .OwnerID $.user.ID)}}<span class="me-badge"><svg class="me-ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg>{{$.T "docs.me"}}</span>{{else}}<span class="owner-link" title="{{.Owner.DisplayName}}" data-name="{{.Owner.DisplayName}}" data-username="{{.Owner.Username}}" data-avatar="{{.Owner.Avatar}}" data-email="{{.Owner.MaskedEmail}}" data-phone="{{.Owner.MaskedPhone}}" data-active="{{if .Owner.LastActiveAt}}{{.Owner.LastActiveAt.Format "2006-01-02 15:04"}}{{end}}">{{.Owner.DisplayName}}</span>{{end}}{{else}}<span class="muted">—</span>{{end}}</td>
               <td>{{.ViewCount}}</td>
@@ -418,7 +418,11 @@ async function dupDoc(id, title, btn){
 
   var state = { docId: '', title: '', projectId: '', pickLabel: '', timer: 0, req: 0 };
 
-  function showListMsg(text) {
+  function showListMsg(text, loading) {
+    if (loading) {
+      listEl.innerHTML = UI.loadingHTML(text || '加载中…');
+      return;
+    }
     listEl.innerHTML = '';
     var empty = document.createElement('div');
     empty.className = 'member-list-empty';
@@ -431,7 +435,7 @@ async function dupDoc(id, title, btn){
     inputEl.value = '';
     nextBtn.disabled = true;
     state.pickLabel = '';
-    showListMsg(UI.t('加载中…'));
+    showListMsg('加载中…', true);
   }
 
   function openTransfer(docId, title, projectId) {
@@ -497,7 +501,7 @@ async function dupDoc(id, title, btn){
     nextBtn.disabled = true;
     clearTimeout(state.timer);
     var q = inputEl.value.trim();
-    showListMsg(UI.t('加载中…'));
+    showListMsg('加载中…', true);
     state.timer = setTimeout(function () { loadMembers(q); }, 250);
   });
 

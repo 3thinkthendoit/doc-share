@@ -115,7 +115,7 @@ window.Revisions = (function () {
     }
 
     async function loadRevisions() {
-      revList.innerHTML = '<div class="muted rev-empty">' + UI.t('revisions.loading') + '</div>';
+      revList.innerHTML = UI.loadingHTML('revisions.loading');
       var revs;
       try {
         var res = await fetch('/console/api/docs/' + docID() + '/revisions', {

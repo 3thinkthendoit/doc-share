@@ -68,7 +68,7 @@ func (a *App) recordVisitor(c *gin.Context, doc *model.Document) []model.Documen
 	} else {
 		guest, isNew := a.guestIdentity(c)
 		if isNew {
-			setCookie(c, CookieGuest, a.Signer.Sign("g:"+guest), guestCookieMaxAge)
+			a.setCookie(c, CookieGuest, a.Signer.Sign("g:"+guest), guestCookieMaxAge)
 		}
 		identity, name = "g:"+guest, guest
 	}
@@ -265,7 +265,7 @@ func (a *App) shareUnlocked(c *gin.Context, token string, doc *model.Document, s
 	if a.shareOwnerBypass(c, doc) {
 		return true
 	}
-	if cred, err := c.Cookie(CookieShare); err == nil && a.Signer.VerifyShareToken(cred, token) {
+	if cred, err := c.Cookie(CookieShare); err == nil && a.Signer.VerifyShareToken(cred, shareGatePayload(token, share.Password)) {
 		return true
 	}
 	if req := a.findAccessRequest(c, share.DocumentID); req != nil && req.Status == model.AccessApproved {
@@ -411,7 +411,7 @@ func (a *App) addComment(c *gin.Context, doc *model.Document, limitKey string) {
 	} else {
 		guest, isNew := a.guestIdentity(c)
 		if isNew {
-			setCookie(c, CookieGuest, a.Signer.Sign("g:"+guest), guestCookieMaxAge)
+			a.setCookie(c, CookieGuest, a.Signer.Sign("g:"+guest), guestCookieMaxAge)
 		}
 		cm.GuestName = guest
 		actorName = guest

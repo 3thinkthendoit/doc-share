@@ -147,7 +147,7 @@ function searchMemberUsers(q) {
 }
 
 async function loadMembers() {
-  memberList.innerHTML = '<div class="muted">' + UI.t('加载中…') + '</div>';
+  memberList.innerHTML = UI.loadingHTML('加载中…');
   try {
     var res = await fetch('/console/api/projects/' + memberProjectId + '/members?page=' + membersPage + '&size=' + membersSize, {
       headers: { 'X-Requested-With': 'XMLHttpRequest' }
@@ -371,7 +371,7 @@ if (memberAddBtn) {
   function loadAccessRequests() {
     var list = el('psAccessReqList');
     if (!curId || !el('psEnabled').checked || !el('psTypePwd').checked) return;
-    list.innerHTML = '<div class="muted">' + t('加载中…') + '</div>';
+    list.innerHTML = UI.loadingHTML('加载中…');
     fetch('/console/api/projects/' + curId + '/access-requests', {
       headers: { 'X-Requested-With': 'XMLHttpRequest' }
     }).then(function (res) {

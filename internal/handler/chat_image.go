@@ -129,13 +129,16 @@ func (a *App) llmUserMessage(content string, withImage bool) llm.Message {
 }
 
 // trimHistoryWithImages 同 trimHistory，但对用户贴图展开为 vision（仅最近 chatImageHistKeep 张）。
-func (a *App) trimHistoryWithImages(history []model.ChatMessage) []llm.Message {
+// 第二返回值为实际进入上下文的最旧消息 id（0=无一保留），供滚动摘要 foldBefore 使用：
+// 条数窗口外与字符预算裁掉的更旧消息都应 id < foldBefore。
+func (a *App) trimHistoryWithImages(history []model.ChatMessage) ([]llm.Message, uint) {
 	type item struct {
 		role    string
 		content string
 		img     string
 	}
 	raw := make([]item, 0, len(history))
+	var oldestKeptID uint
 	remaining := chatBudgetMaxChars
 	for i := 0; i < len(history); i++ {
 		content := history[i].Content
@@ -170,6 +173,7 @@ func (a *App) trimHistoryWithImages(history []model.ChatMessage) []llm.Message {
 			break
 		}
 		raw = append(raw, item{role: history[i].Role, content: content, img: img})
+		oldestKeptID = history[i].ID // 从新往旧走，最后一次成功保留的即最旧保留
 	}
 	// 从新到旧：标记最近 N 张可带图
 	keep := 0
@@ -189,5 +193,5 @@ func (a *App) trimHistoryWithImages(history []model.ChatMessage) []llm.Message {
 			out = append(out, llm.Message{Role: it.role, Content: it.content})
 		}
 	}
-	return out
+	return out, oldestKeptID
 }

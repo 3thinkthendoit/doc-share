@@ -380,3 +380,9 @@ type DocumentVisitor struct {
 	FirstSeenAt time.Time `json:"first_seen_at"`
 	LastSeenAt  time.Time `json:"last_seen_at"`
 }
+
+// OpenAPINonce OpenAPI 签名 nonce 去重（落库以支持多实例；过期行由写入时顺带清理）
+type OpenAPINonce struct {
+	NonceKey  string    `gorm:"primaryKey;size:160" json:"nonce_key"` // appKey:nonce
+	CreatedAt time.Time `gorm:"index" json:"created_at"`
+}

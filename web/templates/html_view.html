@@ -4,18 +4,65 @@
 <head>
 {{template "head" .}}
 <style>
-/* HTML 整站阅读页：纯 iframe 全屏铺开（sandbox 隔离，站点 JS 无法触达本站 cookie/API） */
-html,body{height:100%;margin:0}
-.htmlview-frame{width:100%;height:100%;border:0;display:block;background:#fff}
-.creator-region{position:fixed;left:16px;bottom:16px;z-index:50;background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:6px 12px;font-size:13px;color:#6b7280}
+/* HTML 整站阅读：顶栏 + iframe；sandbox 隔离站点脚本 */
+html,body.htmlview-body{height:100%;margin:0}
+.htmlview-body{
+  display:flex;flex-direction:column;
+  height:100%;height:100dvh;
+  max-width:100%;overflow:hidden;
+  background:var(--bg, #0f1115);
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  box-sizing:border-box;
+}
+.htmlview-bar{
+  flex:none;display:flex;align-items:center;gap:10px;
+  padding:10px 12px;min-height:48px;
+  background:var(--panel,#fff);border-bottom:1px solid var(--border,#e5e7eb);
+  z-index:40;
+}
+.htmlview-title{
+  flex:1;min-width:0;margin:0;
+  font-size:15px;font-weight:600;line-height:1.35;
+  color:var(--text,#111);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.htmlview-bar .doc-export{display:inline-flex;gap:6px;flex:none}
+.htmlview-bar .doc-export-btn{
+  text-decoration:none;font-weight:500;font-size:13px;
+  padding:8px 12px;min-height:36px;line-height:1.2;
+  border-radius:8px;touch-action:manipulation;
+}
+.htmlview-frame{
+  flex:1;width:100%;min-height:0;border:0;display:block;background:#fff;
+}
+.creator-region{
+  position:fixed;left:max(12px,env(safe-area-inset-left));
+  bottom:max(12px,env(safe-area-inset-bottom));
+  z-index:50;background:var(--panel,#fff);border:1px solid var(--border,#e5e7eb);
+  border-radius:6px;padding:6px 12px;font-size:12px;color:var(--muted,#6b7280);
+  max-width:min(70vw,280px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+@media (max-width:700px){
+  .htmlview-bar{padding:8px 10px;gap:8px}
+  .htmlview-title{font-size:14px}
+  .htmlview-bar .doc-export-btn{padding:8px 10px;font-size:12px}
+  .creator-region{font-size:11px;padding:5px 8px}
+}
 </style>
 </head>
-<body>
+<body class="htmlview-body">
   <div id="docUpdateBanner" class="doc-update-banner doc-update-banner--fixed" hidden role="status">
     <span class="doc-update-banner-text">{{$.T "reader.updateHint"}}</span>
     <button type="button" id="docUpdateReload" class="btn btn-sm btn-primary">{{$.T "reader.updateReload"}}</button>
     <button type="button" id="docUpdateDismiss" class="btn-link doc-update-dismiss">{{$.T "reader.updateDismiss"}}</button>
   </div>
+  <header class="htmlview-bar">
+    <h1 class="htmlview-title" title="{{.doc.Title}}">{{.doc.Title}}</h1>
+    {{if .canExport}}
+    <div class="doc-export" role="group" aria-label="{{$.T "share.download"}}">
+      <a class="btn btn-sm btn-primary doc-export-btn" href="{{.exportBase}}?format=pdf" download>{{$.T "share.downloadPdf"}}</a>
+    </div>
+    {{end}}
+  </header>
   {{/*
     sandbox 不含 allow-same-origin：整站脚本运行在隔离源，无法读写本站 cookie / 调用 /console API。
     允许 scripts/forms/popups/downloads 以兼容常见打包产物（vite/webpack dist 等）。
@@ -32,6 +79,49 @@ html,body{height:100%;margin:0}
         contentVersion: {{.doc.ContentVersion}}
       });
     }
+    (function () {
+      function t(s) { return window.UI ? UI.t(s) : s; }
+      document.querySelectorAll('.doc-export-btn').forEach(function (a) {
+        a.addEventListener('click', async function (e) {
+          e.preventDefault();
+          if (a.dataset.busy) return;
+          a.dataset.busy = '1';
+          a.setAttribute('aria-busy', 'true');
+          try {
+            var res = await fetch(a.href, { credentials: 'same-origin' });
+            var ct = (res.headers.get('Content-Type') || '').toLowerCase();
+            if (!res.ok || ct.indexOf('application/json') === 0) {
+              var data = {};
+              try { data = await res.json(); } catch (_) {}
+              if (window.UI && UI.alert) UI.alert((data && data.error) || t('share.exportFail'));
+              else alert((data && data.error) || t('share.exportFail'));
+              return;
+            }
+            var blob = await res.blob();
+            var dispo = res.headers.get('Content-Disposition') || '';
+            var name = 'document.pdf';
+            var m = /filename\*=UTF-8''([^;]+)/i.exec(dispo) || /filename="([^"]+)"/i.exec(dispo);
+            if (m) {
+              try { name = decodeURIComponent(m[1]); } catch (_) { name = m[1]; }
+            }
+            var url = URL.createObjectURL(blob);
+            var link = document.createElement('a');
+            link.href = url;
+            link.download = name;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+          } catch (err) {
+            if (window.UI && UI.alert) UI.alert(t('share.exportFail'));
+            else alert(t('share.exportFail'));
+          } finally {
+            delete a.dataset.busy;
+            a.removeAttribute('aria-busy');
+          }
+        });
+      });
+    })();
   </script>
 </body>
 </html>

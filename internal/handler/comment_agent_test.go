@@ -120,6 +120,33 @@ func TestRunDocShareCommentAgentPostsBotReply(t *testing.T) {
 	}
 }
 
+func TestRunDocShareCommentAgentRefusesWhenShareClosed(t *testing.T) {
+	a, owner, doc := newCommentAgentApp(t)
+	stranger := model.User{Username: "stranger", Nickname: "访客", Role: model.RoleViewer, Status: model.StatusEnabled}
+	if err := a.DB.Create(&stranger).Error; err != nil {
+		t.Fatal(err)
+	}
+	// 无分享、非属主：injectRead 失败且分享未 live → 应回复拒绝，不调 LLM
+	parent := model.Comment{
+		DocumentID: doc.ID, UserID: stranger.ID,
+		Content: "@DocShare 请总结",
+	}
+	if err := a.DB.Create(&parent).Error; err != nil {
+		t.Fatal(err)
+	}
+	a.runDocShareCommentAgent(doc.ID, parent.ID, stranger.ID, "请总结")
+
+	var bots []model.Comment
+	a.DB.Where("document_id = ? AND is_bot = ?", doc.ID, true).Find(&bots)
+	if len(bots) != 1 {
+		t.Fatalf("bot replies=%d want 1", len(bots))
+	}
+	if !strings.Contains(bots[0].Content, "分享已关闭") && !strings.Contains(bots[0].Content, "不可访问") {
+		t.Fatalf("unexpected reply: %q", bots[0].Content)
+	}
+	_ = owner
+}
+
 func TestMaybeEnqueueDocShareAgentRateLimit(t *testing.T) {
 	a, owner, doc := newCommentAgentApp(t)
 	uid := strconv.FormatUint(uint64(owner.ID), 10)
@@ -188,5 +215,20 @@ func TestIsDocShareBotComment(t *testing.T) {
 	}
 	if isDocShareBotComment(&model.Comment{UserID: 0, GuestName: "游客abcd"}) {
 		t.Fatal("normal guest")
+	}
+}
+
+func TestCommentAgentStreamTimeoutUsesSettings(t *testing.T) {
+	a, _, _ := newCommentAgentApp(t)
+	if got := a.commentAgentStreamTimeout(); got != time.Duration(defaultAIStreamTimeoutMin)*time.Minute {
+		t.Fatalf("default timeout: got %s want %dm", got, defaultAIStreamTimeoutMin)
+	}
+	a.setCache = &SiteSettings{AIStreamTimeoutMin: 25}
+	if got := a.commentAgentStreamTimeout(); got != 25*time.Minute {
+		t.Fatalf("custom timeout: got %s want 25m", got)
+	}
+	a.setCache = &SiteSettings{AIStreamTimeoutMin: 0}
+	if got := a.commentAgentStreamTimeout(); got != time.Duration(defaultAIStreamTimeoutMin)*time.Minute {
+		t.Fatalf("invalid timeout: got %s want %dm", got, defaultAIStreamTimeoutMin)
 	}
 }

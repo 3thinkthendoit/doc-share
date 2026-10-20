@@ -1038,8 +1038,10 @@ func (a *App) PreviewDoc(c *gin.Context) {
 			"canModerate": user != nil && (user.ID == doc.OwnerID || user.IsAdmin()),
 			"entryURL":    a.adminEntryURL(doc.ID),
 			// 预览承诺“不计浏览数”，只读展示最近访客，不写访客记录
-			"visitors": a.recentVisitors(doc.ID),
-			"metaURL":  contentMetaPath(doc.ID, "", ""),
+			"visitors":   a.recentVisitors(doc.ID),
+			"metaURL":    contentMetaPath(doc.ID, "", ""),
+			"canExport":  true,
+			"exportBase": fmt.Sprintf("/console/api/docs/%d/export", doc.ID),
 		})
 		return
 	}
@@ -1095,10 +1097,15 @@ func (a *App) UpsertShare(c *gin.Context) {
 	}
 	share.CanEdit = req.CanEdit // 编辑权限每次按当前设置覆盖
 	// 密码：非空 = 设置密码；空 + remove_password = 清除已设密码；空 = 不修改（新建时无密码）
+	pwdChanged := false
 	if req.Password != "" {
 		hash, _ := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 		share.Password = string(hash)
+		pwdChanged = true
 	} else if req.RemovePassword {
+		if share.Password != "" {
+			pwdChanged = true
+		}
 		share.Password = ""
 	} else if !found {
 		share.Password = ""
@@ -1114,6 +1121,9 @@ func (a *App) UpsertShare(c *gin.Context) {
 	if err := a.DB.Save(&share).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "分享设置失败"})
 		return
+	}
+	if pwdChanged {
+		a.revokeApprovedDocAccess(doc.ID)
 	}
 	doc.IsShared = true
 	a.DB.Save(doc)

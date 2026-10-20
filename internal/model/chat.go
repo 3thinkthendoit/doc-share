@@ -12,6 +12,8 @@ type ChatSession struct {
 	TrustSensitive bool      `gorm:"not null;default:false" json:"trust_sensitive"` // 历史字段；敏感操作一律审批，此标记不再跳过确认
 	CreatingSkill  bool      `gorm:"not null;default:false" json:"creating_skill"`  // 本会话正处于 /create-skill 多轮流程
 	TaskBoard      string    `gorm:"type:text" json:"-"`                            // 多篇修改的任务清单 JSON，跨轮保留
+	RollingSummary string    `gorm:"type:text" json:"-"`                            // 滑出上下文窗口的旧轮滚动摘要
+	SummaryUptoID  uint      `gorm:"not null;default:0" json:"-"`                   // 摘要已覆盖到的最大消息 id（含）
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }

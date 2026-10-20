@@ -30,8 +30,9 @@ import (
 var errHTMLContentConflict = errors.New("html content version conflict")
 
 const (
-	// htmlSigTTL 整站文件访问签名有效期（每次打开页面重新签发）
-	htmlSigTTL = 2 * time.Hour
+	// htmlSigTTL 整站文件访问签名有效期（每次打开页面重新签发）。
+	// 无密码分享下 /raw 仅靠短时签名；窗口不宜过长，缩小 Referer/历史泄露面。
+	htmlSigTTL = 30 * time.Minute
 	// htmlEntryName 整站入口文件（站点根必须存在）
 	htmlEntryName = "index.html"
 )
@@ -983,7 +984,7 @@ func (a *App) serveHTMLSiteFile(c *gin.Context, doc *model.Document, sitePath st
 // <sig> 仅在访问者通过密码门后由 serveDoc 签发（无密码分享 = 任何持链接者可读，与 Markdown 分享语义一致）。
 func (a *App) ShareRaw(c *gin.Context) {
 	token := c.Param("token")
-	doc, _ := a.loadShare(c, token)
+	doc, share := a.loadShare(c, token)
 	if doc == nil {
 		return
 	}
@@ -996,7 +997,7 @@ func (a *App) ShareRaw(c *gin.Context) {
 		c.String(http.StatusNotFound, "路径无效")
 		return
 	}
-	if !a.Signer.VerifyShareToken(sig, token) {
+	if !a.Signer.VerifyShareToken(sig, shareGatePayload(token, share.Password)) {
 		c.String(http.StatusForbidden, "访问凭证已失效，请刷新页面")
 		return
 	}
@@ -1029,9 +1030,9 @@ func (a *App) AdminRaw(c *gin.Context) {
 	a.serveHTMLSiteFile(c, &doc, sitePath)
 }
 
-// htmlEntryURL 分享页入口：/s/:token/raw/<sig>/index.html
-func (a *App) htmlEntryURL(token string) string {
-	sig := a.Signer.MakeShareToken(token, htmlSigTTL)
+// htmlEntryURL 分享页入口：/s/:token/raw/<sig>/index.html（密码指纹绑进签名）
+func (a *App) htmlEntryURL(token, passwordHash string) string {
+	sig := a.Signer.MakeShareToken(shareGatePayload(token, passwordHash), htmlSigTTL)
 	return "/s/" + token + "/raw/" + sig + "/" + htmlEntryName
 }
 

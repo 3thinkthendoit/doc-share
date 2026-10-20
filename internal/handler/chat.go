@@ -1656,15 +1656,17 @@ func (a *App) ChatCompletions(c *gin.Context) {
 		slashExtra = append(slashExtra, createSkillContinueNote(plain))
 	}
 
-	// 组装上下文：系统提示 + 最近历史（最多 40 条，且受字符预算约束；贴图展开为 vision）
+	// 组装上下文：系统提示 + 最近历史（最多 40 条，且受字符预算约束；贴图展开为 vision）。
+	// 滚动摘要在 SSE 启动后的后台 goroutine 里刷新并注入，避免阻塞首包响应头。
 	var history []model.ChatMessage
 	a.DB.Where("session_id = ?", s.ID).Order("id desc").Limit(chatHistoryLimit).Find(&history)
-	msgs := make([]llm.Message, 0, len(history)+3+len(slashExtra))
+	histMsgs, foldBeforeID := a.trimHistoryWithImages(history)
+	msgs := make([]llm.Message, 0, len(history)+4+len(slashExtra))
 	msgs = append(msgs, llm.Message{Role: "system", Content: chatSystemPrompt})
 	if cat := a.skillCatalogPrompt(user.ID); cat != "" {
 		msgs = append(msgs, llm.Message{Role: "user", Content: cat})
 	}
-	msgs = append(msgs, a.trimHistoryWithImages(history)...)
+	msgs = append(msgs, histMsgs...)
 	for _, x := range slashExtra {
 		msgs = append(msgs, llm.Message{Role: "user", Content: x})
 	}
@@ -1673,14 +1675,14 @@ func (a *App) ChatCompletions(c *gin.Context) {
 	tools, execTool, injectRead := a.chatTools(user, c.ClientIP())
 	prereadIDs := map[int64]bool{} // 本轮已注入的文档，禁止模型重复 read
 
-	// 文档绑定会话（预览/分享「打开对话」）：每轮强制预读该文，并限定助手只围绕该文作答
+	// 文档绑定会话（预览/分享「打开对话」）：每轮强制预读该文，并限定助手只围绕该文作答。
+	// 仅控制台可见性或「分享仍有效」可注入；禁止无 ACL 的 DB.First 回退（关分享后不得继续读正文）。
 	forceAnswer := false
 	if s.DocumentID > 0 {
 		docID := int64(s.DocumentID)
 		docText, err := readDocInject(injectRead, docID, aiPrereadMaxChars, intentPlain)
 		if err != nil {
-			var doc model.Document
-			if a.DB.First(&doc, s.DocumentID).Error == nil {
+			if doc, ok := a.docContentIfPublicShareLive(uint(docID)); ok {
 				docText = buildDocInjectBody(doc.Title, doc.ContentVersion, doc.Content, intentPlain, aiPrereadMaxChars)
 				err = nil
 			}
@@ -1691,6 +1693,8 @@ func (a *App) ChatCompletions(c *gin.Context) {
 				"下面是当前预读正文（未标注截断时勿再 read_document）：\n\n" + docText})
 			prereadIDs[docID] = true
 			log.Printf("[llm] 文档绑定会话 session=%d 注入文档 %d（%d 字符）", s.ID, docID, utf8.RuneCountInString(docText))
+		} else {
+			log.Printf("[llm] 文档绑定会话 session=%d 文档 %d 不可注入（无控制台权限且分享已失效）", s.ID, docID)
 		}
 	}
 
@@ -1867,6 +1871,10 @@ func (a *App) ChatCompletions(c *gin.Context) {
 			}
 		}()
 
+		// 先开 SSE 再刷新摘要：不挡响应头；刷新后注入，本轮即可用上最新记忆
+		a.maybeRefreshRollingSummary(genCtx, cfg, &s, foldBeforeID)
+		msgs = injectRollingSummaryAfterSystem(msgs, s.RollingSummary)
+
 		emitDelta := func(delta string) string {
 			out := resolveDelta(delta)
 			if out != "" {
@@ -1880,7 +1888,7 @@ func (a *App) ChatCompletions(c *gin.Context) {
 		var totalUsage llm.Usage  // 累计所有轮的 token 用量
 		startedAt := time.Now()
 		toolCache := map[string]string{} // 重复的相同调用直接复用结果，防止模型原地打转
-		var lastToolResults string       // 上一轮工具结果（用于无 tool_call 时的自动续跑判断）
+		var lastToolResults string       // 上一轮工具结果（用于空 tool_call 时的自动续跑判断）
 		var mutEv mutationEvidence       // 本请求写入证据（防口头谎称 / 错工具洗白）
 		autoContinues := 0
 		taskNudges := 0

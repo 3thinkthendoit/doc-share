@@ -47,7 +47,7 @@
   if (closeBtn) closeBtn.addEventListener('click', function () { showPanel(false); });
 
   async function ensureSession() {
-    msgsEl.innerHTML = '<div class="muted">' + t('readerChat.loading') + '</div>';
+    msgsEl.innerHTML = (window.UI && UI.loadingHTML) ? UI.loadingHTML('readerChat.loading') : ('<div class="muted">' + t('readerChat.loading') + '</div>');
     try {
       var res = await fetch(api('/chat-session'), {
         method: 'POST',

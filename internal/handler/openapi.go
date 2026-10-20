@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"doc-share/internal/search"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // ---------- 签名协议 ----------
@@ -33,28 +35,55 @@ const (
 	openNonceMaxLen = 10000 // nonce 缓存条数上限，超出触发清理
 )
 
-// nonceCache 内存去重（单实例部署；多实例需换 Redis）
+// nonceCache 进程内快路径；落库 OpenAPINonce 以覆盖多实例重放。
 var nonceCache = struct {
 	sync.Mutex
 	m map[string]time.Time
 }{m: make(map[string]time.Time)}
 
-// nonceSeen 记录并判断 nonce 是否已用过
-func nonceSeen(key string) bool {
+// nonceRemember 写入进程内快路径（仅在 DB 已确认占用后调用）。
+func nonceRemember(key string, at time.Time) {
 	nonceCache.Lock()
 	defer nonceCache.Unlock()
-	now := time.Now()
 	if len(nonceCache.m) > openNonceMaxLen {
 		for k, t := range nonceCache.m {
-			if now.Sub(t) > openSigWindow*time.Second {
+			if at.Sub(t) > openSigWindow*time.Second {
 				delete(nonceCache.m, k)
 			}
 		}
 	}
-	if _, ok := nonceCache.m[key]; ok {
+	nonceCache.m[key] = at
+}
+
+func nonceCached(key string) bool {
+	nonceCache.Lock()
+	defer nonceCache.Unlock()
+	_, ok := nonceCache.m[key]
+	return ok
+}
+
+// nonceSeen 记录并判断 nonce 是否已用过。true = 重放（应拒绝）。
+// 先查内存，再落库；仅 DB 成功或唯一键冲突后才写入内存，避免 DB 抖动误伤同 nonce 重试。
+func (a *App) nonceSeen(key string) bool {
+	if nonceCached(key) {
 		return true
 	}
-	nonceCache.m[key] = now
+	now := time.Now()
+	row := model.OpenAPINonce{NonceKey: key, CreatedAt: now}
+	if err := a.DB.Create(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) || isDupKey(err) {
+			nonceRemember(key, now)
+			return true
+		}
+		// 其它 DB 错误：拒绝本次请求，但不污染内存，客户端可用同一 nonce 重试
+		log.Printf("[openapi] nonce 落库失败 key=%s: %v", key, err)
+		return true
+	}
+	nonceRemember(key, now)
+	if now.Unix()%17 == 0 {
+		cutoff := now.Add(-time.Duration(openSigWindow) * time.Second)
+		a.DB.Where("created_at < ?", cutoff).Delete(&model.OpenAPINonce{})
+	}
 	return false
 }
 
@@ -125,7 +154,7 @@ func (a *App) RequireAppKey() gin.HandlerFunc {
 			openAbort(c, http.StatusUnauthorized, errSigBad)
 			return
 		}
-		if nonceSeen(appKey + ":" + nonce) {
+		if a.nonceSeen(appKey + ":" + nonce) {
 			openAbort(c, http.StatusUnauthorized, errNonceReplay)
 			return
 		}

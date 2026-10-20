@@ -80,7 +80,7 @@ func (a *App) Login(c *gin.Context) {
 
 // Logout 登出
 func (a *App) Logout(c *gin.Context) {
-	setCookie(c, middleware.CookieSession, "", -1)
+	a.setCookie(c, middleware.CookieSession, "", -1)
 	if isAjax(c) {
 		c.JSON(http.StatusOK, gin.H{"ok": true, "redirect": "/login"})
 		return

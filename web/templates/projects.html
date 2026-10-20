@@ -15,9 +15,9 @@
     <input type="text" name="q" placeholder="{{$.T "proj.filterName"}}" value="{{.q}}">
     <input type="text" name="owner" placeholder="{{$.T "proj.filterOwner"}}" value="{{.owner}}">
     <select name="scope">
-      <option value="">{{$.T "docs.originAll"}}</option>
-      <option value="mine" {{if eq .scope "mine"}}selected{{end}}>{{$.T "docs.originMine"}}</option>
-      <option value="joined" {{if eq .scope "joined"}}selected{{end}}>{{$.T "docs.originShared"}}</option>
+      <option value="">{{$.T "proj.scopeAll"}}</option>
+      <option value="mine" {{if eq .scope "mine"}}selected{{end}}>{{$.T "proj.scopeMine"}}</option>
+      <option value="joined" {{if eq .scope "joined"}}selected{{end}}>{{$.T "dash.linked"}}</option>
     </select>
     <button type="submit" class="btn">{{$.T "docs.query"}}</button>
     <a href="/console/projects?size={{.size}}" class="btn">{{$.T "重置"}}</a>
@@ -31,7 +31,7 @@
       <tbody>
         {{range .projects}}
         <tr>
-          <td>{{.Name}}{{if .Role}} <span class="tag">{{if eq .Role "edit"}}{{$.T "proj.roleEdit"}}{{else}}{{$.T "proj.roleView"}}{{end}}</span>{{end}}</td>
+          <td>{{.Name}}{{if .Role}} <span class="tag tag-linked">{{$.T "docs.linked"}}</span> <span class="tag">{{if eq .Role "edit"}}{{$.T "proj.roleEdit"}}{{else}}{{$.T "proj.roleView"}}{{end}}</span>{{end}}</td>
           <td class="cell-muted">{{if .Description}}{{.Description}}{{else}}—{{end}}</td>
           <td>
             {{if and $.user (eq .OwnerID $.user.ID)}}—{{/* 自己的项目无需查看归属信息 */}}
@@ -252,7 +252,7 @@
   }
 
   function loadProjDocs() {
-    list.innerHTML = '<div class="muted">' + UI.t('加载中…') + '</div>';
+    list.innerHTML = UI.loadingHTML('加载中…');
     fetch('/console/api/projects/' + docsProjectId + '/docs?page=' + docsPage + '&size=' + docsSize, {
       headers: { 'X-Requested-With': 'XMLHttpRequest' }
     }).then(function (r) { return r.json(); }).then(renderDocs).catch(function () {

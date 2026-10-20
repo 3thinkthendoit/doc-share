@@ -1171,7 +1171,7 @@
   async function loadAccessRequests() {
     var list = document.getElementById('accessReqList');
     if (!list || !docID()) return;
-    list.innerHTML = '<div class="muted">' + UI.t('加载中…') + '</div>';
+    list.innerHTML = UI.loadingHTML('加载中…');
     try {
       var res = await fetch('/console/api/docs/' + docID() + '/access-requests', {
         headers: { 'X-Requested-With': 'XMLHttpRequest' }

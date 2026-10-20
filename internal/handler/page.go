@@ -89,7 +89,7 @@ func (a *App) Dashboard(c *gin.Context) {
 	user := middleware.CurrentUser(c)
 	isAdmin := user != nil && user.IsAdmin()
 
-	var docCount, userCount, shareCount, projectCount, pendingApplyCount int64
+	var docCount, userCount, shareCount, projectCount, linkedProjectCount, pendingApplyCount int64
 	recentTx := a.DB.Model(&model.Document{})
 	if isAdmin {
 		a.DB.Model(&model.Document{}).Count(&docCount)
@@ -106,25 +106,27 @@ func (a *App) Dashboard(c *gin.Context) {
 			Count(&pendingApplyCount)
 		recentTx = recentTx.Where("owner_id = ?", user.ID)
 	}
-	// 关联项目数：自己拥有的 + 作为成员参与的项目（去重）；
+	// 项目数 = 自己拥有；关联 = 作为成员参与且非属主。
 	// 管理员全量可管，无「关联」概念，不统计也不在仪表盘展示
 	if !isAdmin {
+		a.DB.Model(&model.Project{}).Where("owner_id = ?", user.ID).Count(&projectCount)
 		a.DB.Model(&model.Project{}).
-			Where("owner_id = ? OR id IN (SELECT project_id FROM project_members WHERE user_id = ?)", user.ID, user.ID).
-			Count(&projectCount)
+			Where("owner_id <> ? AND id IN (SELECT project_id FROM project_members WHERE user_id = ?)", user.ID, user.ID).
+			Count(&linkedProjectCount)
 	}
 
 	var recent []model.Document
-	recentTx.Preload("Owner").Preload("Share").Preload("UpdatedBy").Order("updated_at desc").Limit(5).Find(&recent)
+	recentTx.Preload("Owner").Preload("Share").Preload("UpdatedBy").Order("updated_at desc").Limit(10).Find(&recent)
 
 	a.render(c, "dashboard.html", gin.H{
-		"title":             "仪表盘",
-		"isAdmin":           isAdmin,
-		"docCount":          docCount,
-		"userCount":         userCount,
-		"shareCount":        shareCount,
-		"projectCount":      projectCount,
-		"pendingApplyCount": pendingApplyCount,
-		"recent":            recent,
+		"title":              "仪表盘",
+		"isAdmin":            isAdmin,
+		"docCount":           docCount,
+		"userCount":          userCount,
+		"shareCount":         shareCount,
+		"projectCount":       projectCount,
+		"linkedProjectCount": linkedProjectCount,
+		"pendingApplyCount":  pendingApplyCount,
+		"recent":             recent,
 	})
 }

@@ -95,7 +95,8 @@ All settings live in `config.yaml` and can be overridden via environment variabl
 | `DOC_SHARE_DB_DSN` | No | MySQL DSN (default: `root:root@tcp(127.0.0.1:3306)/doc_share?charset=utf8mb4&parseTime=True&loc=Local`) |
 | `DOC_SHARE_PORT` | No | Listen address (default `:8080`) |
 | `DOC_SHARE_ADMIN_USER` | No | Initial admin username (default `admin`) |
-| `DOC_SHARE_ADMIN_PASSWORD` | No | Initial admin password (default `admin123`) |
+| `DOC_SHARE_ADMIN_PASSWORD` | Required when seeding | Initial admin password; placeholder `admin123` is rejected on first seed unless `DOC_SHARE_ALLOW_INSECURE_DEFAULTS=true` |
+| `DOC_SHARE_COOKIE_SECURE` | No | Set `true` behind HTTPS to mark session/share cookies Secure (default `false`) |
 | `DOC_SHARE_UPLOAD_DIR` | No | Image upload directory (default `./uploads`) |
 | `DOC_SHARE_UPLOAD_MAX_MB` | No | Max image size in MB (default `10`) |
 | `DOC_SHARE_DEV` | No | `true` = serve templates/statics from disk for hot reload |

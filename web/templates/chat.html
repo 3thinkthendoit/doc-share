@@ -8,7 +8,7 @@
   <aside class="chat-side">
     <button type="button" class="btn btn-primary chat-new" id="newSessionBtn">＋ {{$.T "chat.newSession"}}</button>
     <div class="chat-side-label">{{$.T "chat.sessionList"}}</div>
-    <div class="chat-side-list" id="sessionList"><div class="muted chat-empty">{{$.T "chat.loading"}}</div></div>
+    <div class="chat-side-list" id="sessionList"><div class="ui-loading is-compact" role="status" aria-live="polite"><span class="ui-loading-spinner" aria-hidden="true"></span><span class="ui-loading-text">{{$.T "chat.loading"}}</span></div></div>
   </aside>
 
   <section class="chat-main">

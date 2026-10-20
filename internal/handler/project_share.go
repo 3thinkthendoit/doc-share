@@ -29,7 +29,7 @@ func projectShareReqCookieName(projectID uint) string {
 }
 
 func (a *App) setProjectShareReqCookie(c *gin.Context, projectID uint, token string) {
-	setCookie(c, projectShareReqCookieName(projectID), token, shareAccessReqTTL)
+	a.setCookie(c, projectShareReqCookieName(projectID), token, shareAccessReqTTL)
 }
 
 // ---- 加载与鉴权 ----
@@ -116,7 +116,7 @@ func (a *App) psHasAccess(c *gin.Context, token string, project *model.Project, 
 	if a.psOwnerBypass(c, project) {
 		return true
 	}
-	if cred, err := c.Cookie(CookieProjectShare); err == nil && a.Signer.VerifyShareToken(cred, token) {
+	if cred, err := c.Cookie(CookieProjectShare); err == nil && a.Signer.VerifyShareToken(cred, shareGatePayload(token, ps.Password)) {
 		return true
 	}
 	if req := a.findProjectAccessRequest(c, project.ID); req != nil && req.Status == model.AccessApproved {
@@ -245,8 +245,8 @@ func (a *App) ProjectShareSubmit(c *gin.Context) {
 		return
 	}
 	a.Limiter.Reset(ip, token)
-	cred := a.Signer.MakeShareToken(token, shareVerifyTTL*time.Second)
-	setCookie(c, CookieProjectShare, cred, shareVerifyTTL)
+	cred := a.Signer.MakeShareToken(shareGatePayload(token, ps.Password), shareVerifyTTL*time.Second)
+	a.setCookie(c, CookieProjectShare, cred, shareVerifyTTL)
 	a.shareGateOK(c, "/ps/"+token)
 }
 
@@ -416,9 +416,11 @@ func (a *App) serveProjectDoc(c *gin.Context, ps *model.ProjectShare, doc *model
 			"token":       token,
 			"user":        user,
 			"canModerate": canModerate,
-			"entryURL":    a.psEntryURL(token, doc.ID),
+			"entryURL":    a.psEntryURL(token, ps.Password, doc.ID),
 			"visitors":    a.recordVisitor(c, doc),
 			"metaURL":     contentMetaPath(doc.ID, token, apiBase),
+			"canExport":   true,
+			"exportBase":  apiBase + "/export",
 		})
 		return
 	}
@@ -438,8 +440,8 @@ func (a *App) serveProjectDoc(c *gin.Context, ps *model.ProjectShare, doc *model
 }
 
 // psEntryURL 项目分享 HTML 整站入口：/ps/:token/d/:docId/raw/<sig>/index.html
-func (a *App) psEntryURL(token string, docID uint) string {
-	sig := a.Signer.MakeShareToken(token, htmlSigTTL)
+func (a *App) psEntryURL(token, passwordHash string, docID uint) string {
+	sig := a.Signer.MakeShareToken(shareGatePayload(token, passwordHash), htmlSigTTL)
 	return "/ps/" + token + "/d/" + strconv.FormatUint(uint64(docID), 10) + "/raw/" + sig + "/" + htmlEntryName
 }
 
@@ -447,7 +449,7 @@ func (a *App) psEntryURL(token string, docID uint) string {
 // 与 ShareRaw 同理凭路径内短时签名鉴权（sandbox iframe 子资源不带 cookie）
 func (a *App) ProjectShareRaw(c *gin.Context) {
 	token := c.Param("token")
-	project, _ := a.loadProjectShare(c, token)
+	project, ps := a.loadProjectShare(c, token)
 	if project == nil {
 		return
 	}
@@ -464,7 +466,7 @@ func (a *App) ProjectShareRaw(c *gin.Context) {
 		c.String(http.StatusNotFound, "路径无效")
 		return
 	}
-	if !a.Signer.VerifyShareToken(sig, token) {
+	if !a.Signer.VerifyShareToken(sig, shareGatePayload(token, ps.Password)) {
 		c.String(http.StatusForbidden, "访问凭证已失效，请刷新页面")
 		return
 	}
@@ -580,10 +582,15 @@ func (a *App) UpsertProjectShare(c *gin.Context) {
 	}
 	ps.CanEdit = req.CanEdit // 编辑权限每次按当前设置覆盖
 	// 密码：非空 = 设置密码；空 + remove_password = 清除已设密码；空 = 不修改（新建时无密码）
+	pwdChanged := false
 	if req.Password != "" {
 		hash, _ := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 		ps.Password = string(hash)
+		pwdChanged = true
 	} else if req.RemovePassword {
+		if ps.Password != "" {
+			pwdChanged = true
+		}
 		ps.Password = ""
 	} else if !found {
 		ps.Password = ""
@@ -597,6 +604,9 @@ func (a *App) UpsertProjectShare(c *gin.Context) {
 	if err := a.DB.Save(&ps).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "分享设置失败"})
 		return
+	}
+	if pwdChanged {
+		a.revokeApprovedProjectAccess(project.ID)
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"ok":          true,

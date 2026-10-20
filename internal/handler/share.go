@@ -29,7 +29,7 @@ func shareReqCookieName(docID uint) string {
 
 // setShareReqCookie 写入按文档隔离的申请凭证，并尽量消化旧版全局 cookie
 func (a *App) setShareReqCookie(c *gin.Context, docID uint, token string) {
-	setCookie(c, shareReqCookieName(docID), token, shareAccessReqTTL)
+	a.setCookie(c, shareReqCookieName(docID), token, shareAccessReqTTL)
 	a.migrateLegacyShareReqCookie(c)
 }
 
@@ -53,9 +53,9 @@ func (a *App) migrateLegacyShareReqCookie(c *gin.Context) {
 	}
 	var req model.ShareAccessRequest
 	if a.DB.Where("request_token = ?", tok).First(&req).Error == nil {
-		setCookie(c, shareReqCookieName(req.DocumentID), tok, shareAccessReqTTL)
+		a.setCookie(c, shareReqCookieName(req.DocumentID), tok, shareAccessReqTTL)
 	}
-	setCookie(c, CookieShareReqLegacy, "", -1)
+	a.setCookie(c, CookieShareReqLegacy, "", -1)
 }
 
 // ShareView 分享阅读入口：GET /s/:token
@@ -73,7 +73,7 @@ func (a *App) ShareView(c *gin.Context) {
 	}
 
 	// 有密码：校验已签发的免密凭证
-	if cred, err := c.Cookie(CookieShare); err == nil && a.Signer.VerifyShareToken(cred, token) {
+	if cred, err := c.Cookie(CookieShare); err == nil && a.Signer.VerifyShareToken(cred, shareGatePayload(token, share.Password)) {
 		a.serveDoc(c, doc, share, token)
 		return
 	}
@@ -177,8 +177,8 @@ func (a *App) ShareSubmit(c *gin.Context) {
 	}
 
 	a.Limiter.Reset(ip, token)
-	cred := a.Signer.MakeShareToken(token, shareVerifyTTL*time.Second)
-	setCookie(c, CookieShare, cred, shareVerifyTTL)
+	cred := a.Signer.MakeShareToken(shareGatePayload(token, share.Password), shareVerifyTTL*time.Second)
+	a.setCookie(c, CookieShare, cred, shareVerifyTTL)
 	a.shareGateOK(c, "/s/"+token)
 }
 
@@ -369,7 +369,11 @@ func (a *App) serveDoc(c *gin.Context, doc *model.Document, share *model.Share, 
 	}
 	// HTML 整站：iframe sandbox 隔离渲染，入口 URL 内嵌短时签名（子资源凭相对路径继承）
 	if doc.Type == model.DocTypeHTML {
-		entry := a.htmlEntryURL(token)
+		pwd := ""
+		if share != nil {
+			pwd = share.Password
+		}
+		entry := a.htmlEntryURL(token, pwd)
 		if token == "" { // 防御：无 token 上下文退回管理预览入口
 			entry = a.adminEntryURL(doc.ID)
 		}
@@ -384,6 +388,8 @@ func (a *App) serveDoc(c *gin.Context, doc *model.Document, share *model.Share, 
 			"entryURL":    entry,
 			"visitors":    a.recordVisitor(c, doc),
 			"metaURL":     contentMetaPath(doc.ID, token, ""),
+			"canExport":   true,
+			"exportBase":  "/s/" + token + "/export",
 		})
 		return
 	}

@@ -65,6 +65,7 @@ type AuthConfig struct {
 	SessionSecret   string `yaml:"session_secret"`   // session/HMAC 签名密钥
 	DefaultAdmin    string `yaml:"default_admin"`    // 首次启动创建的 admin 用户名
 	DefaultPassword string `yaml:"default_password"` // 首次启动创建的 admin 密码
+	CookieSecure    bool   `yaml:"cookie_secure"`    // HTTPS 时设 true，为 Cookie 加 Secure
 }
 
 // UploadConfig 图片上传存储配置

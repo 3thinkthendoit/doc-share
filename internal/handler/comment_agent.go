@@ -16,11 +16,19 @@ import (
 
 const (
 	commentAgentMaxReplyRunes = 900
-	commentAgentTimeout       = 3 * time.Minute
 	// 每用户窗口内最多触发次数（与评论限流独立，专门保护 LLM 费用）
 	commentAgentMaxPerWindow = 3
 	commentAgentLimitWindow  = 10 * time.Minute
 )
+
+// commentAgentStreamTimeout 与对话共用「单轮上游超时」配置（默认 10 分钟）。
+func (a *App) commentAgentStreamTimeout() time.Duration {
+	min := a.Settings().AIStreamTimeoutMin
+	if min < minAIStreamTimeoutMin || min > maxAIStreamTimeoutMin {
+		min = defaultAIStreamTimeoutMin
+	}
+	return time.Duration(min) * time.Minute
+}
 
 // commentAgentLimiter @DocShare 派工专用限流（按用户）
 var commentAgentLimiter = middleware.NewShareLimiter(commentAgentMaxPerWindow, commentAgentLimitWindow)
@@ -104,13 +112,6 @@ func (a *App) runDocShareCommentAgent(docID, commentID, actorID uint, task strin
 		return
 	}
 
-	cfg := a.DefaultLLM()
-	cfg.StreamTimeout = commentAgentTimeout
-	if !cfg.Valid() {
-		a.postDocShareReply(&doc, &parent, "智能体暂未配置语言模型，请联系管理员在系统设置中配置后再试。")
-		return
-	}
-
 	var actor model.User
 	if a.DB.First(&actor, actorID).Error != nil {
 		actor = model.User{ID: actorID}
@@ -118,7 +119,23 @@ func (a *App) runDocShareCommentAgent(docID, commentID, actorID uint, task strin
 	_, _, injectRead := a.chatTools(&actor, "")
 	docText, err := readDocInject(injectRead, int64(doc.ID), aiPrereadMaxChars, task)
 	if err != nil {
-		docText = buildDocInjectBody(doc.Title, doc.ContentVersion, doc.Content, task, aiPrereadMaxChars)
+		// 分享访客未必有控制台读权；仅当文档/项目分享仍有效时允许注入，关分享后不得回退全文
+		if live, ok := a.docContentIfPublicShareLive(doc.ID); ok {
+			docText = buildDocInjectBody(live.Title, live.ContentVersion, live.Content, task, aiPrereadMaxChars)
+			err = nil
+		}
+	}
+	if err != nil || docText == "" {
+		a.postDocShareReply(&doc, &parent, "文档已不可访问或分享已关闭，智能体无法继续作答。也可使用控制台「打开对话」。")
+		return
+	}
+
+	timeout := a.commentAgentStreamTimeout()
+	cfg := a.DefaultLLM()
+	cfg.StreamTimeout = timeout
+	if !cfg.Valid() {
+		a.postDocShareReply(&doc, &parent, "智能体暂未配置语言模型，请联系管理员在系统设置中配置后再试。")
+		return
 	}
 
 	sys := "你是 DocShare 文档平台的智能体，正在回复文档评论中 @DocShare 的派工。" +
@@ -130,7 +147,7 @@ func (a *App) runDocShareCommentAgent(docID, commentID, actorID uint, task strin
 		{Role: "user", Content: "[评论派工]\n" + task},
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), commentAgentTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	reply, err := cfg.StreamChat(ctx, msgs, nil, nil)
 	if err != nil {
