@@ -260,6 +260,60 @@ Content-Type: application/zip
     "view_count": 0
   }
 }`},
+			{Method: "POST", Path: openAPIBase + "/docs/html-page", DescKey: "ep.docCreateHTMLPage", LabelKey: "ep.tDocCreateHTMLPage",
+				ReqExample: `{
+  "title": "一年级数学卷",
+  "html": "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>body{font-family:sans-serif}</style></head><body><h1>试卷</h1></body></html>",
+  "project_id": 3,
+  "category_id": 1
+}`,
+				RespExample: `{
+  "data": {
+    "id": 15,
+    "title": "一年级数学卷",
+    "slug": "pL7nR2wX",
+    "type": "html",
+    "content": "{\"prefix\":\"html/15/cd9e/\",\"entry\":\"index.html\",\"files\":[\"index.html\"],\"size\":120,\"count\":1}",
+    "owner_id": 2,
+    "project_id": 3,
+    "category_id": 1,
+    "is_shared": false,
+    "view_count": 0
+  }
+}`},
+			{Method: "GET", Path: openAPIBase + "/docs/:id/html-page", DescKey: "ep.docGetHTMLPage", LabelKey: "ep.tDocGetHTMLPage",
+				ReqExample: ``,
+				RespExample: `{
+  "data": {
+    "id": 15,
+    "title": "一年级数学卷",
+    "type": "html",
+    "html": "<!DOCTYPE html><html>…</html>",
+    "content_version": 0,
+    "version": "v1.0.0",
+    "project_id": 3,
+    "category_id": 1
+  }
+}`},
+			{Method: "PUT", Path: openAPIBase + "/docs/:id/html-page", DescKey: "ep.docReplaceHTMLPage", LabelKey: "ep.tDocReplaceHTMLPage",
+				ReqExample: `{
+  "html": "<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body><h1>修订版</h1></body></html>",
+  "base_version": 0
+}`,
+				RespExample: `{
+  "data": {
+    "id": 15,
+    "content_version": 1,
+    "version": "v1.0.1",
+    "manifest": {
+      "prefix": "html/15/ef12/",
+      "entry": "index.html",
+      "files": ["index.html"],
+      "size": 98,
+      "count": 1
+    }
+  }
+}`},
 			{Method: "PUT", Path: openAPIBase + "/docs/:id", DescKey: "ep.docUpdate", LabelKey: "ep.tDocUpdate",
 				ReqExample: `{
   "title": "接入指南（修订）",

@@ -452,17 +452,47 @@ func (a *App) chatTools(user *model.User, clientIP string) (
 		}},
 		{Type: "function", Function: llm.ToolFunc{
 			Name:        "create_document",
-			Description: "创建文档。type 默认 markdown，也可 mindmap / board / drawio。project_id / category_id 可选且必须是自己的。" + aiCanvasDocHint,
+			Description: "创建文档。type 默认 markdown，也可 mindmap / board / drawio。单页 HTML（试卷/简历等）请用 create_html_page。project_id / category_id 可选且必须是自己的。" + aiCanvasDocHint,
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"title":       map[string]any{"type": "string", "description": "文档标题"},
-					"type":        map[string]any{"type": "string", "description": "markdown（默认）/ mindmap / board / drawio；html 整站不支持"},
+					"type":        map[string]any{"type": "string", "description": "markdown（默认）/ mindmap / board / drawio；单页 HTML 用 create_html_page"},
 					"content":     map[string]any{"type": "string", "description": "markdown 正文 / 画布 JSON / drawio XML"},
 					"project_id":  map[string]any{"type": "integer", "description": "归属项目 ID（可选，必须是自己的项目）"},
 					"category_id": map[string]any{"type": "integer", "description": "归属分类 ID（可选，必须是自己的分类）"},
 				},
 				"required": []string{"title"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name: "create_html_page",
+			Description: "创建单页 HTML 文档（试卷、简历、海报等）。传入完整自包含 HTML：" +
+				"CSS 写在 <style>、JS 写在 <script>，小图用 SVG/data URI；不要拆独立 css/js 文件。" +
+				"页面字节写入对象存储，MySQL 只存清单。多文件整站请用户在页面上传 zip。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"title":       map[string]any{"type": "string", "description": "文档标题"},
+					"html":        map[string]any{"type": "string", "description": "完整 HTML 页面（含 <!DOCTYPE html> 或 <html>）"},
+					"project_id":  map[string]any{"type": "integer", "description": "归属项目 ID（可选，必须是自己的项目）"},
+					"category_id": map[string]any{"type": "integer", "description": "归属分类 ID（可选，必须是自己的分类）"},
+				},
+				"required": []string{"title", "html"},
+			},
+		}},
+		{Type: "function", Function: llm.ToolFunc{
+			Name: "replace_html_page",
+			Description: "整页替换已有 HTML 文档的入口页（属主/管理员）。" +
+				"先 read_document 读回当前 HTML，改完后提交 html，并回传 content_version 作为 base_version。仅支持单文件站点；多文件整站请用户在页面替换。",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id":           map[string]any{"type": "integer", "description": "HTML 文档 ID"},
+					"html":         map[string]any{"type": "string", "description": "完整 HTML 页面（含 <!DOCTYPE html> 或 <html>）"},
+					"base_version": map[string]any{"type": "integer", "description": "必填：read_document 返回的 content_version"},
+				},
+				"required": []string{"id", "html", "base_version"},
 			},
 		}},
 		{Type: "function", Function: llm.ToolFunc{
@@ -689,7 +719,7 @@ func (a *App) chatTools(user *model.User, clientIP string) (
 		return s
 	}
 	// 参数解析失败/执行出错时返回文本，让模型自行调整
-	creates := 0 // 本次请求内 create_document / import_document_from_url / duplicate / apply_template 已预留次数
+	creates := 0 // 本次请求内 create_document / create_html_page / import / duplicate / apply_template 已预留次数
 	exec = func(name, argsJSON string) (string, error) {
 		var args map[string]any
 		if strings.TrimSpace(argsJSON) != "" {
@@ -810,10 +840,23 @@ func (a *App) chatTools(user *model.User, clientIP string) (
 			if err := scope().Where("id = ?", id).First(&doc).Error; err != nil {
 				return "", fmt.Errorf("文档不存在或无权访问（id=%d）", id)
 			}
+			body := doc.Content
+			bodyKind := ""
 			if doc.Type == model.DocTypeHTML {
-				return clip(fmt.Sprintf("《%s》是整站文档（正文由多个文件组成，存储于对象存储），请引用链接 {{doc:%d}} 让用户自行查看。", doc.Title, doc.ID)), nil
+				m, err := parseHTMLManifest(doc.Content)
+				if err != nil || !isSingleFileHTMLManifest(m) {
+					return clip(fmt.Sprintf("《%s》是多文件整站文档（存储于对象存储），请引用链接 {{doc:%d}} 让用户自行查看；单页请用 create_html_page / replace_html_page。", doc.Title, doc.ID)), nil
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				html, _, readErr := a.readHTMLSiteEntry(ctx, &doc, aiMaxContentBytes)
+				cancel()
+				if readErr != nil {
+					return "", fmt.Errorf("读取 HTML 页面失败: %v", readErr)
+				}
+				body = html
+				bodyKind = "html单页"
 			}
-			runes := []rune(doc.Content)
+			runes := []rune(body)
 			total := len(runes)
 			if total == 0 {
 				return fmt.Sprintf("《%s》（content_version=%d）正文为空。", doc.Title, doc.ContentVersion), nil
@@ -832,7 +875,11 @@ func (a *App) chatTools(user *model.User, clientIP string) (
 			if end > total {
 				end = total
 			}
-			head := fmt.Sprintf("《%s》（content_version=%d，全文共 %d 字符）第 %d-%d 字符：\n\n", doc.Title, doc.ContentVersion, total, off, end)
+			kindNote := ""
+			if bodyKind != "" {
+				kindNote = "，" + bodyKind + "，改用 replace_html_page"
+			}
+			head := fmt.Sprintf("《%s》（content_version=%d，全文共 %d 字符%s）第 %d-%d 字符：\n\n", doc.Title, doc.ContentVersion, total, kindNote, off, end)
 			if end < total {
 				head += fmt.Sprintf("（未读完，还有 %d 字符，请用 offset=%d 继续读取）\n\n", total-end, end)
 			}
@@ -846,7 +893,7 @@ func (a *App) chatTools(user *model.User, clientIP string) (
 				cend = end
 			}
 			if cend < end {
-				head = fmt.Sprintf("《%s》（content_version=%d，全文共 %d 字符）第 %d-%d 字符：\n\n", doc.Title, doc.ContentVersion, total, off, cend)
+				head = fmt.Sprintf("《%s》（content_version=%d，全文共 %d 字符%s）第 %d-%d 字符：\n\n", doc.Title, doc.ContentVersion, total, kindNote, off, cend)
 				head += fmt.Sprintf("（未读完，还有 %d 字符，请用 offset=%d 继续读取）\n\n", total-cend, cend)
 			}
 			return clip(head + string(runes[off:cend])), nil
@@ -1674,7 +1721,7 @@ func (a *App) chatTools(user *model.User, clientIP string) (
 			switch docType {
 			case model.DocTypeMarkdown, model.DocTypeMindmap, model.DocTypeBoard, model.DocTypeDrawio:
 			case model.DocTypeHTML:
-				return "", fmt.Errorf("html 整站请走上传接口，智能体不支持创建")
+				return "", fmt.Errorf("单页 HTML 请用 create_html_page；多文件整站请用户在页面上传")
 			default:
 				return "", fmt.Errorf("不支持的文档类型：%s", docType)
 			}
@@ -1718,6 +1765,84 @@ func (a *App) chatTools(user *model.User, clientIP string) (
 			}
 			a.reindexDocAsync(doc.ID)
 			return fmt.Sprintf("文档已创建：{{doc:%d}}（id=%d，type=%s）", doc.ID, doc.ID, doc.Type), nil
+
+		case "create_html_page":
+			title := argStr("title")
+			if title == "" {
+				return "", fmt.Errorf("title 不能为空")
+			}
+			html := argStr("html")
+			if err := validateAIHTMLPage(html); err != nil {
+				return "", err
+			}
+			var projectID, categoryID uint
+			if pid, ok, err := argUintOpt("project_id"); err != nil {
+				return "", err
+			} else if ok && pid > 0 {
+				if err := a.aiOwnedProject(user, pid); err != nil {
+					return "", err
+				}
+				projectID = pid
+			}
+			if cid, ok, err := argUintOpt("category_id"); err != nil {
+				return "", err
+			} else if ok && cid > 0 {
+				if err := a.aiOwnedCategory(user, cid); err != nil {
+					return "", err
+				}
+				categoryID = cid
+			}
+			if err := reserveCreate(); err != nil {
+				return "", err
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			doc, err := a.createHTMLDocFromSiteFiles(ctx, user, title, singlePageSiteFiles(html), projectID, categoryID, clientIP, "ai")
+			cancel()
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("单页 HTML 已创建：{{doc:%d}}（id=%d，type=html）", doc.ID, doc.ID), nil
+
+		case "replace_html_page":
+			id := argInt("id", 0)
+			if id == 0 {
+				return "", fmt.Errorf("id 不能为空")
+			}
+			html := argStr("html")
+			if err := validateAIHTMLPage(html); err != nil {
+				return "", err
+			}
+			bv, ok := args["base_version"].(float64)
+			if !ok || bv < 0 {
+				return "", fmt.Errorf("替换必须提供 base_version（来自 read_document 返回的 content_version）")
+			}
+			var doc model.Document
+			if err := scope().First(&doc, id).Error; err != nil {
+				return "", fmt.Errorf("文档不存在或无权访问（id=%d）", id)
+			}
+			if doc.Type != model.DocTypeHTML {
+				return "", fmt.Errorf("仅 HTML 文档可用 replace_html_page（id=%d，type=%s）", id, doc.Type)
+			}
+			if !user.IsAdmin() && doc.OwnerID != user.ID {
+				return "", fmt.Errorf("仅文档属主可替换 HTML 页面（id=%d）", id)
+			}
+			if int64(bv) != doc.ContentVersion {
+				return "", fmt.Errorf("base_version=%d 与当前 content_version=%d 不一致，文档已被修改过；请重新 read_document 后再 replace_html_page", int64(bv), doc.ContentVersion)
+			}
+			m, err := parseHTMLManifest(doc.Content)
+			if err != nil {
+				return "", fmt.Errorf("文档站点清单损坏，无法替换")
+			}
+			if !isSingleFileHTMLManifest(m) {
+				return "", fmt.Errorf("该文档为多文件整站（%d 个文件），请在页面上整站替换；智能体仅支持单页", len(m.Files))
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			_, err = a.replaceHTMLDocFromSiteFiles(ctx, &doc, user, singlePageSiteFiles(html), "ai", int64(bv))
+			cancel()
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("单页 HTML 已替换：{{doc:%d}}（id=%d，content_version=%d）", doc.ID, doc.ID, doc.ContentVersion), nil
 
 		case "list_skills":
 			var skills []model.ChatSkill
@@ -2269,7 +2394,17 @@ func (a *App) chatTools(user *model.User, clientIP string) (
 			return "", fmt.Errorf("文档不存在或无权访问（id=%d）", id)
 		}
 		if doc.Type == model.DocTypeHTML {
-			return fmt.Sprintf("《%s》是整站文档（正文由多个文件组成，存储于对象存储），请引用链接 {{doc:%d}} 让用户自行查看。", doc.Title, doc.ID), nil
+			m, err := parseHTMLManifest(doc.Content)
+			if err != nil || !isSingleFileHTMLManifest(m) {
+				return fmt.Sprintf("《%s》是多文件整站文档（存储于对象存储），请引用链接 {{doc:%d}} 让用户自行查看。", doc.Title, doc.ID), nil
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			html, _, readErr := a.readHTMLSiteEntry(ctx, &doc, aiMaxContentBytes)
+			cancel()
+			if readErr != nil {
+				return "", fmt.Errorf("读取 HTML 页面失败: %v", readErr)
+			}
+			return buildDocInjectBody(doc.Title+"（html单页）", doc.ContentVersion, html, query, maxChars), nil
 		}
 		return buildDocInjectBody(doc.Title, doc.ContentVersion, doc.Content, query, maxChars), nil
 	}

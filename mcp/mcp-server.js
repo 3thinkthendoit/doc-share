@@ -161,7 +161,7 @@ const TOOLS = [
   },
   {
     name: 'docshare_get_doc',
-    description: '读取单个文档完整内容：markdown 返回正文；mindmap/board 返回画布 JSON、drawio 返回 mxfile XML（其结构可直接作为创建/更新同类文档的 content 范例）；html 返回站点 manifest',
+    description: '读取单个文档完整内容：markdown 返回正文；mindmap/board 返回画布 JSON、drawio 返回 mxfile XML（其结构可直接作为创建/更新同类文档的 content 范例）；html 返回站点 manifest（单页 HTML 原文请用 docshare_get_html_page）',
     schema: docSchema,
     async run(args) {
       return apiCall('GET', `/openapi/v1/docs/${Number(args.id)}`);
@@ -169,7 +169,7 @@ const TOOLS = [
   },
   {
     name: 'docshare_create_doc',
-    description: '创建文档：type=markdown（默认，content 为 Markdown 正文）或 mindmap/board（content 为画布 JSON）；html 整站不支持经此接口创建',
+    description: '创建文档：type=markdown（默认，content 为 Markdown 正文）或 mindmap/board（content 为画布 JSON）/ drawio；单页 HTML（试卷/简历）请用 docshare_create_html_page；多文件整站用 docshare_upload_html',
     schema: {
       type: 'object',
       properties: {
@@ -210,7 +210,7 @@ const TOOLS = [
   },
   {
     name: 'docshare_update_doc',
-    description: '更新文档：content 未传 = 不修改（只改标题/归属安全）；传值 = 整体覆盖。version 由系统自动递增（内容变更时 +1），无需也不可手工传入。html 整站类型拒绝修改内容',
+    description: '更新文档：content 未传 = 不修改（只改标题/归属安全）；传值 = 整体覆盖。version 由系统自动递增（内容变更时 +1），无需也不可手工传入。html 类型拒绝改 content，单页请用 docshare_replace_html_page',
     schema: docSchema,
     async run(args) {
       const body = clean({
@@ -221,8 +221,54 @@ const TOOLS = [
     },
   },
   {
+    name: 'docshare_create_html_page',
+    description: '创建单页 HTML 文档（试卷、简历、海报等）。传入完整自包含 HTML：CSS 写在 <style>、JS 写在 <script>，小图用 SVG/data URI。页面写入对象存储，MySQL 只存清单。与站内智能体 create_html_page 对齐',
+    schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: '文档标题（必填）' },
+        html: { type: 'string', description: '完整 HTML 页面（含 <!DOCTYPE html> 或 <html>）' },
+        project_id: { type: 'number', description: '所属项目 ID（可选，0=未分组）' },
+        category_id: { type: 'number', description: '所属分类 ID（可选，0=未分类）' },
+      },
+      required: ['title', 'html'],
+    },
+    async run(args) {
+      return apiCall('POST', '/openapi/v1/docs/html-page', null, clean({
+        title: args.title, html: args.html,
+        project_id: args.project_id, category_id: args.category_id,
+      }));
+    },
+  },
+  {
+    name: 'docshare_get_html_page',
+    description: '读取单页 HTML 文档的入口页原文（仅单文件站点）。改页流程：先 get → 修改 → docshare_replace_html_page',
+    schema: { type: 'object', properties: { id: num }, required: ['id'] },
+    async run(args) {
+      return apiCall('GET', `/openapi/v1/docs/${Number(args.id)}/html-page`);
+    },
+  },
+  {
+    name: 'docshare_replace_html_page',
+    description: '整页替换单页 HTML 文档入口（属主密钥）。须先 docshare_get_html_page 并回传 content_version 作为 base_version。仅支持单文件站点',
+    schema: {
+      type: 'object',
+      properties: {
+        id: num,
+        html: { type: 'string', description: '完整 HTML 页面（含 <!DOCTYPE html> 或 <html>）' },
+        base_version: { type: 'number', description: '必填：docshare_get_html_page 返回的 content_version' },
+      },
+      required: ['id', 'html', 'base_version'],
+    },
+    async run(args) {
+      return apiCall('PUT', `/openapi/v1/docs/${Number(args.id)}/html-page`, null, clean({
+        html: args.html, base_version: args.base_version,
+      }));
+    },
+  },
+  {
     name: 'docshare_upload_html',
-    description: '上传 HTML 整站 zip 创建文档（multipart 二进制直传，站点根须含 index.html；zip 被单层目录包裹时自动剥落）。创建后可经 docshare_update_doc 改标题/归属，分享后整站预览、不支持编辑',
+    description: '上传 HTML 整站 zip 创建文档（multipart 二进制直传，站点根须含 index.html；zip 被单层目录包裹时自动剥落）。单页请优先用 docshare_create_html_page。创建后可经 docshare_update_doc 改标题/归属',
     schema: {
       type: 'object',
       properties: {
@@ -505,7 +551,7 @@ function handleLine(line) {
     reply(id, {
       protocolVersion: ver,
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: 'docshare-mcp', version: '1.1.0' },
+      serverInfo: { name: 'docshare-mcp', version: '1.2.0' },
     });
     return;
   }

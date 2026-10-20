@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -23,8 +24,10 @@ import (
 	"doc-share/internal/util"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
+
+// errHTMLContentConflict 整站/单页替换时 content_version 乐观锁未命中（勿删旧文件）。
+var errHTMLContentConflict = errors.New("html content version conflict")
 
 const (
 	// htmlSigTTL 整站文件访问签名有效期（每次打开页面重新签发）
@@ -449,26 +452,93 @@ func (a *App) cleanupHTMLDoc(doc *model.Document) {
 
 // ---- API：创建 / 替换 ----
 
-// createHTMLDocFromFiles 由站点文件清单建档并写入存储（multipart 与 openapi 共用）。
-// 失败时负责清理已写入文件与已建文档记录。
-func (a *App) createHTMLDocFromFiles(c *gin.Context, files []siteFile, title string, projectID, categoryID uint) (*model.Document, error) {
-	user := middleware.CurrentUser(c)
+// singlePageSiteFiles 将完整 HTML 字符串打成仅含 index.html 的站点文件清单（Agent 单页）。
+func singlePageSiteFiles(html string) []siteFile {
+	return []siteFile{{name: htmlEntryName, data: []byte(html)}}
+}
+
+// validateAIHTMLPage 校验 Agent 单页 HTML：非空、体积上限、须为完整页面。
+// CSS/JS 应内联；大图勿用超大 data URI（受 aiMaxContentBytes 约束）。
+func validateAIHTMLPage(html string) error {
+	html = strings.TrimSpace(html)
+	if html == "" {
+		return fmt.Errorf("html 不能为空")
+	}
+	if len(html) > aiMaxContentBytes {
+		return fmt.Errorf("html 超过 %dKB 上限（当前 %dKB）；请内联 CSS/JS、压缩或外置大图后重试",
+			aiMaxContentBytes>>10, len(html)>>10)
+	}
+	lower := strings.ToLower(html)
+	if !strings.Contains(lower, "<html") && !strings.Contains(lower, "<!doctype") {
+		return fmt.Errorf("html 须为完整页面（含 <!DOCTYPE html> 或 <html>）；CSS/JS 请写在页面内")
+	}
+	return nil
+}
+
+// isSingleFileHTMLManifest 是否为单文件站点（Agent 单页或仅 index.html 的上传）
+func isSingleFileHTMLManifest(m *HTMLSiteManifest) bool {
+	return m != nil && len(m.Files) == 1 && m.Files[0] == htmlEntryName
+}
+
+// htmlSiteMaxBytes 整站解包/读入口的绝对上限（与上传配置一致）。
+func (a *App) htmlSiteMaxBytes() int64 {
+	mb := 100
+	if a.Cfg != nil && a.Cfg.Upload.HTMLMaxSizeMB > 0 {
+		mb = a.Cfg.Upload.HTMLMaxSizeMB
+	}
+	return int64(mb) << 20
+}
+
+// readHTMLSiteEntry 从对象存储读取整站入口 HTML 原文。
+// maxBytes<=0 时用整站上限；调用方传入更小值（如 aiMaxContentBytes）可限制单页读回体积。
+func (a *App) readHTMLSiteEntry(ctx context.Context, doc *model.Document, maxBytes int64) (string, *HTMLSiteManifest, error) {
+	m, err := parseHTMLManifest(doc.Content)
+	if err != nil {
+		return "", nil, err
+	}
+	capBytes := a.htmlSiteMaxBytes()
+	if maxBytes <= 0 || maxBytes > capBytes {
+		maxBytes = capBytes
+	}
+	backend, err := a.fileStorage()
+	if err != nil {
+		return "", m, fmt.Errorf("存储不可用: %w", err)
+	}
+	rc, _, err := backend.Get(ctx, m.Prefix+m.Entry)
+	if err != nil {
+		return "", m, fmt.Errorf("读取入口文件失败: %w", err)
+	}
+	defer rc.Close()
+	data, err := io.ReadAll(io.LimitReader(rc, maxBytes+1))
+	if err != nil {
+		return "", m, fmt.Errorf("读取入口文件失败: %w", err)
+	}
+	if int64(len(data)) > maxBytes {
+		return "", m, fmt.Errorf("入口文件超过 %dKB 上限，请精简页面或在网页查看", maxBytes>>10)
+	}
+	return string(data), m, nil
+}
+
+// createHTMLDocFromSiteFiles 由站点文件清单建档并写入存储（HTTP 上传与 Agent 共用）。
+// 失败时清理已写入文件与已建文档记录。
+// updatedVia：""=控制台；"api"=开放平台；"ai"=智能体。
+func (a *App) createHTMLDocFromSiteFiles(ctx context.Context, user *model.User, title string, files []siteFile, projectID, categoryID uint, clientIP, updatedVia string) (*model.Document, error) {
 	if user == nil {
 		return nil, fmt.Errorf("未登录")
 	}
 	doc := model.Document{
 		Title:       title,
-		Version:     derivedDocVersion(0), // 版本号自动生成，从 v1.0.0 起算
+		Version:     derivedDocVersion(0),
 		Slug:        util.RandomSlug(8),
 		Type:        model.DocTypeHTML,
 		OwnerID:     user.ID,
 		UpdatedByID: user.ID,
+		UpdatedVia:  updatedVia,
 		ProjectID:   projectID, CategoryID: categoryID,
 	}
-	stampCreatorGeoFromCtx(c, &doc)
+	stampCreatorGeo(&doc, clientIP)
 	for {
 		var n int64
-		// Unscoped：同时避开回收站文档占用的 slug，否则撞唯一索引导致插入失败
 		a.DB.Unscoped().Model(&model.Document{}).Where("slug = ?", doc.Slug).Count(&n)
 		if n == 0 {
 			break
@@ -478,9 +548,8 @@ func (a *App) createHTMLDocFromFiles(c *gin.Context, files []siteFile, title str
 	if err := a.DB.Create(&doc).Error; err != nil {
 		return nil, fmt.Errorf("创建失败")
 	}
-	// 失败补偿用 Unscoped 物理删除：刚建的残品不应进回收站成为可还原的幽灵文档
 	prefix := fmt.Sprintf("html/%d/%s/", doc.ID, util.RandomSlug(8))
-	m, written, err := a.putSiteFiles(c.Request.Context(), prefix, files)
+	m, written, err := a.putSiteFiles(ctx, prefix, files)
 	if err != nil {
 		a.deleteSiteFilesAsync(written)
 		a.DB.Unscoped().Delete(&model.Document{}, doc.ID)
@@ -499,8 +568,224 @@ func (a *App) createHTMLDocFromFiles(c *gin.Context, files []siteFile, title str
 		return nil, fmt.Errorf("保存站点清单失败")
 	}
 	doc.Content = content
-	a.reindexDocAsync(doc.ID) // 写时双写（html 整站仅标题/路径参与搜索，ES 中 content 置空）
+	a.reindexDocAsync(doc.ID)
 	return &doc, nil
+}
+
+// createHTMLDocFromFiles 由站点文件清单建档（multipart / openapi 入口）。
+func (a *App) createHTMLDocFromFiles(c *gin.Context, files []siteFile, title string, projectID, categoryID uint) (*model.Document, error) {
+	user := middleware.CurrentUser(c)
+	if user == nil {
+		return nil, fmt.Errorf("未登录")
+	}
+	return a.createHTMLDocFromSiteFiles(c.Request.Context(), user, title, files, projectID, categoryID, c.ClientIP(), openapiVia(c))
+}
+
+// replaceHTMLDocFromSiteFiles 原子整站替换：写新前缀 → 按 expectVersion 乐观锁切 manifest → 成功后再删旧文件。
+// expectVersion 为调用方认定的当前 content_version；未命中返回 errHTMLContentConflict（新文件已清理，旧文件保留）。
+func (a *App) replaceHTMLDocFromSiteFiles(ctx context.Context, doc *model.Document, user *model.User, files []siteFile, updatedVia string, expectVersion int64) (*HTMLSiteManifest, error) {
+	if doc == nil || doc.Type != model.DocTypeHTML {
+		return nil, fmt.Errorf("仅 HTML 整站文档支持整站替换")
+	}
+	if expectVersion < 0 {
+		return nil, fmt.Errorf("content_version 无效")
+	}
+	old, _ := parseHTMLManifest(doc.Content)
+	prefix := fmt.Sprintf("html/%d/%s/", doc.ID, util.RandomSlug(8))
+	m, written, err := a.putSiteFiles(ctx, prefix, files)
+	if err != nil {
+		a.deleteSiteFilesAsync(written)
+		log.Printf("[htmldoc] 替换写入失败 doc=%d: %v", doc.ID, err)
+		return nil, fmt.Errorf("保存站点文件失败")
+	}
+	content, err := m.toJSON()
+	if err != nil {
+		a.deleteSiteFilesAsync(written)
+		return nil, fmt.Errorf("生成站点清单失败")
+	}
+	updaterID := uint(0)
+	if user != nil {
+		updaterID = user.ID
+	}
+	newVer := expectVersion + 1
+	res := a.DB.Model(&model.Document{}).
+		Where("id = ? AND content_version = ?", doc.ID, expectVersion).
+		Updates(map[string]any{
+			"content": content, "updated_at": time.Now(),
+			"content_version": newVer,
+			"version":         derivedDocVersion(newVer),
+			"updated_by_id":   updaterID, "updated_via": updatedVia,
+		})
+	if res.Error != nil {
+		a.deleteSiteFilesAsync(written)
+		return nil, fmt.Errorf("更新站点清单失败")
+	}
+	if res.RowsAffected == 0 {
+		a.deleteSiteFilesAsync(written) // 只丢弃新前缀，绝不删仍被指向的旧文件
+		return nil, fmt.Errorf("%w: 期望 content_version=%d，请重新读取后再替换", errHTMLContentConflict, expectVersion)
+	}
+	if old != nil {
+		a.deleteSiteFilesAsync(htmlSiteKeys(old))
+	}
+	a.reindexDocAsync(doc.ID)
+	doc.Content = content
+	doc.ContentVersion = newVer
+	doc.Version = derivedDocVersion(newVer)
+	return m, nil
+}
+
+// ---- OpenAPI：单页 HTML（JSON，与站内 create_html_page / replace_html_page 对齐） ----
+
+type htmlPageReq struct {
+	Title       string `json:"title"`
+	HTML        string `json:"html"`
+	ProjectID   *uint  `json:"project_id"`
+	CategoryID  *uint  `json:"category_id"`
+	BaseVersion *int64 `json:"base_version"` // 替换时必填：读回时的 content_version
+}
+
+// OpenCreateHTMLPage 创建单页 HTML：POST /openapi/v1/docs/html-page
+// JSON：title、html 必填；project_id / category_id 可选。CSS/JS 应内联在 html 内。
+func (a *App) OpenCreateHTMLPage(c *gin.Context) {
+	user := middleware.CurrentUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未登录"})
+		return
+	}
+	var req htmlPageReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求体无效"})
+		return
+	}
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
+		title = a.tr(c, "edit.untitled")
+	}
+	html := strings.TrimSpace(req.HTML)
+	if err := validateAIHTMLPage(html); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	var projectID, categoryID uint
+	if req.ProjectID != nil {
+		projectID = *req.ProjectID
+	}
+	if req.CategoryID != nil {
+		categoryID = *req.CategoryID
+	}
+	if !a.validProjectRef(c, projectID, 0) || !a.validCategoryRef(c, categoryID, 0) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": errProjCatBad})
+		return
+	}
+	doc, err := a.createHTMLDocFromSiteFiles(c.Request.Context(), user, title, singlePageSiteFiles(html),
+		projectID, categoryID, c.ClientIP(), openapiVia(c))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": doc})
+}
+
+// OpenGetHTMLPage 读取单页 HTML 入口原文：GET /openapi/v1/docs/:id/html-page
+// 仅单文件站点；多文件整站请继续用 GET /docs/:id 看 manifest。
+func (a *App) OpenGetHTMLPage(c *gin.Context) {
+	doc := a.loadDoc(c)
+	if doc == nil {
+		return
+	}
+	if doc.Type != model.DocTypeHTML {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "仅 HTML 文档支持此接口"})
+		return
+	}
+	m, err := parseHTMLManifest(doc.Content)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "站点清单损坏"})
+		return
+	}
+	if !isSingleFileHTMLManifest(m) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "该文档为多文件整站，请用 GET /docs/:id 查看清单或页面上传替换"})
+		return
+	}
+	html, _, err := a.readHTMLSiteEntry(c.Request.Context(), doc, aiMaxContentBytes)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{
+		"id":              doc.ID,
+		"title":           doc.Title,
+		"type":            doc.Type,
+		"html":            html,
+		"content_version": doc.ContentVersion,
+		"version":         doc.Version,
+		"project_id":      doc.ProjectID,
+		"category_id":     doc.CategoryID,
+	}})
+}
+
+// OpenReplaceHTMLPage 整页替换单页 HTML：PUT /openapi/v1/docs/:id/html-page
+// JSON：html、base_version 必填。仅属主/管理员；仅单文件站点。
+func (a *App) OpenReplaceHTMLPage(c *gin.Context) {
+	doc := a.loadDoc(c)
+	if doc == nil {
+		return
+	}
+	if !a.requireDocOwner(c, doc) {
+		return
+	}
+	if doc.Type != model.DocTypeHTML {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "仅 HTML 文档支持此接口"})
+		return
+	}
+	m, err := parseHTMLManifest(doc.Content)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "站点清单损坏"})
+		return
+	}
+	if !isSingleFileHTMLManifest(m) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "该文档为多文件整站，请用页面或 POST /docs/html 整站替换"})
+		return
+	}
+	var req htmlPageReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求体无效"})
+		return
+	}
+	html := strings.TrimSpace(req.HTML)
+	if err := validateAIHTMLPage(html); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.BaseVersion == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "替换必须提供 base_version（取自 GET .../html-page 的 content_version）"})
+		return
+	}
+	if *req.BaseVersion != doc.ContentVersion {
+		c.JSON(http.StatusConflict, gin.H{
+			"error":           "内容已被修改，请重新读取后再替换",
+			"current_version": doc.ContentVersion,
+		})
+		return
+	}
+	user := middleware.CurrentUser(c)
+	manifest, err := a.replaceHTMLDocFromSiteFiles(c.Request.Context(), doc, user, singlePageSiteFiles(html), openapiVia(c), *req.BaseVersion)
+	if err != nil {
+		if errors.Is(err, errHTMLContentConflict) {
+			c.JSON(http.StatusConflict, gin.H{
+				"error":           "内容已被修改，请重新读取后再替换",
+				"current_version": doc.ContentVersion,
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{
+		"id":              doc.ID,
+		"content_version": doc.ContentVersion,
+		"version":         doc.Version,
+		"manifest":        manifest,
+	}})
 }
 
 // OpenCreateHTMLDoc 创建 HTML 整站文档（openapi）：POST /openapi/v1/docs/html。
@@ -606,7 +891,6 @@ func (a *App) ReplaceHTMLDoc(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "仅 HTML 整站文档支持整站替换"})
 		return
 	}
-	old, _ := parseHTMLManifest(doc.Content)
 
 	files, err := a.collectSiteFiles(c)
 	if err != nil {
@@ -619,40 +903,15 @@ func (a *App) ReplaceHTMLDoc(c *gin.Context) {
 		return
 	}
 
-	// 原子替换：写全新前缀目录，全部成功后一次性切换 manifest 指向；旧前缀随后清理
-	prefix := fmt.Sprintf("html/%d/%s/", doc.ID, util.RandomSlug(8))
-	m, written, err := a.putSiteFiles(c.Request.Context(), prefix, files)
+	m, err := a.replaceHTMLDocFromSiteFiles(c.Request.Context(), doc, middleware.CurrentUser(c), files, "", doc.ContentVersion)
 	if err != nil {
-		a.deleteSiteFilesAsync(written)
-		log.Printf("[htmldoc] 替换写入失败 doc=%d: %v", doc.ID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存站点文件失败"})
+		if errors.Is(err, errHTMLContentConflict) {
+			c.JSON(http.StatusConflict, gin.H{"error": "内容已被其他人修改，请刷新后重试", "current_version": doc.ContentVersion})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	content, err := m.toJSON()
-	if err != nil {
-		a.deleteSiteFilesAsync(written)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成站点清单失败"})
-		return
-	}
-	// 记录最后更新人（属主/管理员操作）
-	updaterID := uint(0)
-	if u := middleware.CurrentUser(c); u != nil {
-		updaterID = u.ID
-	}
-	// 整站替换也是一次内容保存：content_version 原子 +1，版本号同步派生 v1.0.N
-	if err := a.DB.Model(&model.Document{}).Where("id = ?", doc.ID).
-		Updates(map[string]any{"content": content, "updated_at": time.Now(),
-			"content_version": gorm.Expr("content_version + 1"),
-			"version":         derivedDocVersion(doc.ContentVersion + 1),
-			"updated_by_id":   updaterID, "updated_via": ""}).Error; err != nil {
-		a.deleteSiteFilesAsync(written) // 切换失败则清掉新文件，旧版本仍可读
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新站点清单失败"})
-		return
-	}
-	if old != nil {
-		a.deleteSiteFilesAsync(htmlSiteKeys(old))
-	}
-	a.reindexDocAsync(doc.ID) // 整站替换后重索
 	c.JSON(http.StatusOK, gin.H{"data": m})
 }
 

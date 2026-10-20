@@ -128,7 +128,8 @@ func TestTaskBoardAdvancesOnlyByResult(t *testing.T) {
 	if taskTracksTool("set_share") || taskTracksTool("create_project") || taskTracksTool("add_comment") {
 		t.Fatal("non-doc mutations must not advance the task list")
 	}
-	if !taskTracksTool("replace_section") || !taskTracksTool("create_document") {
+	if !taskTracksTool("replace_section") || !taskTracksTool("create_document") ||
+		!taskTracksTool("create_html_page") || !taskTracksTool("replace_html_page") {
 		t.Fatal("doc writes must advance the task list")
 	}
 	if err := b.reset([]string{"重来", "再来"}); err == nil {
