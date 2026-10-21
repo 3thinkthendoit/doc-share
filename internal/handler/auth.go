@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -37,10 +39,38 @@ func (a *App) Captcha(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"id": id, "b64": b64s})
 }
 
-// Login 处理登录。异步请求返回 JSON；非异步仍回渲染页，避免旧客户端直接丢会话。
+// findUserByUsername 账号登录：仅用户名精确匹配
+func (a *App) findUserByUsername(username string) (model.User, bool) {
+	var user model.User
+	name := strings.TrimSpace(username)
+	if name == "" {
+		return user, false
+	}
+	if err := a.DB.Where("username = ?", name).First(&user).Error; err != nil {
+		return user, false
+	}
+	return user, true
+}
+
+// findUserByVerifiedEmail 邮箱登录：仅已验证邮箱
+func (a *App) findUserByVerifiedEmail(email string) (model.User, bool) {
+	var user model.User
+	em := strings.ToLower(strings.TrimSpace(email))
+	if !util.ValidEmail(em) {
+		return user, false
+	}
+	if err := a.DB.Where("LOWER(email) = ? AND email_verified = ?", em, true).First(&user).Error; err != nil {
+		return user, false
+	}
+	return user, true
+}
+
+// Login 处理登录。mode=account：账号+密码+图形验证码；mode=email：邮箱+邮件验证码。
 func (a *App) Login(c *gin.Context) {
-	username := c.PostForm("username")
-	password := c.PostForm("password")
+	mode := strings.TrimSpace(c.PostForm("mode"))
+	if mode == "" {
+		mode = "account"
+	}
 
 	fail := func(msg string) {
 		if isAjax(c) {
@@ -54,17 +84,48 @@ func (a *App) Login(c *gin.Context) {
 		a.render(c, "login.html", data)
 	}
 
-	// 先验验证码（一次性，失败即消耗），再进入密码校验
-	if !a.CaptchaMgr.Verify(c.PostForm("captcha_id"), c.PostForm("captcha"), true) {
-		fail("验证码错误或已过期")
+	// 协议勾选服务端校验（前端可绕过）
+	if c.PostForm("agree") == "" {
+		fail(a.tr(c, "login.needAgree"))
 		return
 	}
 
 	var user model.User
-	if err := a.DB.Where("username = ?", username).First(&user).Error; err != nil {
-		fail("用户名或密码错误")
+	var ok bool
+
+	switch mode {
+	case "email":
+		email := strings.ToLower(strings.TrimSpace(c.PostForm("email")))
+		code := c.PostForm("code")
+		if !util.ValidEmail(email) {
+			fail(a.tr(c, "邮箱格式不正确"))
+			return
+		}
+		if !a.verifyMailCode("login", email, code) {
+			fail(a.tr(c, "邮箱验证码错误或已过期"))
+			return
+		}
+		user, ok = a.findUserByVerifiedEmail(email)
+		if !ok {
+			// 验证码已消耗；统一文案，避免枚举
+			fail(a.tr(c, "邮箱验证码错误或已过期"))
+			return
+		}
+	case "account":
+		if !a.CaptchaMgr.Verify(c.PostForm("captcha_id"), c.PostForm("captcha"), true) {
+			fail("验证码错误或已过期")
+			return
+		}
+		user, ok = a.findUserByUsername(c.PostForm("username"))
+		if !ok {
+			fail("用户名或密码错误")
+			return
+		}
+	default:
+		fail(a.tr(c, "登录失败"))
 		return
 	}
+
 	if user.Status != model.StatusEnabled {
 		fail("账号已被禁用")
 		return
@@ -74,19 +135,93 @@ func (a *App) Login(c *gin.Context) {
 		fail(msgLocked)
 		return
 	}
-	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)) != nil {
-		if a.Settings().LoginMaxFails > 0 && a.recordLoginFailure(&user) {
-			fail(msgLocked)
+
+	if mode == "account" {
+		password := c.PostForm("password")
+		if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)) != nil {
+			if a.Settings().LoginMaxFails > 0 && a.recordLoginFailure(&user) {
+				fail(msgLocked)
+				return
+			}
+			fail("用户名或密码错误")
 			return
 		}
-		fail("用户名或密码错误")
-		return
 	}
+
 	if a.Settings().TOTPEnabled {
 		a.beginTOTP(c, &user)
 		return
 	}
 	a.issueSession(c, &user)
+}
+
+// SendLoginCode 发送邮箱登录验证码：POST /login/email-code
+// 无论邮箱是否存在均返回统一成功（防枚举）；仅已验证启用账号真正发信。
+func (a *App) SendLoginCode(c *gin.Context) {
+	var req struct {
+		Email     string `json:"email" form:"email"`
+		CaptchaID string `json:"captcha_id" form:"captcha_id"`
+		Captcha   string `json:"captcha" form:"captcha"`
+	}
+	if err := c.ShouldBind(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	okMsg := a.tr(c, "login.codeSent")
+	if !util.ValidEmail(email) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "邮箱格式不正确")})
+		return
+	}
+	key := mailCodeKey("login", email)
+	mailCodeStore.Lock()
+	now := time.Now()
+	if e, ok := mailCodeStore.m[key]; ok && now.Sub(e.lastSent) < mailCodeCooldown {
+		mailCodeStore.Unlock()
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": fmt.Sprintf("发送过于频繁，请 %d 秒后再试", int((mailCodeCooldown-time.Since(e.lastSent))/time.Second)+1)})
+		return
+	}
+	mailCodeStore.Unlock()
+	if !a.Limiter.Allowed(c.ClientIP(), "mail:"+c.ClientIP()) {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": a.tr(c, "发送过于频繁，请稍后再试")})
+		return
+	}
+	if !a.CaptchaMgr.Verify(req.CaptchaID, req.Captcha, true) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "验证码错误或已过期", "captchaFailed": true})
+		return
+	}
+
+	// 无论是否命中用户都记冷却与 IP 限额，避免「有邮箱才进入 60s/限流」的差分枚举
+	user, found := a.findUserByVerifiedEmail(email)
+	sendOK := found && user.Status == model.StatusEnabled
+	var code string
+	mailCodeStore.Lock()
+	entry := mailCodeEntry{lastSent: now, exp: now.Add(mailCodeTTL)}
+	if sendOK {
+		code = genMailCode()
+		entry.code = code
+	}
+	mailCodeStore.m[key] = entry
+	mailCodeStore.Unlock()
+	a.Limiter.Fail(c.ClientIP(), "mail:"+c.ClientIP())
+
+	if sendOK {
+		s := a.Settings()
+		subject := s.SiteName + " " + a.tr(c, "login.codeMailSubject")
+		body := fmt.Sprintf("<p>%s</p><p><b style=\"font-size:20px\">%s</b></p><p>%s</p>",
+			a.tr(c, "login.codeMailIntro"), code, a.tr(c, "recover.mailIgnore"))
+		if err := util.SendMail(s.MailConfig(), email, subject, body); err != nil {
+			// 清掉可用验证码但保留 lastSent，冷却行为与未注册邮箱一致
+			mailCodeStore.Lock()
+			if e, ok := mailCodeStore.m[key]; ok {
+				e.code = ""
+				mailCodeStore.m[key] = e
+			}
+			mailCodeStore.Unlock()
+			log.Printf("login email-code to %s: %v", email, err)
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": okMsg})
 }
 
 // Logout 登出
@@ -182,6 +317,10 @@ func (a *App) Register(c *gin.Context) {
 		renderErr("密码至少 6 位")
 		return
 	}
+	if c.PostForm("agree") == "" {
+		renderErr(a.tr(c, "login.needAgree"))
+		return
+	}
 
 	// 图形验证码：邮箱注册免（邮箱验证码即所有权证明）；用户名/手机保留防批量注册
 	if method != "email" {
@@ -211,7 +350,7 @@ func (a *App) Register(c *gin.Context) {
 			return
 		}
 		// 验证码放在所有前置校验之后：一次性资源，避免其它错误白白消耗
-		if !a.verifyMailCode(identifier, c.PostForm("code")) {
+		if !a.verifyMailCode("reg", identifier, c.PostForm("code")) {
 			renderErr("邮箱验证码错误或已过期")
 			return
 		}

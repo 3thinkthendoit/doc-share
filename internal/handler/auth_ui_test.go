@@ -81,7 +81,7 @@ func TestAuthSplitPageMarkup(t *testing.T) {
 	withOAuth["oauthGitHub"] = true
 	withOAuth["oauthGoogle"] = true
 	loginOAuth := render("login.html", withOAuth)
-	for _, want := range []string{`class="auth-oauth"`, `/auth/github`, `/auth/google`} {
+	for _, want := range []string{`class="auth-oauth"`, `class="auth-oauth-icons"`, `/auth/github`, `/auth/google`} {
 		if !strings.Contains(loginOAuth, want) {
 			t.Fatalf("login oauth markup missing %q", want)
 		}

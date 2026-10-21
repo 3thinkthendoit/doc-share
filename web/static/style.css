@@ -536,12 +536,59 @@ a.stat-card:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 .auth-mobile-brand img{width:28px;height:28px;border-radius:7px;display:block}
 .auth-split .auth-card{width:100%;max-width:380px;margin:auto}
 .auth-split .auth-foot{width:100%;max-width:380px;margin-top:0;padding:16px 0 calc(12px + env(safe-area-inset-bottom,0px))}
-.auth-oauth{margin-top:20px}
-.auth-oauth-divider{display:flex;align-items:center;gap:12px;margin:0 0 14px;color:var(--faint);font-size:12px}
+/* Qoder 风格：分段 Tab + 大圆角输入 / 主按钮 */
+.auth-tabs{
+  display:flex;align-items:stretch;gap:0;margin:0 0 20px;padding:4px;
+  border-radius:999px;background:var(--bg-soft);border:1px solid var(--border);
+}
+.auth-tab{
+  flex:1;height:36px;margin:0;padding:0 12px;border:none;border-radius:999px;
+  background:transparent;color:var(--muted);font:inherit;font-size:13.5px;font-weight:600;
+  cursor:pointer;transition:background .15s,color .15s,box-shadow .15s
+}
+.auth-tab.is-active,.auth-tab[aria-selected="true"]{
+  background:var(--panel);color:var(--text);box-shadow:0 1px 4px rgba(15,23,42,.08)
+}
+.auth-tab:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.auth-pane{display:block}
+.auth-card .auth-field>input,
+.auth-card .auth-field>.captcha-row{
+  background:var(--bg-soft)
+}
+.auth-card .auth-submit.btn-block{
+  height:48px;margin-top:12px;padding:0 16px;border-radius:12px;font-size:16px;font-weight:700
+}
+.auth-agree{display:flex;align-items:flex-start;gap:8px;margin:4px 0 14px;font-size:12.5px;line-height:1.55;color:var(--muted);cursor:pointer}
+.auth-agree input{margin-top:3px;flex:none}
+.auth-agree a{color:var(--primary);text-decoration:none}
+.auth-agree a:hover{text-decoration:underline}
+.auth-recover{display:flex;justify-content:center;align-items:center;gap:10px;margin:12px 0 0;font-size:13px}
+.auth-recover a{color:var(--muted);text-decoration:none}
+.auth-recover a:hover{color:var(--primary);text-decoration:none}
+.auth-recover-sep{color:var(--faint)}
+.auth-legal-card{max-width:560px}
+.auth-legal-meta{margin:6px 0 0;font-size:12.5px;color:var(--faint)}
+.auth-legal-body{margin-top:18px;font-size:14px;line-height:1.75;color:var(--muted);max-height:min(62vh,560px);overflow:auto;padding-right:4px}
+.auth-legal-body .auth-legal-lead{color:var(--text);font-weight:500}
+.auth-legal-body h2{margin:18px 0 8px;font-size:14.5px;font-weight:600;color:var(--text);line-height:1.4}
+.auth-legal-body h2:first-of-type{margin-top:14px}
+.auth-legal-body p{margin:0 0 10px}
+.alert-ok{background:var(--ok-soft,rgba(22,163,74,.12));color:var(--ok,#16a34a);border:1px solid var(--ok-border,rgba(22,163,74,.28));padding:10px 12px;border-radius:10px;font-size:13px;margin:0 0 14px}
+.auth-oauth{margin-top:22px}
+.auth-oauth-divider{display:flex;align-items:center;gap:12px;margin:0 0 16px;color:var(--faint);font-size:12px}
 .auth-oauth-divider::before,.auth-oauth-divider::after{content:"";flex:1;height:1px;background:var(--border)}
 .auth-oauth-divider span{flex:none}
-.auth-oauth-btn{margin-top:8px;text-align:center;justify-content:center;text-decoration:none}
-.auth-oauth-btn:hover{text-decoration:none}
+.auth-oauth-icons{display:flex;align-items:center;justify-content:center;gap:20px}
+.auth-oauth-icon{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:44px;height:44px;border-radius:50%;
+  border:1px solid var(--border-strong);background:var(--surface);
+  color:var(--text);text-decoration:none;
+  transition:border-color .15s,box-shadow .15s,transform .15s
+}
+.auth-oauth-icon:hover{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft);text-decoration:none;color:var(--text);transform:translateY(-1px)}
+.auth-oauth-icon:focus-visible{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+.auth-oauth-icon svg{display:block;flex:none}
 
 /* 仅桌面：右栏对齐参考稿（同宽、左对齐、48px 等高输入、验证码并入一行） */
 @media (min-width:901px){
@@ -551,6 +598,8 @@ a.stat-card:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
   .auth-split .auth-sub{text-align:left;margin-top:10px;margin-bottom:0;font-size:14px;line-height:1.5}
   .auth-split .auth-alt{text-align:left;margin-top:20px}
   .auth-split .auth-card:not(.share-gate) form{margin-top:28px}
+  .auth-split .auth-tabs{margin-bottom:22px}
+  .auth-split .auth-card .auth-field>input{background:var(--bg-soft)}
   .auth-split .auth-card:not(.share-gate)>.alert:not([hidden])+form{margin-top:0}
   .auth-split .auth-card .auth-field{margin-bottom:18px}
   .auth-split .auth-card .auth-field>input,

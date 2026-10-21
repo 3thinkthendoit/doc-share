@@ -323,7 +323,16 @@ func (a *App) SettingsPage(c *gin.Context) {
 		"title": a.tr(c, "set.title"),
 		"set":   s,
 		"llms":  llms,
+		// 展示实际会发给 GitHub/Google 的 callback，便于与 OAuth App 登记地址逐字对齐
+		"oauthGitHubCallback": a.oauthEffectiveRedirect(c, model.OAuthProviderGitHub),
+		"oauthGoogleCallback": a.oauthEffectiveRedirect(c, model.OAuthProviderGoogle),
 	})
+}
+
+// oauthEffectiveRedirect 当前生效的回调 URL（显式配置优先；同 Host 协议冲突时回退到本请求 Origin）
+func (a *App) oauthEffectiveRedirect(c *gin.Context, provider string) string {
+	pcfg, _ := a.oauthProviderCfg(provider)
+	return a.oauthRedirectURL(c, provider, pcfg)
 }
 
 // UpdateSettings 保存站点设置（仅 admin）；logo 走 /console/api/upload 得到 URL 后填入

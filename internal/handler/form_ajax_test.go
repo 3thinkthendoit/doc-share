@@ -60,8 +60,8 @@ func TestLoginAndRegisterAjax(t *testing.T) {
 			t.Fatal(err)
 		}
 		body := url.Values{
-			"username": {"ajaxuser"}, "password": {"secret1"},
-			"captcha_id": {"cid-bad"}, "captcha": {"0000"},
+			"mode": {"account"}, "username": {"ajaxuser"}, "password": {"secret1"},
+			"captcha_id": {"cid-bad"}, "captcha": {"0000"}, "agree": {"on"},
 		}.Encode()
 		w, c := ajaxForm(http.MethodPost, "/login", body)
 		a.Login(c)
@@ -76,8 +76,8 @@ func TestLoginAndRegisterAjax(t *testing.T) {
 			t.Fatal(err)
 		}
 		body := url.Values{
-			"username": {"ajaxuser"}, "password": {"secret1"},
-			"captcha_id": {"cid-ok"}, "captcha": {"1234"},
+			"mode": {"account"}, "username": {"ajaxuser"}, "password": {"secret1"},
+			"captcha_id": {"cid-ok"}, "captcha": {"1234"}, "agree": {"on"},
 		}.Encode()
 		w, c := ajaxForm(http.MethodPost, "/login", body)
 		a.Login(c)
@@ -97,7 +97,7 @@ func TestLoginAndRegisterAjax(t *testing.T) {
 		}
 		body := url.Values{
 			"username": {"newajax"}, "password": {"secret1"},
-			"captcha_id": {"cid-reg"}, "captcha": {"4321"},
+			"captcha_id": {"cid-reg"}, "captcha": {"4321"}, "agree": {"on"},
 		}.Encode()
 		w, c := ajaxForm(http.MethodPost, "/register", body)
 		a.Register(c)

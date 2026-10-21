@@ -61,15 +61,10 @@
           <input type="hidden" name="pending" id="regTotpPending">
         </div>
 
+        <label class="auth-agree check" id="regAgreeWrap"><input type="checkbox" name="agree" id="regAgree" required> {{$.T "login.agreePrefix"}}《<a href="/terms" target="_blank" rel="noopener">{{$.T "legal.termsTitle"}}</a>》{{$.T "login.agreeAnd"}}《<a href="/privacy" target="_blank" rel="noopener">{{$.T "legal.privacyTitle"}}</a>》</label>
         <button type="submit" class="btn btn-primary btn-block">{{$.T "reg.submit"}}</button>
       </form>
-      {{if or .oauthGitHub .oauthGoogle}}
-      <div class="auth-oauth">
-        <div class="auth-oauth-divider"><span>{{$.T "login.oauthOr"}}</span></div>
-        {{if .oauthGitHub}}<a class="btn btn-block auth-oauth-btn" href="/auth/github">{{$.T "login.oauthGitHub"}}</a>{{end}}
-        {{if .oauthGoogle}}<a class="btn btn-block auth-oauth-btn" href="/auth/google">{{$.T "login.oauthGoogle"}}</a>{{end}}
-      </div>
-      {{end}}
+      {{template "authOAuth" .}}
       <p class="auth-alt">{{$.T "reg.hasAccount"}}<a href="/login">{{$.T "reg.toLogin"}}</a></p>
     </div>
     <div class="auth-foot">
@@ -213,9 +208,23 @@
     errBox.hidden = false;
     errBox.textContent = UI.t(msg || '注册失败');
   }
+  var agreeEl = document.getElementById('regAgree');
+  function ensureAgree() {
+    if (agreeEl && !agreeEl.checked) {
+      showError('login.needAgree');
+      return false;
+    }
+    return true;
+  }
+  document.querySelectorAll('#loginOAuth .auth-oauth-icon').forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      if (!ensureAgree()) e.preventDefault();
+    });
+  });
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
     if (!UI.validateForm(form)) return;
+    if (!ensureAgree()) return;
     if (METHOD === 'email') {
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(idInput.value.trim())) {
         idInput.classList.add('field-error');

@@ -1,0 +1,44 @@
+{{define "terms.html"}}
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>{{template "head" .}}</head>
+<body class="auth-body auth-split">
+  {{template "authBrandPane" .}}
+  <main class="auth-form-pane">
+    {{template "authFormTools" .}}
+    <a class="auth-mobile-brand" href="/">
+      {{if .SiteLogo}}<img src="{{.SiteLogo}}" alt="">{{else}}<img src="/static/logo-mark.svg" alt="">{{end}}
+      <span>{{.SiteName}}</span>
+    </a>
+    <div class="auth-card auth-legal-card">
+      <h1 class="auth-title">{{$.T "legal.termsTitle"}}</h1>
+      <p class="auth-legal-meta">{{$.T "legal.termsUpdated"}}</p>
+      <div class="auth-legal-body">
+        <p class="auth-legal-lead">{{$.T "legal.termsLead" .SiteName}}</p>
+        <p>{{$.T "legal.termsRead"}}</p>
+        <p>{{$.T "legal.termsAccept"}}</p>
+        <h2>{{$.T "legal.termsH1"}}</h2>
+        <p>{{$.T "legal.termsS1" .SiteName}}</p>
+        <h2>{{$.T "legal.termsH2"}}</h2>
+        <p>{{$.T "legal.termsS2"}}</p>
+        <h2>{{$.T "legal.termsH3"}}</h2>
+        <p>{{$.T "legal.termsS3"}}</p>
+        <h2>{{$.T "legal.termsH4"}}</h2>
+        <p>{{$.T "legal.termsS4"}}</p>
+        <h2>{{$.T "legal.termsH5"}}</h2>
+        <p>{{$.T "legal.termsS5"}}</p>
+        <h2>{{$.T "legal.termsH6"}}</h2>
+        <p>{{$.T "legal.termsS6"}}</p>
+        <h2>{{$.T "legal.termsH7"}}</h2>
+        <p>{{$.T "legal.termsS7"}}</p>
+      </div>
+      <p class="auth-alt"><a href="/login">{{$.T "recover.backLogin"}}</a>
+        · <a href="/privacy">{{$.T "legal.privacyTitle"}}</a></p>
+    </div>
+    <div class="auth-foot">
+      <span>© {{now.Format "2006"}} {{.SiteName}}</span>
+    </div>
+  </main>
+</body>
+</html>
+{{end}}

@@ -158,19 +158,34 @@ func (a *App) oauthProviderCfg(provider string) (config.OAuthProviderConfig, boo
 	return out, true
 }
 
-func (a *App) oauthRedirectURL(c *gin.Context, provider string, pcfg config.OAuthProviderConfig) string {
-	if u := strings.TrimSpace(pcfg.RedirectURL); u != "" {
-		return u
-	}
-	base := strings.TrimRight(strings.TrimSpace(a.Settings().SiteDomain), "/")
-	if base == "" {
-		scheme := "http"
+// oauthRequestOrigin 当前请求的协议+主机（含端口），用于与 state Cookie 同源。
+func oauthRequestOrigin(c *gin.Context) (scheme, host string) {
+	scheme = "http"
+	if c != nil && c.Request != nil {
 		if c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https") {
 			scheme = "https"
 		}
-		base = scheme + "://" + c.Request.Host
+		host = c.Request.Host
 	}
-	return base + "/auth/" + provider + "/callback"
+	return scheme, host
+}
+
+func (a *App) oauthRedirectURL(c *gin.Context, provider string, pcfg config.OAuthProviderConfig) string {
+	scheme, host := oauthRequestOrigin(c)
+	reqCallback := scheme + "://" + host + "/auth/" + provider + "/callback"
+	if u := strings.TrimSpace(pcfg.RedirectURL); u != "" {
+		parsed, err := url.Parse(u)
+		// 显式回调与当前请求同 Host 但协议不一致（常见：设置里 https://localhost，浏览器却用 http）：
+		// 必须跟浏览器 Origin，否则 state Cookie 跨协议丢失。
+		if err == nil && parsed.Host != "" && host != "" &&
+			strings.EqualFold(parsed.Host, host) &&
+			parsed.Scheme != "" && !strings.EqualFold(parsed.Scheme, scheme) {
+			return reqCallback
+		}
+		return u
+	}
+	// 未配置显式回调：始终用当前浏览器 Origin（不用站点域名，避免 http/https 混用）
+	return reqCallback
 }
 
 func (a *App) oauth2Config(c *gin.Context, provider string) (*oauth2.Config, error) {

@@ -82,6 +82,7 @@
       <label style="margin-bottom:14px">{{$.T "set.oauthRedirectURL"}}
         <input type="text" name="oauth_github_redirect_url" value="{{.set.OAuthGitHubRedirectURL}}" placeholder="https://docs.example.com/auth/github/callback" autocomplete="off">
         <span class="muted" style="font-size:12px">{{$.T "set.oauthRedirectTip"}}</span>
+        <span class="muted" style="font-size:12px;display:block;margin-top:4px">{{$.T "set.oauthRedirectEffective"}} <code style="word-break:break-all">{{.oauthGitHubCallback}}</code></span>
       </label>
       <label class="check"><input type="checkbox" name="oauth_google_enabled" {{if .set.OAuthGoogleEnabled}}checked{{end}}> {{$.T "set.oauthGoogle"}}</label>
       <div class="smtp-grid" style="margin:8px 0 12px">
@@ -95,6 +96,7 @@
       <label>{{$.T "set.oauthRedirectURL"}}
         <input type="text" name="oauth_google_redirect_url" value="{{.set.OAuthGoogleRedirectURL}}" placeholder="https://docs.example.com/auth/google/callback" autocomplete="off">
         <span class="muted" style="font-size:12px">{{$.T "set.oauthRedirectTip"}}</span>
+        <span class="muted" style="font-size:12px;display:block;margin-top:4px">{{$.T "set.oauthRedirectEffective"}} <code style="word-break:break-all">{{.oauthGoogleCallback}}</code></span>
       </label>
       </section>
 

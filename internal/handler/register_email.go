@@ -62,9 +62,10 @@ func (a *App) SendRegisterCode(c *gin.Context) {
 		return
 	}
 	// 60 秒冷却与 IP 限流先于图形验证码校验：验证码一次性，避免被无关限制白白消耗
+	key := mailCodeKey("reg", email)
 	mailCodeStore.Lock()
 	now := time.Now()
-	if e, ok := mailCodeStore.m[email]; ok && now.Sub(e.lastSent) < mailCodeCooldown {
+	if e, ok := mailCodeStore.m[key]; ok && now.Sub(e.lastSent) < mailCodeCooldown {
 		mailCodeStore.Unlock()
 		c.JSON(http.StatusTooManyRequests, gin.H{"error": fmt.Sprintf("发送过于频繁，请 %d 秒后再试", int((mailCodeCooldown-time.Since(e.lastSent))/time.Second)+1)})
 		return
@@ -83,7 +84,7 @@ func (a *App) SendRegisterCode(c *gin.Context) {
 
 	mailCodeStore.Lock()
 	code := genMailCode()
-	mailCodeStore.m[email] = mailCodeEntry{code: code, exp: now.Add(mailCodeTTL), lastSent: now}
+	mailCodeStore.m[key] = mailCodeEntry{code: code, exp: now.Add(mailCodeTTL), lastSent: now}
 	mailCodeStore.Unlock()
 
 	cfg := s.MailConfig()
@@ -93,7 +94,7 @@ func (a *App) SendRegisterCode(c *gin.Context) {
 	if err := util.SendMail(cfg, email, subject, body); err != nil {
 		// 发送失败回滚验证码，允许用户重试
 		mailCodeStore.Lock()
-		delete(mailCodeStore.m, email)
+		delete(mailCodeStore.m, key)
 		mailCodeStore.Unlock()
 		c.JSON(http.StatusBadRequest, gin.H{"error": "验证码邮件发送失败：" + err.Error()})
 		return
@@ -102,29 +103,34 @@ func (a *App) SendRegisterCode(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-// verifyMailCode 校验并消耗验证码；连续失败 5 次即销毁，防暴力枚举
-func (a *App) verifyMailCode(email, code string) bool {
+func mailCodeKey(purpose, email string) string {
+	return purpose + ":" + email
+}
+
+// verifyMailCode 校验并消耗验证码；连续失败 5 次即销毁，防暴力枚举。purpose=reg|login。
+func (a *App) verifyMailCode(purpose, email, code string) bool {
 	email = strings.ToLower(strings.TrimSpace(email))
 	code = strings.TrimSpace(code)
-	if email == "" || len(code) != 6 {
+	if email == "" || len(code) != 6 || (purpose != "reg" && purpose != "login") {
 		return false
 	}
+	key := mailCodeKey(purpose, email)
 	mailCodeStore.Lock()
 	defer mailCodeStore.Unlock()
-	e, ok := mailCodeStore.m[email]
+	e, ok := mailCodeStore.m[key]
 	if !ok || time.Now().After(e.exp) {
 		return false
 	}
 	if e.code != code {
 		e.fails++
 		if e.fails >= 5 {
-			delete(mailCodeStore.m, email)
+			delete(mailCodeStore.m, key)
 		} else {
-			mailCodeStore.m[email] = e
+			mailCodeStore.m[key] = e
 		}
 		return false
 	}
-	delete(mailCodeStore.m, email) // 一次性，验证即销毁
+	delete(mailCodeStore.m, key) // 一次性，验证即销毁
 	return true
 }
 

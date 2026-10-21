@@ -15,37 +15,58 @@
       <div class="alert alert-error" id="loginError" {{if not .error}}hidden{{end}}>{{.error}}</div>
       <form id="loginForm" novalidate onsubmit="event.preventDefault()">
         <div id="loginCred" {{if .totpStep}}hidden{{end}}>
-        <div class="auth-field">
-          <input type="text" name="username" {{if not .totpStep}}required{{end}} autofocus autocomplete="username" placeholder="{{$.T "login.usernamePh"}}" aria-label="{{$.T "login.username"}}">
+        <div class="auth-tabs" role="tablist" aria-label="{{$.T "login.modeLabel"}}">
+          <button type="button" class="auth-tab" role="tab" data-mode="email" aria-selected="true" id="tabEmail">{{$.T "login.tabEmail"}}</button>
+          <button type="button" class="auth-tab" role="tab" data-mode="account" aria-selected="false" id="tabAccount">{{$.T "login.tabAccount"}}</button>
         </div>
-        <div class="auth-field">
-          <input type="password" name="password" {{if not .totpStep}}required{{end}} autocomplete="current-password" placeholder="{{$.T "login.passwordPh"}}" aria-label="{{$.T "login.password"}}">
-        </div>
-        <div class="auth-field">
-          <div class="captcha-row">
-            <input type="text" name="captcha" {{if not .totpStep}}required{{end}} maxlength="4" autocomplete="off" placeholder="{{$.T "login.captchaPh"}}" aria-label="{{$.T "login.captcha"}}">
-            <img id="captchaImg" class="captcha-img" alt="{{$.T "login.captchaAlt"}}" title="{{$.T "login.captchaTip"}}">
+        <input type="hidden" name="mode" id="loginMode" value="email">
+
+        <div id="paneEmail" class="auth-pane">
+          <div class="auth-field">
+            <input type="email" name="email" id="loginEmail" autocomplete="email" placeholder="{{$.T "login.emailPh"}}" aria-label="{{$.T "login.email"}}">
+          </div>
+          <div class="auth-field">
+            <div class="captcha-row">
+              <input type="text" {{if not .totpStep}}name="code"{{end}} id="loginMailCode" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="{{$.T "login.mailCodePh"}}" aria-label="{{$.T "login.mailCode"}}">
+              <button type="button" class="btn btn-sm" id="sendLoginCodeBtn">{{$.T "login.sendCode"}}</button>
+            </div>
           </div>
         </div>
-        <input type="hidden" name="captcha_id" id="captchaId">
+
+        <div id="paneAccount" class="auth-pane" hidden>
+          <div class="auth-field">
+            <input type="text" name="username" id="loginUsername" autocomplete="username" placeholder="{{$.T "login.accountPh"}}" aria-label="{{$.T "login.account"}}">
+          </div>
+          <div class="auth-field">
+            <input type="password" name="password" id="loginPassword" autocomplete="current-password" placeholder="{{$.T "login.passwordPh"}}" aria-label="{{$.T "login.password"}}">
+          </div>
+          <div class="auth-field">
+            <div class="captcha-row">
+              <input type="text" name="captcha" id="loginCaptcha" maxlength="4" autocomplete="off" placeholder="{{$.T "login.captchaPh"}}" aria-label="{{$.T "login.captcha"}}">
+              <img id="captchaImg" class="captcha-img" alt="{{$.T "login.captchaAlt"}}" title="{{$.T "login.captchaTip"}}">
+            </div>
+          </div>
+          <input type="hidden" name="captcha_id" id="captchaId">
         </div>
+        </div>
+
         <div id="loginTotp" {{if not .totpStep}}hidden{{end}}>
           <p class="auth-totp-hint" id="totpHint">{{if eq .totpStep "totp_enroll"}}{{$.T "login.totpEnroll"}}{{else}}{{$.T "login.totpHint"}}{{end}}</p>
           <img id="totpQr" class="auth-totp-qr" alt="" {{if ne .totpStep "totp_enroll"}}hidden{{end}} {{if .totpQR}}src="{{.totpQR}}"{{end}}>
           <p id="totpSecret" class="mono auth-totp-secret">{{.totpSecret}}</p>
           <div class="auth-field">
-            <input type="text" name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="{{$.T "login.totpPh"}}" aria-label="{{$.T "login.totp"}}" {{if .totpStep}}required{{end}}>
+            <input type="text" name="code" id="totpCodeInput" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="{{$.T "login.totpPh"}}" aria-label="{{$.T "login.totp"}}" {{if .totpStep}}required{{end}}>
           </div>
           <input type="hidden" name="pending" id="totpPending" value="{{.totpPending}}">
         </div>
-        <button type="submit" class="btn btn-primary btn-block">{{$.T "login.submit"}}</button>
+        {{if not .totpStep}}
+        <label class="auth-agree check"><input type="checkbox" name="agree" id="loginAgree" required> {{$.T "login.agreePrefix"}}《<a href="/terms" target="_blank" rel="noopener">{{$.T "legal.termsTitle"}}</a>》{{$.T "login.agreeAnd"}}《<a href="/privacy" target="_blank" rel="noopener">{{$.T "legal.privacyTitle"}}</a>》</label>
+        {{end}}
+        <button type="submit" class="btn btn-primary btn-block auth-submit">{{$.T "login.submit"}}</button>
       </form>
-      {{if and (not .totpStep) (or .oauthGitHub .oauthGoogle)}}
-      <div class="auth-oauth" id="loginOAuth">
-        <div class="auth-oauth-divider"><span>{{$.T "login.oauthOr"}}</span></div>
-        {{if .oauthGitHub}}<a class="btn btn-block auth-oauth-btn" href="/auth/github">{{$.T "login.oauthGitHub"}}</a>{{end}}
-        {{if .oauthGoogle}}<a class="btn btn-block auth-oauth-btn" href="/auth/google">{{$.T "login.oauthGoogle"}}</a>{{end}}
-      </div>
+      {{if not .totpStep}}
+      <p class="auth-recover"><a href="/forgot-username">{{$.T "recover.forgotUserLink"}}</a><span class="auth-recover-sep">|</span><a href="/forgot-password">{{$.T "recover.forgotPwdLink"}}</a></p>
+      {{template "authOAuth" .}}
       {{end}}
       <p class="auth-alt">{{$.T "login.noAccount"}}<a href="/register">{{$.T "login.registerLink"}}</a></p>
     </div>
@@ -53,26 +74,154 @@
       <span>© {{now.Format "2006"}} {{.SiteName}}</span>
       <span>Powered by <a href="https://github.com/3thinkthendoit/doc-share" target="_blank" rel="noopener">DocShare</a></span>
     </div>
+    <div class="modal-overlay" id="mailCaptchaModal" hidden>
+      <div class="modal modal-sm" style="width:320px">
+        <div class="modal-head">
+          <h2>{{$.T "login.captcha"}}</h2>
+          <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+        </div>
+        <div class="modal-body share-body">
+          <div class="auth-field">
+            <div class="captcha-row">
+              <input type="text" id="mailCaptchaInput" maxlength="4" autocomplete="off" placeholder="{{$.T "login.captchaPh"}}" aria-label="{{$.T "login.captcha"}}">
+              <img id="mailCaptchaImg" class="captcha-img" alt="{{$.T "login.captchaAlt"}}" title="{{$.T "login.captchaTip"}}">
+            </div>
+          </div>
+          <input type="hidden" id="mailCaptchaId">
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn" data-close-modal>{{$.T "common.cancel"}}</button>
+          <button type="button" class="btn btn-primary" id="mailCaptchaOk">{{$.T "common.confirm"}}</button>
+        </div>
+      </div>
+    </div>
   </main>
 <script>
 (function () {
   var form = document.getElementById('loginForm');
   var errBox = document.getElementById('loginError');
+  var modeEl = document.getElementById('loginMode');
+  var paneEmail = document.getElementById('paneEmail');
+  var paneAccount = document.getElementById('paneAccount');
+  var tabs = document.querySelectorAll('.auth-tab');
   UI.bindFormValidation(form);
+
   function showError(msg) {
     errBox.hidden = false;
     errBox.textContent = UI.t(msg || '登录失败');
   }
+
+  function setMode(mode) {
+    modeEl.value = mode;
+    var isEmail = mode === 'email';
+    paneEmail.hidden = !isEmail;
+    paneAccount.hidden = isEmail;
+    tabs.forEach(function (t) {
+      var on = t.getAttribute('data-mode') === mode;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.classList.toggle('is-active', on);
+    });
+    var emailIn = document.getElementById('loginEmail');
+    var codeIn = document.getElementById('loginMailCode');
+    var userIn = document.getElementById('loginUsername');
+    var passIn = document.getElementById('loginPassword');
+    var capIn = document.getElementById('loginCaptcha');
+    if (emailIn) emailIn.required = isEmail;
+    if (codeIn) codeIn.required = isEmail;
+    if (userIn) userIn.required = !isEmail;
+    if (passIn) passIn.required = !isEmail;
+    if (capIn) capIn.required = !isEmail;
+    if (!isEmail) refreshCaptcha();
+  }
+  tabs.forEach(function (t) {
+    t.addEventListener('click', function () { setMode(t.getAttribute('data-mode')); });
+  });
+  setMode('email');
+
   async function refreshCaptcha() {
     try {
-      const res = await fetch('/captcha');
-      const data = await res.json();
+      var res = await fetch('/captcha');
+      var data = await res.json();
       document.getElementById('captchaId').value = data.id;
       document.getElementById('captchaImg').src = data.b64;
-    } catch (e) { /* 忽略网络抖动，点击可重试 */ }
+    } catch (e) {}
   }
-  document.getElementById('captchaImg').addEventListener('click', refreshCaptcha);
-  refreshCaptcha();
+  var captchaImg = document.getElementById('captchaImg');
+  if (captchaImg) captchaImg.addEventListener('click', refreshCaptcha);
+
+  // 发登录邮箱验证码：先弹图形验证码
+  var sendBtn = document.getElementById('sendLoginCodeBtn');
+  var modal = document.getElementById('mailCaptchaModal');
+  var mailCapImg = document.getElementById('mailCaptchaImg');
+  var mailCapId = document.getElementById('mailCaptchaId');
+  var mailCapInput = document.getElementById('mailCaptchaInput');
+  var coolUntil = 0;
+  function tickSendBtn() {
+    var left = Math.ceil((coolUntil - Date.now()) / 1000);
+    if (left > 0) {
+      sendBtn.disabled = true;
+      sendBtn.textContent = left + 's';
+      setTimeout(tickSendBtn, 400);
+    } else {
+      sendBtn.disabled = false;
+      sendBtn.textContent = UI.t('login.sendCode');
+    }
+  }
+  async function refreshMailCaptcha() {
+    try {
+      var res = await fetch('/captcha');
+      var data = await res.json();
+      mailCapId.value = data.id;
+      mailCapImg.src = data.b64;
+      mailCapInput.value = '';
+    } catch (e) {}
+  }
+  if (mailCapImg) mailCapImg.addEventListener('click', refreshMailCaptcha);
+  document.querySelectorAll('#mailCaptchaModal [data-close-modal]').forEach(function (el) {
+    el.addEventListener('click', function () { modal.hidden = true; });
+  });
+  if (sendBtn) {
+    sendBtn.addEventListener('click', function () {
+      var email = (document.getElementById('loginEmail').value || '').trim();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        showError('邮箱格式不正确');
+        return;
+      }
+      errBox.hidden = true;
+      modal.hidden = false;
+      refreshMailCaptcha();
+      mailCapInput.focus();
+    });
+  }
+  document.getElementById('mailCaptchaOk').addEventListener('click', async function () {
+    var email = (document.getElementById('loginEmail').value || '').trim();
+    var captcha = mailCapInput.value.trim();
+    if (!captcha) { mailCapInput.focus(); return; }
+    var btn = this;
+    btn.disabled = true;
+    try {
+      var res = await fetch('/login/email-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({ email: email, captcha_id: mailCapId.value, captcha: captcha })
+      });
+      var data = await res.json().catch(function () { return {}; });
+      if (!res.ok) {
+        showError((data && data.error) || '操作失败');
+        if (data && data.captchaFailed) refreshMailCaptcha();
+        btn.disabled = false;
+        return;
+      }
+      modal.hidden = true;
+      coolUntil = Date.now() + 60000;
+      tickSendBtn();
+      document.getElementById('loginMailCode').focus();
+    } catch (e) {
+      showError('网络错误');
+    }
+    btn.disabled = false;
+  });
+
   var credBox = document.getElementById('loginCred');
   var totpBox = document.getElementById('loginTotp');
   var pendingEl = document.getElementById('totpPending');
@@ -81,9 +230,14 @@
     credBox.querySelectorAll('[required]').forEach(function (el) { el.required = false; });
     var oauthBox = document.getElementById('loginOAuth');
     if (oauthBox) oauthBox.hidden = true;
+    var agreeWrap = document.querySelector('.auth-agree');
+    if (agreeWrap) agreeWrap.hidden = true;
     totpBox.hidden = false;
-    var code = form.querySelector('input[name=code]');
-    if (code) { code.required = true; code.value = ''; code.focus(); }
+    // 邮箱验证码与 TOTP 都曾用 name=code；进 TOTP 时去掉邮件码字段名，避免 FormData 冲突
+    var mailCode = document.getElementById('loginMailCode');
+    if (mailCode) { mailCode.removeAttribute('name'); mailCode.required = false; }
+    var code = document.getElementById('totpCodeInput');
+    if (code) { code.name = 'code'; code.required = true; code.value = ''; code.focus(); }
     pendingEl.value = data.pending || '';
     var hint = document.getElementById('totpHint');
     var qr = document.getElementById('totpQr');
@@ -100,9 +254,24 @@
       secret.textContent = '';
     }
   }
+  var agreeEl = document.getElementById('loginAgree');
+  function ensureAgree() {
+    if (totpBox && !totpBox.hidden) return true;
+    if (agreeEl && !agreeEl.checked) {
+      showError('login.needAgree');
+      return false;
+    }
+    return true;
+  }
+  document.querySelectorAll('#loginOAuth .auth-oauth-icon').forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      if (!ensureAgree()) e.preventDefault();
+    });
+  });
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
     if (!UI.validateForm(form)) return;
+    if (!ensureAgree()) return;
     var btn = form.querySelector('[type=submit]');
     if (btn) btn.disabled = true;
     errBox.hidden = true;
@@ -116,7 +285,7 @@
       var data = await res.json().catch(function () { return {}; });
       if (!res.ok) {
         showError((data && data.error) || '登录失败');
-        if (!totp) refreshCaptcha();
+        if (!totp && modeEl.value === 'account') refreshCaptcha();
         if (btn) btn.disabled = false;
         return;
       }

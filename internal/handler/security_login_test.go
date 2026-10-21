@@ -74,8 +74,8 @@ func TestLoginLockAndUnlock(t *testing.T) {
 	tryBad := func() map[string]any {
 		captchaOK(t, "cid-lock", "1111")
 		body := url.Values{
-			"username": {"lockme"}, "password": {"wrong"},
-			"captcha_id": {"cid-lock"}, "captcha": {"1111"},
+			"mode": {"account"}, "username": {"lockme"}, "password": {"wrong"},
+			"captcha_id": {"cid-lock"}, "captcha": {"1111"}, "agree": {"on"},
 		}.Encode()
 		w, c := ajaxForm(http.MethodPost, "/login", body)
 		a.Login(c)
@@ -116,8 +116,8 @@ func TestLoginLockAndUnlock(t *testing.T) {
 
 	captchaOK(t, "cid-ok", "2222")
 	body := url.Values{
-		"username": {"lockme"}, "password": {"secret1"},
-		"captcha_id": {"cid-ok"}, "captcha": {"2222"},
+		"mode": {"account"}, "username": {"lockme"}, "password": {"secret1"},
+		"captcha_id": {"cid-ok"}, "captcha": {"2222"}, "agree": {"on"},
 	}.Encode()
 	w2, c2 := ajaxForm(http.MethodPost, "/login", body)
 	a.Login(c2)
@@ -167,8 +167,8 @@ func TestTOTPEnrollVerifyAndReset(t *testing.T) {
 
 	captchaOK(t, "cid-totp", "3333")
 	body := url.Values{
-		"username": {"totpuser"}, "password": {"secret1"},
-		"captcha_id": {"cid-totp"}, "captcha": {"3333"},
+		"mode": {"account"}, "username": {"totpuser"}, "password": {"secret1"},
+		"captcha_id": {"cid-totp"}, "captcha": {"3333"}, "agree": {"on"},
 	}.Encode()
 	w, c := ajaxForm(http.MethodPost, "/login", body)
 	a.Login(c)
@@ -220,8 +220,8 @@ func TestTOTPEnrollVerifyAndReset(t *testing.T) {
 	// 第二次登录：仅校验
 	captchaOK(t, "cid-totp2", "4444")
 	w, c = ajaxForm(http.MethodPost, "/login", url.Values{
-		"username": {"totpuser"}, "password": {"secret1"},
-		"captcha_id": {"cid-totp2"}, "captcha": {"4444"},
+		"mode": {"account"}, "username": {"totpuser"}, "password": {"secret1"},
+		"captcha_id": {"cid-totp2"}, "captcha": {"4444"}, "agree": {"on"},
 	}.Encode())
 	a.Login(c)
 	assertCode(t, w, http.StatusOK)
@@ -292,8 +292,8 @@ func TestTOTPEnrollViaBrowserForm(t *testing.T) {
 	captchaOK(t, "cid-browser", "7777")
 
 	w, c := browserForm(http.MethodPost, "/login", map[string]string{
-		"username": "browseruser", "password": "secret1",
-		"captcha_id": "cid-browser", "captcha": "7777",
+		"mode": "account", "username": "browseruser", "password": "secret1",
+		"captcha_id": "cid-browser", "captcha": "7777", "agree": "on",
 	})
 	a.Login(c)
 	assertCode(t, w, http.StatusOK)
@@ -346,8 +346,8 @@ func TestTOTPTryCapBlocksEvenCorrectCode(t *testing.T) {
 
 	captchaOK(t, "cid-cap", "5555")
 	w, c := ajaxForm(http.MethodPost, "/login", url.Values{
-		"username": {"capuser"}, "password": {"secret1"},
-		"captcha_id": {"cid-cap"}, "captcha": {"5555"},
+		"mode": {"account"}, "username": {"capuser"}, "password": {"secret1"},
+		"captcha_id": {"cid-cap"}, "captcha": {"5555"}, "agree": {"on"},
 	}.Encode())
 	a.Login(c)
 	m := decodeJSON(t, w)
@@ -421,7 +421,7 @@ func TestRegisterRequiresTOTPWhenEnabled(t *testing.T) {
 	captchaOK(t, "cid-reg", "6666")
 	w, c := ajaxForm(http.MethodPost, "/register", url.Values{
 		"username": {"newtotp"}, "password": {"secret1"},
-		"captcha_id": {"cid-reg"}, "captcha": {"6666"},
+		"captcha_id": {"cid-reg"}, "captcha": {"6666"}, "agree": {"on"},
 	}.Encode())
 	a.Register(c)
 	assertCode(t, w, http.StatusOK)

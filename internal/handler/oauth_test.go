@@ -1,12 +1,15 @@
 package handler
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"doc-share/internal/config"
 	"doc-share/internal/model"
 	"doc-share/internal/session"
 
+	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -226,6 +229,54 @@ func TestNormalizeOAuthRedirectURL(t *testing.T) {
 	}
 	if _, err := normalizeOAuthRedirectURL("/relative"); err == nil {
 		t.Fatal("want reject relative")
+	}
+}
+
+func TestOAuthRedirectURL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	a := oauthTestApp(t)
+	ctx := func(rawURL string, fwdProto string) *gin.Context {
+		t.Helper()
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		req := httptest.NewRequest(http.MethodGet, rawURL, nil)
+		if fwdProto != "" {
+			req.Header.Set("X-Forwarded-Proto", fwdProto)
+		}
+		c.Request = req
+		return c
+	}
+
+	// 无显式回调：跟当前请求
+	c := ctx("http://localhost:9000/login", "")
+	got := a.oauthRedirectURL(c, model.OAuthProviderGitHub, config.OAuthProviderConfig{})
+	want := "http://localhost:9000/auth/github/callback"
+	if got != want {
+		t.Fatalf("from request: got %q want %q", got, want)
+	}
+
+	// 同 Host、协议不一致：回退到请求 Origin（修 https 配置 + http 访问）
+	c = ctx("http://localhost:9000/login", "")
+	got = a.oauthRedirectURL(c, model.OAuthProviderGitHub, config.OAuthProviderConfig{
+		RedirectURL: "https://localhost:9000/auth/github/callback",
+	})
+	if got != want {
+		t.Fatalf("scheme mismatch: got %q want %q", got, want)
+	}
+
+	// 不同 Host：保留显式（反代对外域名）
+	c = ctx("http://127.0.0.1:9000/login", "")
+	pub := "https://docs.example.com/auth/github/callback"
+	got = a.oauthRedirectURL(c, model.OAuthProviderGitHub, config.OAuthProviderConfig{RedirectURL: pub})
+	if got != pub {
+		t.Fatalf("different host keep explicit: got %q", got)
+	}
+
+	// X-Forwarded-Proto=https
+	c = ctx("http://docs.example.com/login", "https")
+	got = a.oauthRedirectURL(c, model.OAuthProviderGoogle, config.OAuthProviderConfig{})
+	if got != "https://docs.example.com/auth/google/callback" {
+		t.Fatalf("forwarded proto: got %q", got)
 	}
 }
 
