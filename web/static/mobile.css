@@ -103,6 +103,34 @@
     max-width: 100%;
   }
 
+  /* 登录/注册：验证码行触控高度；脚注换行不撑破；卡与脚注间距 */
+  .auth-body .captcha-row {
+    align-items: center;
+    gap: 8px;
+  }
+  .auth-body .captcha-row input {
+    min-height: 44px;
+  }
+  .auth-body .captcha-img {
+    width: 112px;
+    height: 44px;
+    aspect-ratio: auto;
+    flex: none;
+  }
+  .auth-body .captcha-row .btn,
+  .auth-body .captcha-row .btn-sm {
+    flex: none;
+    min-height: 44px;
+    white-space: nowrap;
+  }
+  .auth-foot {
+    gap: 6px 12px;
+    font-size: 11.5px;
+  }
+  .auth-card .btn-block {
+    min-height: 44px;
+  }
+
   /* iOS Safari 聚焦 input 时若 font-size < 16px 会触发页面缩放，全站统一提升。
      chat.html 已显式设 16px，无冲突；桌面端不受影响。
      注：json_edit .input-ver 等页面内联样式特异性更高，自然抵抗此规则，无需额外例外。 */
@@ -193,6 +221,24 @@
 @media (max-width: 620px) {
   .l-h1 { font-size: 32px; }
   .l-h2 { font-size: 24px; }
+
+  .auth-body {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .auth-card:not(.share-gate),
+  .auth-split .auth-card {
+    padding: 24px 18px 22px;
+    border-radius: 16px;
+  }
+  .auth-split .auth-card::before {
+    border-radius: 16px 16px 0 0;
+  }
+  .auth-title,
+  .auth-split .auth-title { font-size: 20px; }
+  /* 只调字号：底距由表单 margin-top / .share-gate .auth-sub 负责，避免叠加过大 */
+  .auth-sub { font-size: 13px; }
+  .auth-alt { margin-top: 14px; font-size: 12.5px; }
 }
 
 /* ============================================================

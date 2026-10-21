@@ -1,6 +1,7 @@
 package database
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -44,7 +45,7 @@ func Init(cfg *config.Config) (*gorm.DB, error) {
 
 	if err := db.AutoMigrate(&model.User{}, &model.Project{}, &model.Category{}, &model.ApiKey{}, &model.Document{}, &model.Share{}, &model.ProjectShare{}, &model.ShareAccessRequest{}, &model.SystemSetting{},
 		&model.DocumentRevision{}, &model.Comment{}, &model.DocumentVisitor{}, &model.ProjectMember{}, &model.Message{}, &model.DocTemplate{},
-		&model.ChatSession{}, &model.ChatMessage{}, &model.ChatSkill{}, &model.LLMConfig{}, &model.OpenAPINonce{}); err != nil {
+		&model.ChatSession{}, &model.ChatMessage{}, &model.ChatSkill{}, &model.LLMConfig{}, &model.OpenAPINonce{}, &model.OAuthIdentity{}); err != nil {
 		return nil, fmt.Errorf("auto migrate: %w", err)
 	}
 
@@ -62,6 +63,11 @@ func Init(cfg *config.Config) (*gorm.DB, error) {
 
 	if err := backfillDocVersions(db); err != nil {
 		log.Printf("[migrate] 回填文档版本号失败（可手动处理）: %v", err)
+	}
+
+	// 存量非空邮箱视为已验证（列新增前无法区分来源）；之后改邮箱会清零，避免 OAuth 误合并。
+	if err := backfillEmailVerified(db); err != nil {
+		log.Printf("[migrate] 回填邮箱验证标记失败（可手动处理）: %v", err)
 	}
 
 	// 分类时间列是后加的：旧行可能为 NULL，扫进 time.Time 会变成零值并在页面显示 0001-01-01。
@@ -213,6 +219,31 @@ func backfillDocVersions(db *gorm.DB) error {
 	}
 	if total > 0 {
 		log.Printf("[migrate] 已回填 %d 篇文档的版本号（自动派生 v1.0.N）", total)
+	}
+	return nil
+}
+
+const keyMigrateEmailVerified = "migrate_email_verified_v1"
+
+// backfillEmailVerified 一次性：存量非空邮箱标为已验证。之后资料/管理端改邮箱会清零，OAuth 仅合并已验证邮箱。
+func backfillEmailVerified(db *gorm.DB) error {
+	var flag model.SystemSetting
+	err := db.Where("`key` = ?", keyMigrateEmailVerified).First(&flag).Error
+	if err == nil {
+		return nil
+	}
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	res := db.Model(&model.User{}).Where("email <> '' AND email_verified = ?", false).Update("email_verified", true)
+	if res.Error != nil {
+		return res.Error
+	}
+	if err := db.Create(&model.SystemSetting{Key: keyMigrateEmailVerified, Value: "1"}).Error; err != nil {
+		return err
+	}
+	if res.RowsAffected > 0 {
+		log.Printf("[migrate] 已将 %d 个存量邮箱标为已验证（仅执行一次）", res.RowsAffected)
 	}
 	return nil
 }

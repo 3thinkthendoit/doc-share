@@ -14,18 +14,19 @@ type User struct {
 	Username     string     `gorm:"size:64;uniqueIndex;not null" json:"username"`
 	PasswordHash string     `gorm:"size:255;not null" json:"-"`
 	Nickname     string     `gorm:"size:64" json:"nickname"`
-	Email        string     `gorm:"size:255;index" json:"email"`                 // 邮箱（唯一性应用层校验，空串允许多个）
-	Phone        string     `gorm:"size:32;index" json:"phone"`                  // 手机号（同上）
-	Avatar       string     `gorm:"size:500" json:"avatar"`                      // 头像 URL（/uploads/... 或外链），空则显示首字圆底
-	Role         string     `gorm:"size:16;not null;default:viewer" json:"role"` // admin / viewer
-	Status       int        `gorm:"not null;default:1" json:"status"`            // 1 启用 0 禁用
-	FailedLogins int        `gorm:"not null;default:0" json:"-"`                 // 当前这一轮密码或动态口令错误次数
-	LockedUntil  *time.Time `json:"locked_until,omitempty"`                      // 非空且未过期表示登录锁定
-	TOTPSecret   string     `gorm:"size:255" json:"-"`                           // 已绑定的动态口令密钥（加密存储）
-	TOTPEpoch    int        `gorm:"not null;default:0" json:"-"`                 // 递增后作废未完成的绑定/校验票据
-	LastActiveAt *time.Time `json:"last_active_at"`                              // 最近活跃时间（登录期间限流刷新）
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	Email         string     `gorm:"size:255;index" json:"email"`                 // 邮箱（唯一性应用层校验，空串允许多个）
+	EmailVerified bool       `gorm:"not null;default:0" json:"email_verified"`    // 是否完成邮箱所有权验证（注册验证码 / OAuth 已验证邮箱）
+	Phone         string     `gorm:"size:32;index" json:"phone"`                  // 手机号（同上）
+	Avatar        string     `gorm:"size:500" json:"avatar"`                      // 头像 URL（/uploads/... 或外链），空则显示首字圆底
+	Role          string     `gorm:"size:16;not null;default:viewer" json:"role"` // admin / viewer
+	Status        int        `gorm:"not null;default:1" json:"status"`            // 1 启用 0 禁用
+	FailedLogins  int        `gorm:"not null;default:0" json:"-"`                 // 当前这一轮密码或动态口令错误次数
+	LockedUntil   *time.Time `json:"locked_until,omitempty"`                      // 非空且未过期表示登录锁定
+	TOTPSecret    string     `gorm:"size:255" json:"-"`                           // 已绑定的动态口令密钥（加密存储）
+	TOTPEpoch     int        `gorm:"not null;default:0" json:"-"`                 // 递增后作废未完成的绑定/校验票据
+	LastActiveAt  *time.Time `json:"last_active_at"`                              // 最近活跃时间（登录期间限流刷新）
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
 const (

@@ -56,7 +56,7 @@ func (a *App) SendRegisterCode(c *gin.Context) {
 		return
 	}
 	var exists int64
-	a.DB.Model(&model.User{}).Where("username = ? OR email = ?", email, email).Count(&exists)
+	a.DB.Model(&model.User{}).Where("username = ? OR LOWER(email) = ?", email, email).Count(&exists)
 	if exists > 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "该邮箱已被注册"})
 		return
@@ -83,8 +83,6 @@ func (a *App) SendRegisterCode(c *gin.Context) {
 
 	mailCodeStore.Lock()
 	code := genMailCode()
-	mailCodeStore.m[email] = mailCodeEntry{code: code, exp: now.Add(mailCodeTTL), lastSent: now}
-	mailCodeStore.Unlock()
 	mailCodeStore.m[email] = mailCodeEntry{code: code, exp: now.Add(mailCodeTTL), lastSent: now}
 	mailCodeStore.Unlock()
 

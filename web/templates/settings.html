@@ -68,6 +68,34 @@
       </div>
       <label class="check"><input type="checkbox" name="totp_enabled" {{if .set.TOTPEnabled}}checked{{end}}> {{$.T "set.totpEnabled"}}</label>
       <p class="muted" style="font-size:12.5px;margin:-4px 0 10px">{{$.T "set.totpEnabledTip"}}</p>
+      <div class="settings-section" style="margin-top:18px">{{$.T "set.oauthTitle"}}</div>
+      <p class="muted" style="font-size:12.5px;margin:0 0 10px">{{$.T "set.oauthTip"}}</p>
+      <label class="check"><input type="checkbox" name="oauth_github_enabled" {{if .set.OAuthGitHubEnabled}}checked{{end}}> {{$.T "set.oauthGitHub"}}</label>
+      <div class="smtp-grid" style="margin:8px 0 12px">
+        <label>{{$.T "set.oauthClientID"}}
+          <input type="text" name="oauth_github_client_id" value="{{.set.OAuthGitHubClientID}}" autocomplete="off" placeholder="GitHub Client ID">
+        </label>
+        <label>{{$.T "set.oauthClientSecret"}}
+          <input type="password" name="oauth_github_client_secret" value="" placeholder="{{if .set.OAuthGitHubClientSecret}}{{$.T "set.oauthSecretKeep"}}{{else}}Client Secret{{end}}" autocomplete="new-password">
+        </label>
+      </div>
+      <label style="margin-bottom:14px">{{$.T "set.oauthRedirectURL"}}
+        <input type="text" name="oauth_github_redirect_url" value="{{.set.OAuthGitHubRedirectURL}}" placeholder="https://docs.example.com/auth/github/callback" autocomplete="off">
+        <span class="muted" style="font-size:12px">{{$.T "set.oauthRedirectTip"}}</span>
+      </label>
+      <label class="check"><input type="checkbox" name="oauth_google_enabled" {{if .set.OAuthGoogleEnabled}}checked{{end}}> {{$.T "set.oauthGoogle"}}</label>
+      <div class="smtp-grid" style="margin:8px 0 12px">
+        <label>{{$.T "set.oauthClientID"}}
+          <input type="text" name="oauth_google_client_id" value="{{.set.OAuthGoogleClientID}}" autocomplete="off" placeholder="Google Client ID">
+        </label>
+        <label>{{$.T "set.oauthClientSecret"}}
+          <input type="password" name="oauth_google_client_secret" value="" placeholder="{{if .set.OAuthGoogleClientSecret}}{{$.T "set.oauthSecretKeep"}}{{else}}Client Secret{{end}}" autocomplete="new-password">
+        </label>
+      </div>
+      <label>{{$.T "set.oauthRedirectURL"}}
+        <input type="text" name="oauth_google_redirect_url" value="{{.set.OAuthGoogleRedirectURL}}" placeholder="https://docs.example.com/auth/google/callback" autocomplete="off">
+        <span class="muted" style="font-size:12px">{{$.T "set.oauthRedirectTip"}}</span>
+      </label>
       </section>
 
       <section id="sec-share" class="set-sec">
@@ -849,6 +877,14 @@
       login_max_fails: form.login_lock.checked ? (parseInt(form.login_max_fails.value, 10) || 5) : 0,
       login_lock_minutes: parseInt(form.login_lock_minutes.value, 10) || 30,
       totp_enabled: form.totp_enabled.checked,
+      oauth_github_enabled: !!(form.oauth_github_enabled && form.oauth_github_enabled.checked),
+      oauth_google_enabled: !!(form.oauth_google_enabled && form.oauth_google_enabled.checked),
+      oauth_github_client_id: form.oauth_github_client_id ? form.oauth_github_client_id.value.trim() : '',
+      oauth_github_client_secret: form.oauth_github_client_secret ? form.oauth_github_client_secret.value : '',
+      oauth_github_redirect_url: form.oauth_github_redirect_url ? form.oauth_github_redirect_url.value.trim() : '',
+      oauth_google_client_id: form.oauth_google_client_id ? form.oauth_google_client_id.value.trim() : '',
+      oauth_google_client_secret: form.oauth_google_client_secret ? form.oauth_google_client_secret.value : '',
+      oauth_google_redirect_url: form.oauth_google_redirect_url ? form.oauth_google_redirect_url.value.trim() : '',
       ai_max_creates_per_req: parseInt(form.ai_max_creates_per_req.value, 10),
       ai_max_creates_per_day: parseInt(form.ai_max_creates_per_day.value, 10),
       ai_stream_timeout_min: parseInt(form.ai_stream_timeout_min.value, 10)

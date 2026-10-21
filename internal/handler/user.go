@@ -127,13 +127,22 @@ func (a *App) UpdateUser(c *gin.Context) {
 	}
 	if email != "" {
 		var n int64
-		a.DB.Model(&model.User{}).Where("email = ? AND id <> ?", email, user.ID).Count(&n)
+		a.DB.Model(&model.User{}).Where("LOWER(email) = ? AND id <> ?", email, user.ID).Count(&n)
 		if n > 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "该邮箱已被其他账号使用"})
 			return
 		}
 	}
+	emailVerified := user.EmailVerified
+	if email != strings.ToLower(strings.TrimSpace(user.Email)) {
+		// 管理端改邮箱无验证码，清零验证标记，避免 OAuth 按邮箱误合并
+		emailVerified = false
+	}
+	if email == "" {
+		emailVerified = false
+	}
 	user.Email = email
+	user.EmailVerified = emailVerified
 	phone := strings.TrimSpace(req.Phone)
 	if phone != "" && !util.ValidPhone(phone) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "手机号格式不正确"})
@@ -153,12 +162,13 @@ func (a *App) UpdateUser(c *gin.Context) {
 	}
 	// 只更新资料字段，避免 Save 整行把并发写入的锁定/动态口令状态盖掉
 	updates := map[string]any{
-		"nickname": user.Nickname,
-		"email":    user.Email,
-		"phone":    user.Phone,
-		"role":     user.Role,
-		"status":   user.Status,
-		"avatar":   user.Avatar,
+		"nickname":       user.Nickname,
+		"email":          user.Email,
+		"email_verified": user.EmailVerified,
+		"phone":          user.Phone,
+		"role":           user.Role,
+		"status":         user.Status,
+		"avatar":         user.Avatar,
 	}
 	if req.Password != "" {
 		if len(req.Password) < 6 {
@@ -267,7 +277,7 @@ func (a *App) UpdateProfile(c *gin.Context) {
 	// 唯一性校验（排除自己）
 	if email != "" {
 		var n int64
-		a.DB.Model(&model.User{}).Where("email = ? AND id <> ?", email, user.ID).Count(&n)
+		a.DB.Model(&model.User{}).Where("LOWER(email) = ? AND id <> ?", email, user.ID).Count(&n)
 		if n > 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "该邮箱已被其他账号使用"})
 			return
@@ -281,11 +291,19 @@ func (a *App) UpdateProfile(c *gin.Context) {
 			return
 		}
 	}
+	emailVerified := user.EmailVerified
+	if email != strings.ToLower(strings.TrimSpace(user.Email)) {
+		emailVerified = false // 自助改邮箱未经验证码，不可参与 OAuth 合并
+	}
+	if email == "" {
+		emailVerified = false
+	}
 	if err := a.DB.Model(user).UpdateColumns(map[string]interface{}{
-		"nickname": nickname,
-		"avatar":   avatar,
-		"email":    email,
-		"phone":    phone,
+		"nickname":       nickname,
+		"avatar":         avatar,
+		"email":          email,
+		"email_verified": emailVerified,
+		"phone":          phone,
 	}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
 		return

@@ -47,7 +47,7 @@ A lightweight self-hosted documentation sharing platform built with Go and Gin. 
 
 ### Accounts & permissions
 
-- **Register / login** — captcha; registration mode is admin-configurable: username / email (SMTP verification code) / phone (format check only)
+- **Register / login** — captcha; registration mode is admin-configurable: username / email (SMTP verification code) / phone (format check only); optional GitHub / Google login (credentials in config, toggles in System Settings; provider-verified emails can merge into an existing local account)
 - **Profile** — nickname, email, phone, avatar; change own password
 - **Roles** — `admin` (site-wide) / `viewer` (own workspace); enable/disable users
 - **User admin** — create, edit, delete, reset password, change role and status
@@ -56,7 +56,7 @@ A lightweight self-hosted documentation sharing platform built with Go and Gin. 
 
 - **Dashboard** — counts for documents, shares, users (admin), linked projects; recent documents
 - **Pending access requests** — badge + modal list to approve/reject
-- **System settings** (admin) — site name, logo, public domain, drawio editor URL; allow access requests; registration method; SMTP (with test mail); storage local / RustFS (with connectivity test)
+- **System settings** (admin) — site name, logo, public domain, drawio editor URL; allow access requests; registration method; social-login toggles; SMTP (with test mail); storage local / RustFS (with connectivity test)
 - **i18n** — English, 简体中文, 繁體中文
 
 ### Integrations
@@ -97,6 +97,7 @@ All settings live in `config.yaml` and can be overridden via environment variabl
 | `DOC_SHARE_ADMIN_USER` | No | Initial admin username (default `admin`) |
 | `DOC_SHARE_ADMIN_PASSWORD` | Required when seeding | Initial admin password; placeholder `admin123` is rejected on first seed unless `DOC_SHARE_ALLOW_INSECURE_DEFAULTS=true` |
 | `DOC_SHARE_COOKIE_SECURE` | No | Set `true` behind HTTPS to mark session/share cookies Secure (default `false`) |
+| `DOC_SHARE_GITHUB_*` / `DOC_SHARE_GOOGLE_*` | No | OAuth env fallback; prefer **System Settings → Social login** |
 | `DOC_SHARE_UPLOAD_DIR` | No | Image upload directory (default `./uploads`) |
 | `DOC_SHARE_UPLOAD_MAX_MB` | No | Max image size in MB (default `10`) |
 | `DOC_SHARE_DEV` | No | `true` = serve templates/statics from disk for hot reload |
@@ -115,7 +116,9 @@ All settings live in `config.yaml` and can be overridden via environment variabl
 
 > For local debugging only, `DOC_SHARE_ALLOW_INSECURE_DEFAULTS=true` temporarily bypasses the mandatory session secret.
 
-Site name, logo, registration mode, SMTP, RustFS, and similar options are managed in **System Settings** (`/console/settings`) after login — no config file edits required.
+Site name, logo, registration mode, social-login toggles, SMTP, RustFS, and similar options are managed in **System Settings** (`/console/settings`) after login — no config file edits required.
+
+> **Social login**: create a GitHub / Google OAuth app with Authorization callback URL `{site-domain}/auth/github/callback` or `/auth/google/callback`. Enter Client ID/Secret under **System Settings → Social login**, enable, and save (no restart). Env/config.yaml still work as fallback (non-empty System Settings values win). Provider-**verified** emails merge only into a local account whose email is also **verified**.
 
 ### 3. Run
 
@@ -180,7 +183,7 @@ Set `DOC_SHARE_DEV=true` to read templates and static files directly from the `w
 | Area | Paths |
 |---|---|
 | Landing | `GET /` |
-| Auth | `GET/POST /login`, `GET/POST /register`, `POST /register/email-code`, `GET /captcha`, `GET/POST /logout` |
+| Auth | `GET/POST /login`, `GET/POST /register`, `POST /register/email-code`, `GET /captcha`, `GET/POST /logout`; OAuth `GET /auth/:provider`, `GET /auth/:provider/callback` (`github` / `google`) |
 | Admin pages | `/console`, `/console/docs`, `/console/templates`, `/console/projects`, `/console/categories`, `/console/apikeys`, `/console/apidoc`, `/console/users`, `/console/settings` |
 | Document APIs | `POST/PUT/DELETE /console/api/docs`, share `POST/DELETE /console/api/docs/:id/share` |
 | Access requests | `POST /s/:token/access-request`; list/review `/console/api/access-requests`, `/console/api/docs/:id/access-requests` |

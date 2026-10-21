@@ -28,6 +28,15 @@ auth:
   default_password: "${DOC_SHARE_ADMIN_PASSWORD:-admin123}"
   # HTTPS 部署请设 true，为会话/分享 Cookie 开启 Secure（防明文嗅探）
   cookie_secure: ${DOC_SHARE_COOKIE_SECURE:-false}
+  # GitHub / Google OAuth：也可在「系统设置 → 第三方登录」填写（设置非空优先）；此处作环境变量兜底
+  github:
+    client_id: "${DOC_SHARE_GITHUB_CLIENT_ID:-}"
+    client_secret: "${DOC_SHARE_GITHUB_CLIENT_SECRET:-}"
+    redirect_url: "${DOC_SHARE_GITHUB_REDIRECT_URL:-}"
+  google:
+    client_id: "${DOC_SHARE_GOOGLE_CLIENT_ID:-}"
+    client_secret: "${DOC_SHARE_GOOGLE_CLIENT_SECRET:-}"
+    redirect_url: "${DOC_SHARE_GOOGLE_REDIRECT_URL:-}"
 
 upload:
   # 图片本地存储目录（映射到 /uploads 路径，备份该目录即可）

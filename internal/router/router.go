@@ -223,6 +223,8 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 	r.POST("/login", app.Login)
 	r.POST("/login/totp", app.LoginTOTP)
 	r.GET("/register", app.RegisterPage)
+	r.GET("/auth/:provider", app.OAuthStart)
+	r.GET("/auth/:provider/callback", app.OAuthCallback)
 	r.POST("/register", app.Register)
 	r.POST("/register/email-code", app.SendRegisterCode)
 	r.GET("/logout", app.Logout)

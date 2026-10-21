@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -86,6 +87,16 @@ type SiteSettings struct {
 	// 登录在密码正确后还要 Google 动态口令
 	TOTPEnabled bool
 
+	// 第三方登录：密钥可写在系统设置（优先），也可走 config.yaml / 环境变量兜底
+	OAuthGitHubEnabled     bool
+	OAuthGoogleEnabled     bool
+	OAuthGitHubClientID    string
+	OAuthGitHubClientSecret string
+	OAuthGitHubRedirectURL string
+	OAuthGoogleClientID    string
+	OAuthGoogleClientSecret string
+	OAuthGoogleRedirectURL string
+
 	// 智能体创建文档配额。未入库时用默认值。
 	AIMaxCreatesPerReq int // 一次用户消息内 create/duplicate/apply_template 合计上限
 	AIMaxCreatesPerDay int // 单用户自然日通过智能体新建的篇数上限
@@ -135,6 +146,14 @@ const (
 	keyLoginMaxFails    = "login_max_fails"    // 0 = 不锁定
 	keyLoginLockMinutes = "login_lock_minutes" // 锁定持续分钟，到期自动解除
 	keyTOTPEnabled      = "totp_enabled"
+	keyOAuthGitHubEnabled      = "oauth_github_enabled"
+	keyOAuthGoogleEnabled      = "oauth_google_enabled"
+	keyOAuthGitHubClientID     = "oauth_github_client_id"
+	keyOAuthGitHubClientSecret = "oauth_github_client_secret"
+	keyOAuthGitHubRedirectURL  = "oauth_github_redirect_url"
+	keyOAuthGoogleClientID     = "oauth_google_client_id"
+	keyOAuthGoogleClientSecret = "oauth_google_client_secret"
+	keyOAuthGoogleRedirectURL  = "oauth_google_redirect_url"
 
 	keyAIMaxCreatesPerReq = "ai_max_creates_per_req" // 一次用户消息内智能体新建篇数
 	keyAIMaxCreatesPerDay = "ai_max_creates_per_day" // 单用户单日智能体新建篇数
@@ -250,6 +269,22 @@ func (a *App) Settings() SiteSettings {
 			}
 		case keyTOTPEnabled:
 			s.TOTPEnabled = boolVal(r.Value)
+		case keyOAuthGitHubEnabled:
+			s.OAuthGitHubEnabled = boolVal(r.Value)
+		case keyOAuthGoogleEnabled:
+			s.OAuthGoogleEnabled = boolVal(r.Value)
+		case keyOAuthGitHubClientID:
+			s.OAuthGitHubClientID = r.Value
+		case keyOAuthGitHubClientSecret:
+			s.OAuthGitHubClientSecret = r.Value
+		case keyOAuthGitHubRedirectURL:
+			s.OAuthGitHubRedirectURL = r.Value
+		case keyOAuthGoogleClientID:
+			s.OAuthGoogleClientID = r.Value
+		case keyOAuthGoogleClientSecret:
+			s.OAuthGoogleClientSecret = r.Value
+		case keyOAuthGoogleRedirectURL:
+			s.OAuthGoogleRedirectURL = r.Value
 		case keyAIMaxCreatesPerReq:
 			if n, err := strconv.Atoi(strings.TrimSpace(r.Value)); err == nil && n >= minAIMaxCreatesPerReq && n <= maxAIMaxCreatesPerReq {
 				s.AIMaxCreatesPerReq = n
@@ -324,10 +359,18 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		AllowShareApply    bool   `json:"allow_share_apply"`
 		LoginMaxFails      int    `json:"login_max_fails"`
 		LoginLockMinutes   int    `json:"login_lock_minutes"`
-		TOTPEnabled        bool   `json:"totp_enabled"`
-		AIMaxCreatesPerReq int    `json:"ai_max_creates_per_req"`
-		AIMaxCreatesPerDay int    `json:"ai_max_creates_per_day"`
-		AIStreamTimeoutMin int    `json:"ai_stream_timeout_min"`
+		TOTPEnabled             bool   `json:"totp_enabled"`
+		OAuthGitHubEnabled      bool   `json:"oauth_github_enabled"`
+		OAuthGoogleEnabled      bool   `json:"oauth_google_enabled"`
+		OAuthGitHubClientID     string `json:"oauth_github_client_id"`
+		OAuthGitHubClientSecret string `json:"oauth_github_client_secret"`
+		OAuthGitHubRedirectURL  string `json:"oauth_github_redirect_url"`
+		OAuthGoogleClientID     string `json:"oauth_google_client_id"`
+		OAuthGoogleClientSecret string `json:"oauth_google_client_secret"`
+		OAuthGoogleRedirectURL  string `json:"oauth_google_redirect_url"`
+		AIMaxCreatesPerReq      int    `json:"ai_max_creates_per_req"`
+		AIMaxCreatesPerDay      int    `json:"ai_max_creates_per_day"`
+		AIStreamTimeoutMin      int    `json:"ai_stream_timeout_min"`
 	}
 	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -465,6 +508,17 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		}
 	}
 
+	ghRedirect, err := normalizeOAuthRedirectURL(req.OAuthGitHubRedirectURL)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "set.oauthRedirectInvalid")})
+		return
+	}
+	ggRedirect, err := normalizeOAuthRedirectURL(req.OAuthGoogleRedirectURL)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "set.oauthRedirectInvalid")})
+		return
+	}
+
 	values := map[string]string{
 		model.SettingSiteName:   name,
 		model.SettingSiteLogo:   logo,
@@ -493,21 +547,38 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		keyLoginMaxFails:        strconv.Itoa(maxFails),
 		keyLoginLockMinutes:     strconv.Itoa(lockMinutes),
 		keyTOTPEnabled:          boolStr(req.TOTPEnabled),
+		keyOAuthGitHubEnabled:   boolStr(req.OAuthGitHubEnabled),
+		keyOAuthGoogleEnabled:   boolStr(req.OAuthGoogleEnabled),
+		keyOAuthGitHubClientID:  strings.TrimSpace(req.OAuthGitHubClientID),
+		keyOAuthGitHubRedirectURL: ghRedirect,
+		keyOAuthGoogleClientID:  strings.TrimSpace(req.OAuthGoogleClientID),
+		keyOAuthGoogleRedirectURL: ggRedirect,
 		keyAIMaxCreatesPerReq:   strconv.Itoa(createsPerReq),
 		keyAIMaxCreatesPerDay:   strconv.Itoa(createsPerDay),
 		keyAIStreamTimeoutMin:   strconv.Itoa(streamTimeoutMin),
 	}
+	// Client Secret 留空 = 保留原值（与 RustFS/COS 一致，避免每次保存被清空）
+	prev := a.Settings()
+	ghSecret := strings.TrimSpace(req.OAuthGitHubClientSecret)
+	if ghSecret == "" {
+		ghSecret = prev.OAuthGitHubClientSecret
+	}
+	ggSecret := strings.TrimSpace(req.OAuthGoogleClientSecret)
+	if ggSecret == "" {
+		ggSecret = prev.OAuthGoogleClientSecret
+	}
+	values[keyOAuthGitHubClientSecret] = ghSecret
+	values[keyOAuthGoogleClientSecret] = ggSecret
 	// 单条批量 upsert（INSERT ... ON DUPLICATE KEY UPDATE）：
 	// 一次网络往返写完全部设置。逐条 SELECT+UPDATE 在远程 MySQL 上要 2N 次往返，保存明显变慢
 	rows := make([]model.SystemSetting, 0, len(values))
 	for k, v := range values {
 		rows = append(rows, model.SystemSetting{Key: k, Value: v})
 	}
-	err := a.DB.Clauses(clause.OnConflict{
+	if err = a.DB.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "key"}},
 		DoUpdates: clause.AssignmentColumns([]string{"value", "updated_at"}),
-	}).Create(&rows).Error
-	if err != nil {
+	}).Create(&rows).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
 		return
 	}
@@ -651,6 +722,22 @@ func (a *App) fileStorage() (storage.Storage, error) {
 	default:
 		return &storage.Local{Dir: a.Cfg.Upload.Dir}, nil
 	}
+}
+
+// normalizeOAuthRedirectURL 校验 OAuth 回调绝对地址；空串合法（走站点域名推导）。
+func normalizeOAuthRedirectURL(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", nil
+	}
+	u, err := url.Parse(s)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return "", errors.New("invalid oauth redirect")
+	}
+	if len(s) > 500 {
+		return "", errors.New("oauth redirect too long")
+	}
+	return strings.TrimRight(u.String(), "/"), nil
 }
 
 // normalizeSiteURL 归一域名：补 https:// 前缀、去尾部斜杠；空值返回空，

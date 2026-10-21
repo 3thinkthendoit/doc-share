@@ -66,6 +66,16 @@ type AuthConfig struct {
 	DefaultAdmin    string `yaml:"default_admin"`    // 首次启动创建的 admin 用户名
 	DefaultPassword string `yaml:"default_password"` // 首次启动创建的 admin 密码
 	CookieSecure    bool   `yaml:"cookie_secure"`    // HTTPS 时设 true，为 Cookie 加 Secure
+	// 第三方登录：config/环境变量作兜底；系统设置非空优先，且需后台开关开启
+	GitHub OAuthProviderConfig `yaml:"github"`
+	Google OAuthProviderConfig `yaml:"google"`
+}
+
+// OAuthProviderConfig 单个 OAuth 应用凭据；ClientID 为空视为未配置
+type OAuthProviderConfig struct {
+	ClientID     string `yaml:"client_id"`
+	ClientSecret string `yaml:"client_secret"`
+	RedirectURL  string `yaml:"redirect_url"` // 可选；空则用站点域名 + /auth/{provider}/callback
 }
 
 // UploadConfig 图片上传存储配置

@@ -52,6 +52,15 @@ func (a *App) render(c *gin.Context, name string, data gin.H) {
 	if s, ok := data["error"].(string); ok {
 		data["error"] = a.i18nText(lang, s)
 	}
+	// 登录/注册：浏览器标签与页内欢迎语一致（已含站点名，配合 titleSolo 不再二次拼接）
+	switch name {
+	case "login.html":
+		data["title"] = a.tr(c, "login.welcome", s.SiteName)
+		data["titleSolo"] = true
+	case "register.html":
+		data["title"] = a.tr(c, "reg.welcome", s.SiteName)
+		data["titleSolo"] = true
+	}
 	// dev 模式：每次渲染从磁盘重新解析模板，改模板刷新浏览器即生效；
 	// 解析失败沿用上次成功的模板集合（a.Tmpl 不被覆盖），页面仍可用。
 	// 同时禁用页面缓存：模板改了之后浏览器不会拿旧 HTML

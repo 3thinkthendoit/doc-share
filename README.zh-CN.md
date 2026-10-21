@@ -47,7 +47,7 @@
 
 ### 账户与权限
 
-- **注册 / 登录** — 验证码；注册方式由管理员配置：用户名 / 邮箱（SMTP 验证码）/ 手机号（格式校验）
+- **注册 / 登录** — 验证码；注册方式由管理员配置：用户名 / 邮箱（SMTP 验证码）/ 手机号（格式校验）；可选 GitHub / Google 登录（凭据在配置，开关在系统设置；提供方已验证邮箱可与本地账号合并）
 - **个人资料** — 昵称、邮箱、手机、头像；修改自己的密码
 - **角色** — `admin`（全站管理）/ `viewer`（管理自己的文档与空间）；可启用/停用用户
 - **用户管理**（管理员）— 创建、编辑、删除、重置密码、改角色与状态
@@ -56,7 +56,7 @@
 
 - **仪表盘** — 文档数、分享数、用户数（管理员）、关联项目数；最近更新文档
 - **待审申请** — 未处理的查看申请统计与弹窗列表，可直接通过/拒绝
-- **系统设置**（管理员）— 站点名称、Logo、对外域名、drawio 编辑器地址；开放「申请查看」；注册方式；SMTP（可测发信）；文件存储本地 / RustFS（可测连通）
+- **系统设置**（管理员）— 站点名称、Logo、对外域名、drawio 编辑器地址；开放「申请查看」；注册方式；第三方登录开关；SMTP（可测发信）；文件存储本地 / RustFS（可测连通）
 - **多语言** — 简体中文、繁體中文、English
 
 ### 开放能力
@@ -97,6 +97,7 @@ CREATE DATABASE doc_share DEFAULT CHARSET utf8mb4;
 | `DOC_SHARE_ADMIN_USER` | 否 | 首次启动自动创建的管理员用户名（默认 `admin`） |
 | `DOC_SHARE_ADMIN_PASSWORD` | 首次无管理员时实质必填 | 管理员初始密码；默认占位 `admin123` 会在首次建号时被拒绝（除非 `DOC_SHARE_ALLOW_INSECURE_DEFAULTS=true`） |
 | `DOC_SHARE_COOKIE_SECURE` | 否 | HTTPS 时设 `true`，为会话/分享 Cookie 加 `Secure`（默认 `false`） |
+| `DOC_SHARE_GITHUB_*` / `DOC_SHARE_GOOGLE_*` | 否 | OAuth 凭据/回调的环境变量兜底；优先在 **系统设置 → 第三方登录** 填写 |
 | `DOC_SHARE_UPLOAD_DIR` | 否 | 图片上传目录（默认 `./uploads`） |
 | `DOC_SHARE_UPLOAD_MAX_MB` | 否 | 单张图片大小上限 MB（默认 `10`） |
 | `DOC_SHARE_DEV` | 否 | `true` = 模板/静态资源直读磁盘，前端热载 |
@@ -115,7 +116,9 @@ CREATE DATABASE doc_share DEFAULT CHARSET utf8mb4;
 
 > 仅限本地调试：设置 `DOC_SHARE_ALLOW_INSECURE_DEFAULTS=true` 可临时放行空的 session secret。
 
-站点名称、Logo、注册方式、SMTP、RustFS 等可在登录后于 **系统设置**（`/console/settings`）调整，无需改配置文件。
+站点名称、Logo、注册方式、第三方登录开关、SMTP、RustFS 等可在登录后于 **系统设置**（`/console/settings`）调整，无需改配置文件。
+
+> **第三方登录**：在 GitHub / Google 创建 OAuth 应用，Authorization callback URL 填 `{站点域名}/auth/github/callback` 或 `/auth/google/callback`。在 **系统设置 → 第三方登录** 填写 Client ID/Secret、勾选启用并保存即可（无需重启）；也可改用环境变量/config.yaml（系统设置非空时优先）。提供方**已验证邮箱**仅会与本地**已验证**同邮箱账号合并绑定。
 
 > **存储安全提示**：选择 RustFS（S3 兼容）时，建议将 bucket 设为**私有**读写。若 bucket 允许匿名公共读取，
 > HTML 整站 / 上传文件的对象 URL 可被直连访问，绕过分享密码门（站点文件在本站侧的访问已经凭短时签名控制，
@@ -184,7 +187,7 @@ mcp/
 | 模块 | 路径 |
 |---|---|
 | 落地页 | `GET /` |
-| 认证 | `GET/POST /login`、`GET/POST /register`、`POST /register/email-code`、`GET /captcha`、`GET/POST /logout` |
+| 认证 | `GET/POST /login`、`GET/POST /register`、`POST /register/email-code`、`GET /captcha`、`GET/POST /logout`；OAuth `GET /auth/:provider`、`GET /auth/:provider/callback`（`github` / `google`） |
 | 后台页面 | `/console`、`/console/docs`、`/console/templates`、`/console/projects`、`/console/categories`、`/console/apikeys`、`/console/apidoc`、`/console/users`、`/console/settings` |
 | 文档 API | `POST/PUT/DELETE /console/api/docs`、分享 `POST/DELETE /console/api/docs/:id/share` |
 | 访问申请 | `POST /s/:token/access-request`；列表/审批 `/console/api/access-requests`、`/console/api/docs/:id/access-requests` |

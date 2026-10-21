@@ -17,7 +17,14 @@ const sessionTTL = 24 * time.Hour
 
 // LoginPage 渲染登录页
 func (a *App) LoginPage(c *gin.Context) {
-	a.render(c, "login.html", gin.H{"title": "登录"})
+	data := gin.H{"title": "登录"}
+	if err := strings.TrimSpace(c.Query("error")); err != "" {
+		data["error"] = err
+	}
+	for k, v := range a.oauthViewFlags() {
+		data[k] = v
+	}
+	a.render(c, "login.html", data)
 }
 
 // Captcha 生成图形验证码：返回 {id, b64}，b64 为可直接赋给 img.src 的 data URI
@@ -40,7 +47,11 @@ func (a *App) Login(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": msg})
 			return
 		}
-		a.render(c, "login.html", gin.H{"title": "登录", "error": msg})
+		data := gin.H{"title": "登录", "error": msg}
+		for k, v := range a.oauthViewFlags() {
+			data[k] = v
+		}
+		a.render(c, "login.html", data)
 	}
 
 	// 先验验证码（一次性，失败即消耗），再进入密码校验
@@ -126,9 +137,13 @@ func (a *App) ChangePassword(c *gin.Context) {
 // RegisterPage 注册页（公开）
 func (a *App) RegisterPage(c *gin.Context) {
 	s := a.Settings()
-	a.render(c, "register.html", gin.H{
+	data := gin.H{
 		"title": "注册", "settings": s, "method": s.RegMethod, "identifier": "", "username": "",
-	})
+	}
+	for k, v := range a.oauthViewFlags() {
+		data[k] = v
+	}
+	a.render(c, "register.html", data)
 }
 
 // Register 用户注册：默认普通用户（viewer），成功后自动登录。
@@ -149,10 +164,14 @@ func (a *App) Register(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": msg})
 			return
 		}
-		a.render(c, "register.html", gin.H{
+		data := gin.H{
 			"title": "注册", "error": msg, "settings": s,
 			"username": username, "identifier": identifier, "method": method,
-		})
+		}
+		for k, v := range a.oauthViewFlags() {
+			data[k] = v
+		}
+		a.render(c, "register.html", data)
 	}
 
 	if username == "" || len(username) > 50 {
@@ -185,7 +204,8 @@ func (a *App) Register(c *gin.Context) {
 			renderErr("邮箱格式不正确")
 			return
 		}
-		a.DB.Model(&model.User{}).Where("email = ?", identifier).Count(&exists)
+		emailNorm := strings.ToLower(strings.TrimSpace(identifier))
+		a.DB.Model(&model.User{}).Where("LOWER(email) = ?", emailNorm).Count(&exists)
 		if exists > 0 {
 			renderErr("该邮箱已被注册")
 			return
@@ -195,7 +215,7 @@ func (a *App) Register(c *gin.Context) {
 			renderErr("邮箱验证码错误或已过期")
 			return
 		}
-		email = identifier
+		email = emailNorm
 	case "phone":
 		if !util.ValidPhone(identifier) {
 			renderErr("手机号格式不正确")
@@ -215,13 +235,14 @@ func (a *App) Register(c *gin.Context) {
 		return
 	}
 	user := model.User{
-		Username:     username,
-		PasswordHash: string(hash),
-		Nickname:     username,
-		Email:        email,
-		Phone:        phone,
-		Role:         model.RoleViewer, // 注册默认普通用户
-		Status:       model.StatusEnabled,
+		Username:      username,
+		PasswordHash:  string(hash),
+		Nickname:      username,
+		Email:         email,
+		EmailVerified: method == "email" && email != "",
+		Phone:         phone,
+		Role:          model.RoleViewer, // 注册默认普通用户
+		Status:        model.StatusEnabled,
 	}
 	if err := a.DB.Create(&user).Error; err != nil {
 		// 并发注册时依赖 username 唯一索引兜底

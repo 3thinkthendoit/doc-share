@@ -192,13 +192,13 @@ func (a *App) respondTOTP(c *gin.Context, step, pending, qr, secret string) {
 		c.JSON(http.StatusOK, body)
 		return
 	}
-	a.render(c, "login.html", gin.H{
+	a.render(c, "login.html", a.withOAuthFlags(gin.H{
 		"title":       "登录",
 		"totpStep":    step,
 		"totpPending": pending,
 		"totpQR":      qr,
 		"totpSecret":  secret,
-	})
+	}))
 }
 
 // clearCorruptTOTP 密钥无法解密（如轮换 session_secret）时清空，迫使重新绑定。
@@ -224,7 +224,7 @@ func (a *App) beginTOTP(c *gin.Context, user *model.User) {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "动态口令生成失败"})
 				return
 			}
-			a.render(c, "login.html", gin.H{"title": "登录", "error": "动态口令生成失败"})
+			a.render(c, "login.html", a.withOAuthFlags(gin.H{"title": "登录", "error": "动态口令生成失败"}))
 			return
 		}
 		a.respondTOTP(c, "totp_enroll", a.signTOTPPending(user.ID, "enroll", key.Secret(), user.TOTPEpoch), qr, key.Secret())
@@ -240,7 +240,7 @@ func (a *App) LoginTOTP(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": msg})
 			return
 		}
-		a.render(c, "login.html", gin.H{"title": "登录", "error": msg})
+		a.render(c, "login.html", a.withOAuthFlags(gin.H{"title": "登录", "error": msg}))
 	}
 	if !a.Settings().TOTPEnabled {
 		fail(msgTOTPOff)

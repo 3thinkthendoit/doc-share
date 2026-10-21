@@ -306,7 +306,8 @@ html[data-theme="light"] .theme-toggle .i-moon{display:none}
 .auth-brand{position:absolute;top:16px;left:22px;display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:15px;letter-spacing:-.2px;color:var(--text);text-decoration:none}
 .auth-brand:hover{text-decoration:none;color:var(--text)}
 .auth-brand img{width:26px;height:26px;border-radius:6px;display:block}
-.auth-foot{position:absolute;bottom:16px;left:0;right:0;display:flex;justify-content:center;gap:16px;font-size:12px;color:var(--muted)}
+/* 文档流脚注：短屏贴底、长表单随内容下移，避免 absolute 叠在卡片上 */
+.auth-foot{flex:none;width:100%;display:flex;flex-wrap:wrap;justify-content:center;gap:8px 16px;font-size:12px;color:var(--muted);padding:12px 16px calc(16px + env(safe-area-inset-bottom,0px));box-sizing:border-box;text-align:center}
 .auth-foot a{color:var(--muted);text-decoration:none}
 .auth-foot a:hover{color:var(--text);text-decoration:none}
 /* 后台页面公共 footer：内容不足一屏时钉在视口底部，超出时随内容下移。
@@ -478,18 +479,116 @@ a.stat-card:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 .share-body .xsel{display:block;width:100%;margin-top:6px}
 .share-body .xsel-btn{font-size:14px;padding:8px 12px;min-width:0}
 
-/* auth */
-.auth-body{position:relative;display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--bg-soft);background-image:var(--auth-fx)}
-.auth-card{background:var(--panel);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow-auth);padding:40px;width:380px}
+/* auth：登录/注册与密码门共用底盘；登录/注册用 :not(.share-gate) 对齐 gate 层次，不覆盖 gate 自身规则 */
+.auth-body{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;min-height:100vh;min-height:100dvh;background:var(--bg-soft);background-image:var(--auth-fx);box-sizing:border-box;padding:24px 16px 0}
+.auth-card{background:var(--panel);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow-auth);padding:40px;width:380px;max-width:100%;box-sizing:border-box;margin-top:auto;margin-bottom:auto}
+.auth-card:not(.share-gate){position:relative;overflow:hidden;border-radius:20px;box-shadow:var(--shadow-gate);padding:36px 34px 32px;animation:shareGateIn .35s cubic-bezier(.2,.8,.3,1)}
+.auth-card:not(.share-gate)::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--grad)}
 .auth-title{text-align:center;margin:0;font-size:26px;font-weight:700;letter-spacing:-.03em;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 /* 认证页标题内联 logo：inline 排版不破坏渐变文字 */
 .auth-title .auth-logo{width:34px;height:34px;border-radius:8px;margin-right:10px;vertical-align:-9px}
-.auth-sub{text-align:center;color:var(--muted);margin:8px 0 28px;font-size:13px;line-height:1.55}
+.auth-sub{text-align:center;color:var(--muted);margin:8px 0 0;font-size:13.5px;line-height:1.55}
+/* alert 常驻 DOM（hidden 时不占位），表单统一顶距；不作用于 .share-gate（其 .auth-sub 已自带底距） */
+.auth-card:not(.share-gate) form{margin-top:24px}
+.auth-card:not(.share-gate)>.alert:not([hidden])+form{margin-top:0}
+.auth-card:not(.share-gate)>.auth-title+.alert:not([hidden]),
+.auth-card:not(.share-gate)>.auth-sub+.alert:not([hidden]){margin-top:16px}
 .auth-card label{display:block;margin-bottom:16px;font-weight:500;color:var(--text);font-size:13px}
-.auth-card input{width:100%;margin-top:6px;padding:11px 14px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-size:15px;font-family:inherit;transition:all .15s;background:var(--panel);color:var(--text)}
+.auth-card .auth-field{display:block;margin-bottom:16px}
+.auth-card .auth-field>input,.auth-card .auth-field>.captcha-row{margin-top:0}
+.auth-card input{width:100%;margin-top:6px;padding:11px 14px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-size:15px;font-family:inherit;transition:border-color .15s,box-shadow .15s;background:var(--input-bg);color:var(--text)}
 .auth-card input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
 .auth-card input::placeholder{color:var(--faint)}
-.auth-card .btn-block{margin-top:8px;padding:11px}
+.auth-card .btn-block{margin-top:8px;padding:12px;font-size:15px;border-radius:10px}
+/* TOTP 步骤：替代模板 inline style，明暗主题一致 */
+.auth-totp-hint{font-size:13px;margin:0 0 10px;color:var(--muted);line-height:1.55;text-align:center}
+.auth-totp-qr{width:180px;height:180px;display:block;margin:0 auto 10px;border-radius:12px;background:var(--bg-soft)}
+.auth-totp-secret{font-size:12px;word-break:break-all;text-align:center;margin:0 0 10px;color:var(--muted)}
+/* 邮箱验证码弹窗：独立于分栏表单 captcha 壳，输入与图片等高对齐 */
+#mailCaptchaModal .captcha-row{display:flex;align-items:center;gap:8px;margin-top:0;border:none;border-radius:0;background:transparent;box-shadow:none;overflow:visible}
+#mailCaptchaModal input[type=text]{flex:1;min-width:0;margin:0;height:40px;padding:0 12px;box-sizing:border-box;font-size:14px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--input-bg);box-shadow:none}
+#mailCaptchaModal input[type=text]:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+#mailCaptchaModal .captcha-img{width:120px;height:40px;flex:none;aspect-ratio:auto;border:1px solid var(--border-strong);border-radius:var(--radius-sm);border-left:1px solid var(--border-strong)}
+
+/* 登录/注册分栏（无顶栏）：左品牌 + 右表单；密码门仍走居中卡片 */
+.auth-body.auth-split{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);align-items:stretch;padding:0;background:var(--panel);background-image:none;overflow-x:hidden}
+.auth-brand-pane{position:relative;display:flex;flex-direction:column;padding:40px 48px 48px;background:var(--bg-soft);background-image:var(--auth-fx);overflow:hidden;min-height:100vh;min-height:100dvh;box-sizing:border-box}
+.auth-brand-pane::before{content:"";position:absolute;inset:-20% -10% auto auto;width:70%;height:70%;border-radius:50%;background:radial-gradient(circle,var(--primary-soft),transparent 68%);pointer-events:none}
+.auth-brand-pane::after{content:"";position:absolute;inset:auto auto -30% -20%;width:80%;height:80%;border-radius:50%;background:radial-gradient(circle,rgba(13,148,136,.08),transparent 70%);pointer-events:none}
+.auth-brand-home{position:relative;z-index:1;display:inline-flex;align-items:center;gap:10px;font-weight:700;font-size:16px;letter-spacing:-.02em;color:var(--text);text-decoration:none;width:fit-content}
+.auth-brand-home:hover{color:var(--text);text-decoration:none}
+.auth-brand-home-img{width:36px;height:36px;border-radius:9px;object-fit:cover;display:block}
+.auth-brand-copy{position:relative;z-index:1;margin-top:min(18vh,140px);max-width:440px}
+.auth-brand-eyebrow{margin:0 0 14px;font-size:12.5px;font-weight:600;letter-spacing:.04em;color:var(--primary)}
+.auth-brand-title{margin:0;font-size:clamp(28px,3.2vw,40px);font-weight:800;letter-spacing:-.04em;line-height:1.25;color:var(--text)}
+.auth-brand-title em{font-style:normal;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.auth-brand-art{position:relative;z-index:1;margin-top:auto;height:200px;width:min(100%,360px)}
+.auth-brand-folder{position:absolute;left:8%;bottom:8%;width:72%;height:58%;border-radius:18px 18px 14px 14px;background:var(--grad);box-shadow:var(--shadow-lg);opacity:.92}
+.auth-brand-folder::after{content:"";position:absolute;left:14%;right:14%;top:18%;height:10px;border-radius:6px;background:rgba(255,255,255,.28)}
+.auth-brand-chip{position:absolute;width:52px;height:52px;border-radius:14px;border:1px solid var(--border);background:var(--panel);box-shadow:var(--shadow-pop)}
+.auth-brand-chip-a{right:12%;top:18%;background:var(--primary-soft);border-color:transparent}
+.auth-brand-chip-b{right:28%;top:42%;width:44px;height:44px;border-radius:12px}
+.auth-brand-chip-c{left:42%;top:8%;width:40px;height:40px;border-radius:11px;background:var(--surface-2)}
+.auth-form-pane{position:relative;display:flex;flex-direction:column;align-items:center;min-height:100vh;min-height:100dvh;padding:72px 56px 24px;box-sizing:border-box;background:var(--panel);overflow:auto}
+.auth-split .auth-tools{position:absolute;top:20px;right:24px;display:flex;align-items:center;gap:8px;z-index:2}
+.auth-mobile-brand{display:none;align-items:center;gap:8px;font-weight:700;font-size:15px;color:var(--text);text-decoration:none;margin:0 0 8px}
+.auth-mobile-brand:hover{color:var(--text);text-decoration:none}
+.auth-mobile-brand img{width:28px;height:28px;border-radius:7px;display:block}
+.auth-split .auth-card{width:100%;max-width:380px;margin:auto}
+.auth-split .auth-foot{width:100%;max-width:380px;margin-top:0;padding:16px 0 calc(12px + env(safe-area-inset-bottom,0px))}
+.auth-oauth{margin-top:20px}
+.auth-oauth-divider{display:flex;align-items:center;gap:12px;margin:0 0 14px;color:var(--faint);font-size:12px}
+.auth-oauth-divider::before,.auth-oauth-divider::after{content:"";flex:1;height:1px;background:var(--border)}
+.auth-oauth-divider span{flex:none}
+.auth-oauth-btn{margin-top:8px;text-align:center;justify-content:center;text-decoration:none}
+.auth-oauth-btn:hover{text-decoration:none}
+
+/* 仅桌面：右栏对齐参考稿（同宽、左对齐、48px 等高输入、验证码并入一行） */
+@media (min-width:901px){
+  .auth-split .auth-card{border:none;box-shadow:none;background:transparent;border-radius:0;padding:0;animation:none;overflow:visible}
+  .auth-split .auth-card::before{display:none}
+  .auth-split .auth-title{text-align:left;-webkit-text-fill-color:unset;background:none;color:var(--text);font-size:30px;font-weight:800;letter-spacing:-.04em;line-height:1.3}
+  .auth-split .auth-sub{text-align:left;margin-top:10px;margin-bottom:0;font-size:14px;line-height:1.5}
+  .auth-split .auth-alt{text-align:left;margin-top:20px}
+  .auth-split .auth-card:not(.share-gate) form{margin-top:28px}
+  .auth-split .auth-card:not(.share-gate)>.alert:not([hidden])+form{margin-top:0}
+  .auth-split .auth-card .auth-field{margin-bottom:18px}
+  .auth-split .auth-card .auth-field>input,
+  .auth-split .auth-card input{
+    margin-top:0;height:48px;padding:0 16px;box-sizing:border-box;
+    border-radius:12px;border:1px solid var(--border-strong);background:var(--input-bg);font-size:15px
+  }
+  .auth-split .auth-card input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+  /* 仅表单卡内验证码行；勿选中 #mailCaptchaModal，避免弹层串用整行边框壳 */
+  .auth-split .auth-card .captcha-row{
+    display:flex;align-items:stretch;gap:0;margin-top:8px;
+    border:1px solid var(--border-strong);border-radius:12px;background:var(--input-bg);overflow:hidden
+  }
+  .auth-split .auth-card .captcha-row:focus-within{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+  .auth-split .auth-card .captcha-row input{
+    flex:1;min-width:0;height:48px;margin:0;padding:0 16px;
+    border:none;border-radius:0;box-shadow:none;background:transparent
+  }
+  .auth-split .auth-card .captcha-row input:focus{border:none;box-shadow:none}
+  .auth-split .auth-card .captcha-row .captcha-img{
+    flex:none;width:120px;height:48px;aspect-ratio:auto;align-self:stretch;
+    border:none;border-left:1px solid var(--border);border-radius:0;object-fit:cover;background:var(--bg-soft)
+  }
+  .auth-split .auth-card .captcha-row .captcha-img:hover{box-shadow:none}
+  .auth-split .auth-card .captcha-row .btn,
+  .auth-split .auth-card .captcha-row .btn-sm{
+    flex:none;align-self:stretch;height:auto;min-height:48px;margin:0;padding:0 14px;
+    border:none;border-left:1px solid var(--border);border-radius:0;background:transparent;
+    color:var(--primary);font-weight:600;box-shadow:none;white-space:nowrap
+  }
+  .auth-split .auth-card .captcha-row .btn:hover,
+  .auth-split .auth-card .captcha-row .btn-sm:hover{background:var(--primary-soft);transform:none;filter:none}
+  .auth-split .auth-card .btn-block{
+    display:flex;align-items:center;justify-content:center;
+    width:100%;height:48px;margin-top:8px;padding:0 16px;box-sizing:border-box;
+    border-radius:12px;font-size:15px;font-weight:700;line-height:1
+  }
+}
 
 /* 分享密码门：在 auth-card 上增强层次，不改动登录/注册主结构 */
 .share-gate{position:relative;width:400px;max-width:calc(100% - 32px);padding:36px 34px 32px;border-radius:20px;box-shadow:var(--shadow-gate);overflow:hidden;animation:shareGateIn .35s cubic-bezier(.2,.8,.3,1)}
@@ -1010,10 +1109,49 @@ mark{background:var(--mark-bg);color:var(--mark-fg,var(--text));padding:0 1px;bo
   .doc-toc-mobile{display:block}
   /* 100% 相对父级，避免 100vw 含滚动条宽度导致横向溢出 */
   .auth-card{width:100%;max-width:100%;padding:28px 22px;box-sizing:border-box}
+  .auth-card:not(.share-gate){padding:28px 22px}
   .auth-brand,.auth-tools{position:static;margin:0}
-  .auth-body{padding:24px 16px 72px;align-items:center;justify-content:center;box-sizing:border-box;max-width:100%;overflow-x:hidden}
+  .auth-body{padding:16px 16px 0;align-items:center;box-sizing:border-box;max-width:100%;overflow-x:hidden}
   .auth-body .auth-brand{position:absolute;top:16px;left:16px}
   .auth-body .auth-tools{position:absolute;top:16px;right:16px}
+  .auth-title{font-size:22px}
+  .auth-totp-qr{width:160px;height:160px}
+  /* 分栏窄屏：恢复居中卡片（与改版前一致），桌面仍左右分栏 */
+  .auth-body.auth-split{
+    display:flex;flex-direction:column;align-items:center;
+    padding:16px 16px 0;overflow-x:hidden;
+    background:var(--bg-soft);background-image:var(--auth-fx)
+  }
+  .auth-split .auth-brand-pane{display:none}
+  .auth-split .auth-form-pane{
+    display:flex;flex-direction:column;align-items:center;
+    flex:1 0 auto;width:100%;max-width:100%;min-height:0;
+    padding:48px 0 0;background:transparent;overflow:visible;box-sizing:border-box
+  }
+  .auth-split .auth-tools{position:absolute;top:14px;right:14px}
+  .auth-split .auth-mobile-brand{
+    display:inline-flex;position:absolute;top:14px;left:14px;margin:0;z-index:2
+  }
+  .auth-split .auth-card{
+    /* overflow:visible：避免 focus 外圈被裁；顶条用自身圆角贴合卡片 */
+    position:relative;overflow:visible;width:100%;max-width:100%;
+    margin-top:auto;margin-bottom:auto;padding:28px 22px;
+    border:1px solid var(--border);border-radius:20px;
+    box-shadow:var(--shadow-gate);background:var(--panel);
+    animation:shareGateIn .35s cubic-bezier(.2,.8,.3,1)
+  }
+  .auth-split .auth-card::before{
+    display:block;content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--grad);
+    border-radius:20px 20px 0 0
+  }
+  .auth-split .auth-title{
+    text-align:center;font-size:22px;color:transparent;
+    background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent
+  }
+  .auth-split .auth-sub,.auth-split .auth-alt{text-align:center}
+  .auth-split .auth-card input{border-radius:var(--radius-sm);padding:11px 14px}
+  .auth-split .auth-card .btn-block{margin-top:8px;padding:12px;border-radius:10px;font-weight:inherit}
+  .auth-split .auth-foot{width:100%}
 }
 /* 桌面始终双栏，忽略窄屏切换态 */
 @media(min-width:901px){

@@ -1,41 +1,59 @@
 {{define "login.html"}}
 <!DOCTYPE html>
 <html lang="{{.Lang}}">
-<head>{{template "head" .}}<link rel="stylesheet" href="/static/site-nav.css"></head>
-<body class="auth-body has-site-nav">
-  {{template "siteNav" .}}
-  <div class="auth-card">
-    <h1 class="auth-title">{{$.T "login.title"}}</h1>
-    <div class="alert alert-error" id="loginError" {{if not .error}}hidden{{end}}>{{.error}}</div>
-    <form id="loginForm" novalidate onsubmit="event.preventDefault()">
-      <div id="loginCred" {{if .totpStep}}hidden{{end}}>
-      <label>{{$.T "login.username"}}
-        <input type="text" name="username" {{if not .totpStep}}required{{end}} autofocus>
-      </label>
-      <label>{{$.T "login.password"}}
-        <input type="password" name="password" {{if not .totpStep}}required{{end}}>
-      </label>
-      <label>{{$.T "login.captcha"}}
-        <div class="captcha-row">
-          <input type="text" name="captcha" {{if not .totpStep}}required{{end}} maxlength="4" autocomplete="off" placeholder="{{$.T "login.captchaPh"}}">
-          <img id="captchaImg" class="captcha-img" alt="{{$.T "login.captchaAlt"}}" title="{{$.T "login.captchaTip"}}">
+<head>{{template "head" .}}</head>
+<body class="auth-body auth-split">
+  {{template "authBrandPane" .}}
+  <main class="auth-form-pane">
+    {{template "authFormTools" .}}
+    <a class="auth-mobile-brand" href="/">
+      {{if .SiteLogo}}<img src="{{.SiteLogo}}" alt="">{{else}}<img src="/static/logo-mark.svg" alt="">{{end}}
+      <span>{{.SiteName}}</span>
+    </a>
+    <div class="auth-card">
+      <h1 class="auth-title">{{$.T "login.welcome" .SiteName}}</h1>
+      <div class="alert alert-error" id="loginError" {{if not .error}}hidden{{end}}>{{.error}}</div>
+      <form id="loginForm" novalidate onsubmit="event.preventDefault()">
+        <div id="loginCred" {{if .totpStep}}hidden{{end}}>
+        <div class="auth-field">
+          <input type="text" name="username" {{if not .totpStep}}required{{end}} autofocus autocomplete="username" placeholder="{{$.T "login.usernamePh"}}" aria-label="{{$.T "login.username"}}">
         </div>
-      </label>
-      <input type="hidden" name="captcha_id" id="captchaId">
+        <div class="auth-field">
+          <input type="password" name="password" {{if not .totpStep}}required{{end}} autocomplete="current-password" placeholder="{{$.T "login.passwordPh"}}" aria-label="{{$.T "login.password"}}">
+        </div>
+        <div class="auth-field">
+          <div class="captcha-row">
+            <input type="text" name="captcha" {{if not .totpStep}}required{{end}} maxlength="4" autocomplete="off" placeholder="{{$.T "login.captchaPh"}}" aria-label="{{$.T "login.captcha"}}">
+            <img id="captchaImg" class="captcha-img" alt="{{$.T "login.captchaAlt"}}" title="{{$.T "login.captchaTip"}}">
+          </div>
+        </div>
+        <input type="hidden" name="captcha_id" id="captchaId">
+        </div>
+        <div id="loginTotp" {{if not .totpStep}}hidden{{end}}>
+          <p class="auth-totp-hint" id="totpHint">{{if eq .totpStep "totp_enroll"}}{{$.T "login.totpEnroll"}}{{else}}{{$.T "login.totpHint"}}{{end}}</p>
+          <img id="totpQr" class="auth-totp-qr" alt="" {{if ne .totpStep "totp_enroll"}}hidden{{end}} {{if .totpQR}}src="{{.totpQR}}"{{end}}>
+          <p id="totpSecret" class="mono auth-totp-secret">{{.totpSecret}}</p>
+          <div class="auth-field">
+            <input type="text" name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="{{$.T "login.totpPh"}}" aria-label="{{$.T "login.totp"}}" {{if .totpStep}}required{{end}}>
+          </div>
+          <input type="hidden" name="pending" id="totpPending" value="{{.totpPending}}">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">{{$.T "login.submit"}}</button>
+      </form>
+      {{if and (not .totpStep) (or .oauthGitHub .oauthGoogle)}}
+      <div class="auth-oauth" id="loginOAuth">
+        <div class="auth-oauth-divider"><span>{{$.T "login.oauthOr"}}</span></div>
+        {{if .oauthGitHub}}<a class="btn btn-block auth-oauth-btn" href="/auth/github">{{$.T "login.oauthGitHub"}}</a>{{end}}
+        {{if .oauthGoogle}}<a class="btn btn-block auth-oauth-btn" href="/auth/google">{{$.T "login.oauthGoogle"}}</a>{{end}}
       </div>
-      <div id="loginTotp" {{if not .totpStep}}hidden{{end}}>
-        <p class="muted" id="totpHint" style="font-size:13px;margin:0 0 10px">{{if eq .totpStep "totp_enroll"}}{{$.T "login.totpEnroll"}}{{else}}{{$.T "login.totpHint"}}{{end}}</p>
-        <img id="totpQr" alt="" style="width:180px;height:180px;display:block;margin:0 auto 10px;{{if ne .totpStep "totp_enroll"}}display:none{{end}}" {{if .totpQR}}src="{{.totpQR}}"{{end}}>
-        <p id="totpSecret" class="mono" style="font-size:12px;word-break:break-all;text-align:center;margin:0 0 10px">{{.totpSecret}}</p>
-        <label>{{$.T "login.totp"}}
-          <input type="text" name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000" {{if .totpStep}}required{{end}}>
-        </label>
-        <input type="hidden" name="pending" id="totpPending" value="{{.totpPending}}">
-      </div>
-      <button type="submit" class="btn btn-primary btn-block">{{$.T "login.submit"}}</button>
-    </form>
-    <p class="auth-alt">{{$.T "login.noAccount"}}<a href="/register">{{$.T "login.registerLink"}}</a></p>
-  </div>
+      {{end}}
+      <p class="auth-alt">{{$.T "login.noAccount"}}<a href="/register">{{$.T "login.registerLink"}}</a></p>
+    </div>
+    <div class="auth-foot">
+      <span>© {{now.Format "2006"}} {{.SiteName}}</span>
+      <span>Powered by <a href="https://github.com/3thinkthendoit/doc-share" target="_blank" rel="noopener">DocShare</a></span>
+    </div>
+  </main>
 <script>
 (function () {
   var form = document.getElementById('loginForm');
@@ -61,6 +79,8 @@
   function showTOTP(data) {
     credBox.hidden = true;
     credBox.querySelectorAll('[required]').forEach(function (el) { el.required = false; });
+    var oauthBox = document.getElementById('loginOAuth');
+    if (oauthBox) oauthBox.hidden = true;
     totpBox.hidden = false;
     var code = form.querySelector('input[name=code]');
     if (code) { code.required = true; code.value = ''; code.focus(); }
@@ -70,12 +90,12 @@
     var secret = document.getElementById('totpSecret');
     if (data.step === 'totp_enroll') {
       hint.textContent = UI.t('login.totpEnroll');
-      qr.style.display = 'block';
+      qr.hidden = false;
       qr.src = data.qr || '';
       secret.textContent = data.secret || '';
     } else {
       hint.textContent = UI.t('login.totpHint');
-      qr.style.display = 'none';
+      qr.hidden = true;
       qr.removeAttribute('src');
       secret.textContent = '';
     }
@@ -113,10 +133,6 @@
   });
 })();
 </script>
-<div class="auth-foot">
-  <span>© {{now.Format "2006"}} {{.SiteName}}</span>
-  <span>Powered by <a href="https://github.com/3thinkthendoit/doc-share" target="_blank" rel="noopener">DocShare</a></span>
-</div>
 </body>
 </html>
 {{end}}

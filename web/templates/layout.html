@@ -11,7 +11,8 @@
     document.documentElement.setAttribute('data-theme', 'dark');
   }
 </script>
-<title>{{if .title}}{{.title}} · {{end}}{{.SiteName}}</title>
+{{/* titleSolo：标题已含站点名（如「欢迎登录 Foo」），不再追加 · SiteName */}}
+<title>{{if .titleSolo}}{{.title}}{{else if .title}}{{.title}} · {{.SiteName}}{{else}}{{.SiteName}}{{end}}</title>
 <link rel="icon" type="image/svg+xml" href="/static/logo-mark.svg">
 <link rel="stylesheet" href="/static/style.css">
 {{/* 顶栏下拉等 .l-* 组件样式：官网/控制台共用，控制台页也需加载 */}}
@@ -119,6 +120,33 @@
   <span>© {{now.Format "2006"}} <span class="site-name">{{.SiteName}}</span></span>
   <span>Powered by <a href="https://github.com/3thinkthendoit/doc-share" target="_blank" rel="noopener">DocShare</a></span>
 </footer>
+{{end}}
+
+{{/* 登录/注册分栏：左侧品牌氛围（无顶栏）；文案复用落地页 slogan */}}
+{{define "authBrandPane"}}
+<aside class="auth-brand-pane">
+  <a class="auth-brand-home" href="/">
+    {{if .SiteLogo}}<img class="auth-brand-home-img" src="{{.SiteLogo}}" alt="">{{else}}<img class="auth-brand-home-img" src="/static/logo-mark.svg" alt="">{{end}}
+    <span>{{.SiteName}}</span>
+  </a>
+  <div class="auth-brand-copy">
+    <p class="auth-brand-eyebrow">{{$.T "site.120"}}</p>
+    <h2 class="auth-brand-title">{{$.T "site.168"}}<br><em>{{$.T "site.169"}}</em></h2>
+  </div>
+  <div class="auth-brand-art" aria-hidden="true">
+    <span class="auth-brand-folder"></span>
+    <span class="auth-brand-chip auth-brand-chip-a"></span>
+    <span class="auth-brand-chip auth-brand-chip-b"></span>
+    <span class="auth-brand-chip auth-brand-chip-c"></span>
+  </div>
+</aside>
+{{end}}
+
+{{define "authFormTools"}}
+<div class="auth-tools">
+  {{template "themeToggle" .}}
+  {{template "langSwitch" .}}
+</div>
 {{end}}
 
 {{define "nav"}}
