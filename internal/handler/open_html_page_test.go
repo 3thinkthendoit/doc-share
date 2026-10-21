@@ -137,4 +137,23 @@ func TestOpenAPIHTMLPageCRUD(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("bad html want 400 got %d", w.Code)
 	}
+
+	// content 别名；缺 html/content → 缺参
+	aliasHTML := samplePageHTML("content别名开放")
+	aliasBody, _ := json.Marshal(map[string]any{"title": "content别名开放", "content": aliasHTML})
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/openapi/v1/docs/html-page", bytes.NewReader(aliasBody))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("content alias create status=%d body=%s", w.Code, w.Body.String())
+	}
+	emptyBody, _ := json.Marshal(map[string]any{"title": "无正文"})
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/openapi/v1/docs/html-page", bytes.NewReader(emptyBody))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest || !bytes.Contains(w.Body.Bytes(), []byte("缺少参数 html")) {
+		t.Fatalf("empty want 缺少参数 html got %d %s", w.Code, w.Body.String())
+	}
 }

@@ -467,14 +467,15 @@ func (a *App) chatTools(user *model.User, clientIP string) (
 		}},
 		{Type: "function", Function: llm.ToolFunc{
 			Name: "create_html_page",
-			Description: "创建单页 HTML 文档（试卷、简历、海报等）。必须一次传入完整自包含 HTML（须含 <!DOCTYPE html> 或 <html>）：" +
-				"CSS 写在 <style>、JS 写在 <script>，小图用 SVG/data URI；不要拆独立 css/js 文件；不要提交片段或半成品。" +
-				"html 体积勿超过约 200KB。页面字节写入对象存储，MySQL 只存清单。多文件整站请用户在页面上传 zip。",
+			Description: "创建单页 HTML 文档（试卷、简历、海报等）。必须在参数字段 html 一次传入完整自包含 HTML（须含 <!DOCTYPE html> 或 <html>）：" +
+				"CSS 写在 <style>、JS 写在 <script>，小图用 SVG/data URI；不要拆独立 css/js 文件；不要提交片段或半成品；" +
+				"未准备好完整 HTML 不要调用；勿只传 title，勿把页面写在助手回复里（那不是 html 参数）。" +
+				"误把正文放在 content 时也会尝试当作 html 别名。html 体积勿超过约 200KB。页面写入对象存储，MySQL 只存清单。多文件整站请用户在页面上传 zip。",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"title":       map[string]any{"type": "string", "description": "文档标题"},
-					"html":        map[string]any{"type": "string", "description": "完整 HTML 页面（必须含 <!DOCTYPE html> 或 <html>；勿传 div 片段；控制在约 200KB 内）"},
+					"html":        map[string]any{"type": "string", "description": "必填：完整 HTML 页面字符串（字段名必须是 html，不是 content；须含 <!DOCTYPE html> 或 <html>；勿传 div 片段；约 200KB 内）"},
 					"project_id":  map[string]any{"type": "integer", "description": "归属项目 ID（可选，必须是自己的项目）"},
 					"category_id": map[string]any{"type": "integer", "description": "归属分类 ID（可选，必须是自己的分类）"},
 				},
@@ -484,13 +485,13 @@ func (a *App) chatTools(user *model.User, clientIP string) (
 		{Type: "function", Function: llm.ToolFunc{
 			Name: "replace_html_page",
 			Description: "整页替换已有 HTML 文档的入口页（属主/管理员）。" +
-				"先 read_document 读回当前 HTML，改完后提交完整自包含 html（须含 <!DOCTYPE html> 或 <html>，勿超约 200KB），并回传 content_version 作为 base_version。" +
-				"仅支持单文件站点；多文件整站请用户在页面替换。",
+				"先 read_document 读回当前 HTML，改完后把完整自包含页写入参数字段 html（须含 <!DOCTYPE html> 或 <html>，勿超约 200KB），并回传 content_version 作为 base_version。" +
+				"勿只改 title；误传 content 时会尝试作 html 别名。仅支持单文件站点；多文件整站请用户在页面替换。",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"id":           map[string]any{"type": "integer", "description": "HTML 文档 ID"},
-					"html":         map[string]any{"type": "string", "description": "完整 HTML 页面（必须含 <!DOCTYPE html> 或 <html>；勿传片段；控制在约 200KB 内）"},
+					"html":         map[string]any{"type": "string", "description": "必填：完整 HTML 页面字符串（字段名必须是 html；须含 <!DOCTYPE html> 或 <html>；勿传片段；约 200KB 内）"},
 					"base_version": map[string]any{"type": "integer", "description": "必填：read_document 返回的 content_version"},
 				},
 				"required": []string{"id", "html", "base_version"},
@@ -1780,7 +1781,10 @@ func (a *App) chatTools(user *model.User, clientIP string) (
 			if title == "" {
 				return "", fmt.Errorf("title 不能为空")
 			}
-			html := argStr("html")
+			html, err := resolveAIHTMLPageArg(args)
+			if err != nil {
+				return "", err
+			}
 			if err := validateAIHTMLPage(html); err != nil {
 				return "", err
 			}
@@ -1817,7 +1821,10 @@ func (a *App) chatTools(user *model.User, clientIP string) (
 			if id == 0 {
 				return "", fmt.Errorf("id 不能为空")
 			}
-			html := argStr("html")
+			html, err := resolveAIHTMLPageArg(args)
+			if err != nil {
+				return "", err
+			}
 			if err := validateAIHTMLPage(html); err != nil {
 				return "", err
 			}

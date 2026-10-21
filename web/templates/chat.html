@@ -751,7 +751,12 @@
   function pushArtifact(step) {
     if (!artifactList || !step || !step.ok) return;
     // 仅写入类工具 + 工具事件里的真实 id；不信助手正文里的「id=35」
-    var writeTools = { replace_section: 1, update_document: 1, create_document: 1, duplicate_document: 1, import_document_from_url: 1 };
+    // 与后端 aiMutationTools 中「会产出文档 id」的写入工具对齐；缺项则轨迹有 ✓ 但右侧产物为空
+    var writeTools = {
+      replace_section: 1, update_document: 1, create_document: 1,
+      create_html_page: 1, replace_html_page: 1,
+      duplicate_document: 1, import_document_from_url: 1
+    };
     if (!writeTools[step.tool]) return;
     var docId = step.diff && step.diff.id ? step.diff.id : null;
     if (!docId) return; // 无工具背书的 id 不进产物

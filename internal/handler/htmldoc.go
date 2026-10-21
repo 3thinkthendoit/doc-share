@@ -476,6 +476,96 @@ func validateAIHTMLPage(html string) error {
 	return nil
 }
 
+// resolveAIHTMLPageArg 从工具 JSON 参数取出页面正文。
+// 优先字段 html；若为空且 content 为非空字符串则作别名（兼容误用 create_document 的字段名）。
+// 缺参 / 类型错误给出明确文案，避免一律落成「html 不能为空」。
+func resolveAIHTMLPageArg(args map[string]any) (string, error) {
+	if args == nil {
+		args = map[string]any{}
+	}
+	html, err := typedHTMLString(args, "html")
+	if err != nil {
+		logHTMLPageArgFail(args, err)
+		return "", err
+	}
+	if html != "" {
+		return html, nil
+	}
+	content, err := typedHTMLString(args, "content")
+	if err != nil {
+		// content 类型不对且 html 为空：提示应使用 html
+		err = fmt.Errorf("缺少参数 html（完整 HTML 字符串）；content 必须是字符串才可作别名")
+		logHTMLPageArgFail(args, err)
+		return "", err
+	}
+	if content != "" {
+		log.Printf("[ai] html page: using content as html alias keys=%v len=%d", sortedArgKeys(args), len(content))
+		return content, nil
+	}
+	err = diagnoseEmptyHTMLPageArg(args)
+	logHTMLPageArgFail(args, err)
+	return "", err
+}
+
+// typedHTMLString 读取字符串参数；缺省/null 视为空串；非 string 报类型错。
+func typedHTMLString(args map[string]any, key string) (string, error) {
+	v, ok := args[key]
+	if !ok || v == nil {
+		return "", nil
+	}
+	s, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("%s 必须是字符串（完整 HTML 页面）", key)
+	}
+	return strings.TrimSpace(s), nil
+}
+
+func diagnoseEmptyHTMLPageArg(args map[string]any) error {
+	htmlVal, hasHTML := args["html"]
+	contentVal, hasContent := args["content"]
+	keys := sortedArgKeys(args)
+	keyHint := ""
+	if len(keys) > 0 {
+		keyHint = "；当前参数键：" + strings.Join(keys, ", ")
+	}
+	switch {
+	case hasHTML && htmlVal == nil:
+		return fmt.Errorf("html 不能为空（参数 html 为 null；须传完整 HTML 字符串，含 <!DOCTYPE html> 或 <html>，勿只传 title）")
+	case hasHTML:
+		return fmt.Errorf("html 不能为空（参数 html 为空字符串；须一次提交含 <!DOCTYPE html> 或 <html> 的完整页面，勿只传 title）")
+	case hasContent && contentVal == nil:
+		return fmt.Errorf("缺少参数 html（完整 HTML 字符串）；检测到 content 为 null——请把完整页面写入 html 字段")
+	case hasContent:
+		return fmt.Errorf("缺少参数 html（完整 HTML 字符串）；检测到 content 为空——请把完整页面写入 html 字段")
+	default:
+		return fmt.Errorf("缺少参数 html（完整 HTML 字符串，须含 <!DOCTYPE html> 或 <html>）%s；勿只传 title，也勿把页面写在助手回复里", keyHint)
+	}
+}
+
+func sortedArgKeys(args map[string]any) []string {
+	keys := make([]string, 0, len(args))
+	for k := range args {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func logHTMLPageArgFail(args map[string]any, err error) {
+	if err == nil {
+		return
+	}
+	htmlType, htmlLen := "-", 0
+	if v, ok := args["html"]; ok && v != nil {
+		htmlType = fmt.Sprintf("%T", v)
+		if s, ok := v.(string); ok {
+			htmlLen = len(s)
+		}
+	}
+	log.Printf("[ai] html page arg fail: %v keys=%v html_type=%s html_len=%d",
+		err, sortedArgKeys(args), htmlType, htmlLen)
+}
+
 // isSingleFileHTMLManifest 是否为单文件站点（Agent 单页或仅 index.html 的上传）
 func isSingleFileHTMLManifest(m *HTMLSiteManifest) bool {
 	return m != nil && len(m.Files) == 1 && m.Files[0] == htmlEntryName
@@ -640,9 +730,18 @@ func (a *App) replaceHTMLDocFromSiteFiles(ctx context.Context, doc *model.Docume
 type htmlPageReq struct {
 	Title       string `json:"title"`
 	HTML        string `json:"html"`
+	Content     string `json:"content"` // 可选：与站内工具一致，html 为空时作别名
 	ProjectID   *uint  `json:"project_id"`
 	CategoryID  *uint  `json:"category_id"`
 	BaseVersion *int64 `json:"base_version"` // 替换时必填：读回时的 content_version
+}
+
+// pageHTML 优先 html，空则回退 content（与 resolveAIHTMLPageArg 别名策略对齐）。
+func (r htmlPageReq) pageHTML() string {
+	if s := strings.TrimSpace(r.HTML); s != "" {
+		return s
+	}
+	return strings.TrimSpace(r.Content)
 }
 
 // OpenCreateHTMLPage 创建单页 HTML：POST /openapi/v1/docs/html-page
@@ -662,7 +761,11 @@ func (a *App) OpenCreateHTMLPage(c *gin.Context) {
 	if title == "" {
 		title = a.tr(c, "edit.untitled")
 	}
-	html := strings.TrimSpace(req.HTML)
+	html := req.pageHTML()
+	if html == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少参数 html（完整 HTML 字符串；也可用 content 作别名）"})
+		return
+	}
 	if err := validateAIHTMLPage(html); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -752,7 +855,11 @@ func (a *App) OpenReplaceHTMLPage(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求体无效"})
 		return
 	}
-	html := strings.TrimSpace(req.HTML)
+	html := req.pageHTML()
+	if html == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少参数 html（完整 HTML 字符串；也可用 content 作别名）"})
+		return
+	}
 	if err := validateAIHTMLPage(html); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

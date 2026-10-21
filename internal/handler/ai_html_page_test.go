@@ -70,6 +70,61 @@ func TestValidateAIHTMLPage(t *testing.T) {
 	}
 }
 
+func TestResolveAIHTMLPageArg(t *testing.T) {
+	page := samplePageHTML("别名卷")
+	got, err := resolveAIHTMLPageArg(map[string]any{"title": "t", "html": page})
+	if err != nil || got != page {
+		t.Fatalf("html ok: got=%q err=%v", got, err)
+	}
+	got, err = resolveAIHTMLPageArg(map[string]any{"title": "t", "content": page})
+	if err != nil || got != page {
+		t.Fatalf("content alias: got=%q err=%v", got, err)
+	}
+	// html 优先于 content
+	got, err = resolveAIHTMLPageArg(map[string]any{"html": page, "content": samplePageHTML("其他")})
+	if err != nil || got != page {
+		t.Fatalf("html wins: got=%q err=%v", got, err)
+	}
+	_, err = resolveAIHTMLPageArg(map[string]any{"title": "仅标题"})
+	if err == nil || !strings.Contains(err.Error(), "缺少参数 html") {
+		t.Fatalf("missing html: %v", err)
+	}
+	_, err = resolveAIHTMLPageArg(map[string]any{"title": "t", "html": ""})
+	if err == nil || !strings.Contains(err.Error(), "空字符串") {
+		t.Fatalf("empty html: %v", err)
+	}
+	_, err = resolveAIHTMLPageArg(map[string]any{"title": "t", "html": nil})
+	if err == nil || !strings.Contains(err.Error(), "null") {
+		t.Fatalf("null html: %v", err)
+	}
+	_, err = resolveAIHTMLPageArg(map[string]any{"html": 123})
+	if err == nil || !strings.Contains(err.Error(), "必须是字符串") {
+		t.Fatalf("wrong type: %v", err)
+	}
+}
+
+func TestCreateHTMLPageContentAliasAndEmpty(t *testing.T) {
+	app, owner, _ := newHTMLPageAIApp(t)
+	_, exec, _ := app.chatTools(owner, "127.0.0.1")
+
+	_, err := exec("create_html_page", `{"title":"空页"}`)
+	if err == nil || !strings.Contains(err.Error(), "缺少参数 html") {
+		t.Fatalf("title-only: %v", err)
+	}
+	page := samplePageHTML("content别名")
+	out, err := exec("create_html_page", `{"title":"content别名","content":`+strconv.Quote(page)+`}`)
+	if err != nil {
+		t.Fatal(err, out)
+	}
+	var doc model.Document
+	if err := app.DB.Where("title = ?", "content别名").First(&doc).Error; err != nil {
+		t.Fatal(err)
+	}
+	if doc.Type != model.DocTypeHTML {
+		t.Fatalf("type=%s", doc.Type)
+	}
+}
+
 func TestCreateReplaceReadHTMLPage(t *testing.T) {
 	app, owner, dir := newHTMLPageAIApp(t)
 	_, exec, inject := app.chatTools(owner, "127.0.0.1")

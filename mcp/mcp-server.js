@@ -222,20 +222,22 @@ const TOOLS = [
   },
   {
     name: 'docshare_create_html_page',
-    description: '创建单页 HTML 文档（试卷、简历、海报等）。传入完整自包含 HTML：CSS 写在 <style>、JS 写在 <script>，小图用 SVG/data URI。页面写入对象存储，MySQL 只存清单。与站内智能体 create_html_page 对齐',
+    description: '创建单页 HTML 文档（试卷、简历、海报等）。在 html 传入完整自包含 HTML（CSS/JS 内联）；误用 content 时服务端也会当作 html 别名。与站内 create_html_page 对齐',
     schema: {
       type: 'object',
       properties: {
         title: { type: 'string', description: '文档标题（必填）' },
-        html: { type: 'string', description: '完整 HTML 页面（含 <!DOCTYPE html> 或 <html>）' },
+        html: { type: 'string', description: '完整 HTML 页面（含 <!DOCTYPE html> 或 <html>；优先）' },
+        content: { type: 'string', description: '可选：html 为空时作别名' },
         project_id: { type: 'number', description: '所属项目 ID（可选，0=未分组）' },
         category_id: { type: 'number', description: '所属分类 ID（可选，0=未分类）' },
       },
-      required: ['title', 'html'],
+      required: ['title'],
     },
     async run(args) {
+      const html = String(args.html || args.content || '').trim();
       return apiCall('POST', '/openapi/v1/docs/html-page', null, clean({
-        title: args.title, html: args.html,
+        title: args.title, html,
         project_id: args.project_id, category_id: args.category_id,
       }));
     },
@@ -250,19 +252,21 @@ const TOOLS = [
   },
   {
     name: 'docshare_replace_html_page',
-    description: '整页替换单页 HTML 文档入口（属主密钥）。须先 docshare_get_html_page 并回传 content_version 作为 base_version。仅支持单文件站点',
+    description: '整页替换单页 HTML 文档入口（属主密钥）。须先 docshare_get_html_page 并回传 content_version 作为 base_version；页面写在 html（content 可作别名）。仅支持单文件站点',
     schema: {
       type: 'object',
       properties: {
         id: num,
-        html: { type: 'string', description: '完整 HTML 页面（含 <!DOCTYPE html> 或 <html>）' },
+        html: { type: 'string', description: '完整 HTML 页面（含 <!DOCTYPE html> 或 <html>；优先）' },
+        content: { type: 'string', description: '可选：html 为空时作别名' },
         base_version: { type: 'number', description: '必填：docshare_get_html_page 返回的 content_version' },
       },
-      required: ['id', 'html', 'base_version'],
+      required: ['id', 'base_version'],
     },
     async run(args) {
+      const html = String(args.html || args.content || '').trim();
       return apiCall('PUT', `/openapi/v1/docs/${Number(args.id)}/html-page`, null, clean({
-        html: args.html, base_version: args.base_version,
+        html, base_version: args.base_version,
       }));
     },
   },

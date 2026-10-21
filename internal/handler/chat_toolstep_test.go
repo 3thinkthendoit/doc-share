@@ -45,6 +45,24 @@ func TestToolStepLabelFailReason(t *testing.T) {
 	}
 }
 
+func TestHTMLPageArgEmptyFail(t *testing.T) {
+	if !htmlPageArgEmptyFail("create_html_page", "工具执行失败：缺少参数 html（完整 HTML 字符串）") {
+		t.Fatal("missing html")
+	}
+	if !htmlPageArgEmptyFail("replace_html_page", "工具执行失败：html 不能为空（参数 html 为空字符串）") {
+		t.Fatal("empty html")
+	}
+	if !htmlPageArgEmptyFail("create_html_page", "工具执行失败：html 必须是字符串（完整 HTML 页面）") {
+		t.Fatal("wrong type should nudge")
+	}
+	if htmlPageArgEmptyFail("create_html_page", "工具执行失败：html 超过 200KB 上限") {
+		t.Fatal("size limit is not empty-arg")
+	}
+	if htmlPageArgEmptyFail("create_document", "工具执行失败：html 不能为空") {
+		t.Fatal("wrong tool")
+	}
+}
+
 func TestToolStepEndJSONDiff(t *testing.T) {
 	var tc llm.ToolCallMsg
 	tc.Function.Name = "replace_section"
