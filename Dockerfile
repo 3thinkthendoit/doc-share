@@ -16,11 +16,11 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o main .
 FROM alpine
 
 # ca-certificates：外链图片/HTTPS 必需；tzdata：日志时间用东八区
-# Noto Sans SC（fontsource 简体子集）：Markdown/应急 HTML PDF；故意不装 Chromium（镜像再涨 ~200MB+）。
-# HTML 导出默认需要 Chrome：挂载宿主机浏览器并设 DOC_SHARE_CHROME_PATH；勿静默用 htmlpdf（会叠字）。
-# 应急：DOC_SHARE_HTML_PDF_LEGACY=1 才允许纯 Go 回退。
+# Chromium：HTML→PDF（复杂 CSS/彩图）；镜像体积会明显增大。
+# Noto Sans SC（fontsource 简体子集）：Markdown PDF / Chromium 中文渲染 / 应急 htmlpdf。
+# 应急：DOC_SHARE_HTML_PDF_LEGACY=1 才允许无 Chrome 时回退纯 Go htmlpdf（会叠字）。
 ARG NOTO_SC_VER=5.2.5
-RUN apk add --no-cache ca-certificates tzdata wget \
+RUN apk add --no-cache ca-certificates tzdata wget chromium nss freetype harfbuzz fontconfig \
     && mkdir -p /usr/share/fonts/noto-sc \
     && (wget -q -O /usr/share/fonts/noto-sc/NotoSansSC-Regular.ttf \
           "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-sc@${NOTO_SC_VER}/chinese-simplified-400-normal.ttf" \
@@ -31,9 +31,19 @@ RUN apk add --no-cache ca-certificates tzdata wget \
         || cp /usr/share/fonts/noto-sc/NotoSansSC-Regular.ttf /usr/share/fonts/noto-sc/NotoSansSC-Bold.ttf) \
     && test -s /usr/share/fonts/noto-sc/NotoSansSC-Regular.ttf \
     && test -s /usr/share/fonts/noto-sc/NotoSansSC-Bold.ttf \
+    && fc-cache -f \
+    && CHROME="$(command -v chromium-browser || command -v chromium)" \
+    && test -n "$CHROME" && test -x "$CHROME" \
+    && ln -sf "$CHROME" /usr/bin/doc-share-chrome \
+    && printf '%s\n' '<!DOCTYPE html><html><head><meta charset="utf-8"><title>smoke</title></head><body><p>ok</p></body></html>' > /tmp/chrome-smoke.html \
+    && /usr/bin/doc-share-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage \
+         --print-to-pdf=/tmp/chrome-smoke.pdf "file:///tmp/chrome-smoke.html" \
+    && test -s /tmp/chrome-smoke.pdf \
+    && rm -f /tmp/chrome-smoke.html /tmp/chrome-smoke.pdf \
     && apk del wget
 ENV TZ=Asia/Shanghai
 ENV DOC_SHARE_FONT_DIR=/usr/share/fonts/noto-sc
+ENV DOC_SHARE_CHROME_PATH=/usr/bin/doc-share-chrome
 
 WORKDIR /app
 COPY --from=builder /build/main /app/main
@@ -61,7 +71,7 @@ EXPOSE 8080
 #   DOC_SHARE_ADMIN_USER/_PASSWORD —— 首次启动创建的默认管理员
 #   DOC_SHARE_DEV                 —— 前端热载，生产保持 false
 #   DOC_SHARE_FONT_DIR            —— PDF 导出中文字体目录（镜像默认已含 Noto Sans SC）
-#   DOC_SHARE_CHROME_PATH         —— HTML→PDF 推荐；指向 chrome/chromium（镜像未内置）
+#   DOC_SHARE_CHROME_PATH         —— HTML→PDF 用 Chromium 路径（镜像默认 /usr/bin/doc-share-chrome）
 #   DOC_SHARE_HTML_PDF_LEGACY     —— 1/true 时无 Chrome 才回退 htmlpdf（排版差，仅应急）
 #   DOC_SHARE_DB_LOG              —— true 时输出 GORM SQL（默认关闭）
 ENTRYPOINT ["/app/main"]

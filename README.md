@@ -11,7 +11,7 @@ A lightweight self-hosted documentation sharing platform built with Go and Gin. 
 - **Markdown editor** — toolbar (bold/lists/code/link/image/table, etc.), live preview, XSS-sanitized rendering
 - **Image upload** — paste or drag-and-drop; storage is either local disk (`/uploads`) or RustFS (S3-compatible)
 - **Import** — convert `PDF` / `doc` / `docx` to Markdown in memory (no temp files on disk)
-- **Export** — Markdown to `PDF` / `DOCX` (pure Go; no Chromium / Pandoc). PDF needs a CJK font (official Docker image ships Noto Sans SC)
+- **Export** — Markdown to `PDF` / `DOCX` (pure Go; no Chromium / Pandoc). HTML site → PDF needs headless Chromium (bundled in the official Docker image). Markdown PDF needs a CJK font (image ships Noto Sans SC)
 - **List & filters** — search by title; filter by project, category, share status, ownership (mine / project-shared); pagination
 - **Preview** — admin reader preview without incrementing view counts
 - **Edit presence** — heartbeat warns when someone else is editing the same document
@@ -110,7 +110,11 @@ All settings live in `config.yaml` and can be overridden via environment variabl
 | `DOC_SHARE_ES_PASSWORD` | No | ES HTTP Basic password |
 | `DOC_SHARE_ES_TIMEOUT_MS` | No | Per-query ES timeout in ms (default `2000`); on timeout/error search falls back to MySQL |
 | `DOC_SHARE_ES_SYNC_MINUTES` | No | Background incremental index sync interval in minutes (default `5`) |
-| `DOC_SHARE_FONT_DIR` | No | Directory with CJK fonts for PDF export (`NotoSansSC-Regular.ttf` / `NotoSansSC-Bold.ttf`). Official image defaults to `/usr/share/fonts/noto-sc`. Without fonts, PDF export is unavailable; DOCX still works |
+| `DOC_SHARE_FONT_DIR` | No | Directory with CJK fonts for PDF export (`NotoSansSC-Regular.ttf` / `NotoSansSC-Bold.ttf`). Official image defaults to `/usr/share/fonts/noto-sc`. Without fonts, Markdown PDF is unavailable; DOCX still works |
+| `DOC_SHARE_CHROME_PATH` | No | Path to Chrome/Chromium for HTML→PDF. Official image defaults to `/usr/bin/doc-share-chrome`. Without a browser, HTML export fails (or set `DOC_SHARE_HTML_PDF_LEGACY=1` for a limited pure-Go fallback) |
+| `DOC_SHARE_HTML_PDF_LEGACY` | No | `1`/`true`: fall back to pure-Go htmlpdf only when Chrome is missing (emergency; layout quality is poor) |
+
+> **Official image size / memory**: the image bundles Chromium (hundreds of MB larger than a pure-Go image). HTML→PDF export peaks much higher than Markdown-only export — plan for **1GB+** container memory headroom (more under concurrent exports), plus pull bandwidth for the larger image.
 
 > **Search backend**: with `DOC_SHARE_ES_URL` set, the app indexes all documents into ES (dual-write on edit + full rebuild on startup + periodic incremental sync) and serves search from ES; if ES is unset, unreachable, or errors, it transparently falls back to MySQL. MySQL always remains the access-control source of truth (ES results are re-filtered against MySQL on read). The bundled `Dockerfile.es` pre-installs the [analysis-ik](https://github.com/infinilabs/analysis-ik) Chinese analyzer, which is auto-detected (falls back to the standard analyzer if absent).
 
@@ -162,7 +166,7 @@ internal/
   storage/              local / RustFS storage
   i18n/                 locale bundle loader
   convert/              PDF / doc / docx → Markdown converters
-  export/               Markdown → PDF / DOCX export (pure Go)
+  export/               Markdown → PDF / DOCX (pure Go); HTML → PDF (Chromium / legacy htmlpdf)
   util/                 helpers
 web/
   templates/            HTML templates
