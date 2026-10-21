@@ -85,13 +85,11 @@ func (a *App) ShareView(c *gin.Context) {
 		return
 	}
 
-	errMsg := ""
-	switch c.Query("err") {
-	case "pwd":
-		errMsg = "share.pwdWrong"
-	case "lock":
-		errMsg = "share.tryLater"
+	cleanPath := "/s/" + token
+	if a.consumeQueryFlash(c, "err", cleanPath, mapShareErrCode) {
+		return
 	}
+	errMsg := a.takeFlash(c)
 
 	applyStatus := ""
 	var applyReq *model.ShareAccessRequest
@@ -105,6 +103,17 @@ func (a *App) ShareView(c *gin.Context) {
 		}
 	}
 	a.renderSharePassword(c, doc, share, token, errMsg, applyStatus, applyReq)
+}
+
+func mapShareErrCode(code string) string {
+	switch code {
+	case "pwd":
+		return "share.pwdWrong"
+	case "lock":
+		return "share.tryLater"
+	default:
+		return code
+	}
 }
 
 func (a *App) renderSharePassword(c *gin.Context, doc *model.Document, share *model.Share, token, errMsg, applyStatus string, req *model.ShareAccessRequest) {
@@ -129,13 +138,14 @@ func (a *App) renderSharePassword(c *gin.Context, doc *model.Document, share *mo
 	a.render(c, "share_password.html", data)
 }
 
-// shareGateFail 密码门失败：异步请求回 JSON，其余走 303，让刷新不会重复提交。
-func (a *App) shareGateFail(c *gin.Context, path string, status int, errKey, errCode string) {
+// shareGateFail 密码门失败：异步请求回 JSON，其余走 303 + flash（地址栏不带 err）。
+func (a *App) shareGateFail(c *gin.Context, path string, status int, errKey string) {
 	if isAjax(c) {
 		c.JSON(status, gin.H{"error": errKey})
 		return
 	}
-	c.Redirect(http.StatusSeeOther, path+"?err="+errCode)
+	a.setFlash(c, errKey)
+	c.Redirect(http.StatusSeeOther, path)
 }
 
 // shareGateOK 密码门通过：写完 cookie 后，异步请求回跳转地址，其余 303 到内容页。
@@ -165,14 +175,14 @@ func (a *App) ShareSubmit(c *gin.Context) {
 
 	ip := c.ClientIP()
 	if !a.Limiter.Allowed(ip, token) {
-		a.shareGateFail(c, "/s/"+token, http.StatusTooManyRequests, "share.tryLater", "lock")
+		a.shareGateFail(c, "/s/"+token, http.StatusTooManyRequests, "share.tryLater")
 		return
 	}
 
 	password := c.PostForm("password")
 	if bcrypt.CompareHashAndPassword([]byte(share.Password), []byte(password)) != nil {
 		a.Limiter.Fail(ip, token)
-		a.shareGateFail(c, "/s/"+token, http.StatusBadRequest, "share.pwdWrong", "pwd")
+		a.shareGateFail(c, "/s/"+token, http.StatusBadRequest, "share.pwdWrong")
 		return
 	}
 

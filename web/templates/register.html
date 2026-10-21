@@ -11,8 +11,7 @@
       <span>{{.SiteName}}</span>
     </a>
     <div class="auth-card">
-      <h1 class="auth-title">{{$.T "reg.welcome" .SiteName}}</h1>
-      <p class="auth-sub">{{$.T "reg.sub"}}</p>
+      <h1 class="auth-title">{{$.T "reg.welcomeBefore"}} <strong class="auth-title-brand">{{.SiteName}}</strong>{{$after := $.T "reg.welcomeAfter"}}{{if ne $after "reg.welcomeAfter"}} {{$after}}{{end}}</h1>
       <div class="alert alert-error" id="registerError" {{if not .error}}hidden{{end}}>{{.error}}</div>
       <form id="registerForm" novalidate onsubmit="event.preventDefault()">
         <div id="regCred">
@@ -65,7 +64,7 @@
         </div>
 
         <label class="auth-agree" id="regAgreeWrap"><input type="checkbox" name="agree" id="regAgree" required><span class="auth-agree-text">{{$.T "login.agreePrefix"}}<a href="/terms" target="_blank" rel="noopener">《{{$.T "legal.termsTitle"}}》</a>{{$.T "login.agreeAnd"}}<a href="/privacy" target="_blank" rel="noopener">《{{$.T "legal.privacyTitle"}}》</a></span></label>
-        <button type="submit" class="btn btn-primary btn-block">{{$.T "reg.submit"}}</button>
+        <button type="submit" class="btn btn-primary btn-block auth-submit" id="regSubmit" disabled>{{$.T "reg.submit"}}</button>
       </form>
       <p class="auth-alt auth-alt-switch">{{$.T "reg.hasAccount"}}<a href="/login">{{$.T "reg.toLogin"}}</a></p>
       {{template "authOAuth" .}}
@@ -213,18 +212,13 @@
     errBox.textContent = UI.t(msg || '注册失败');
   }
   var agreeEl = document.getElementById('regAgree');
-  function ensureAgree() {
-    if (agreeEl && !agreeEl.checked) {
-      showError('login.needAgree');
-      return false;
-    }
-    return true;
-  }
-  // OAuth 与登录页一致：不强制先勾选协议
+  var submitBtn = document.getElementById('regSubmit');
+  var totpBox = document.getElementById('regTotp');
+  var syncAgreeGate = UI.bindAgreeGate({ agree: agreeEl, submit: submitBtn, totp: totpBox });
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
     if (!UI.validateForm(form)) return;
-    if (!ensureAgree()) return;
+    if (agreeEl && !agreeEl.checked && (!totpBox || totpBox.hidden)) return;
     if (METHOD === 'email') {
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(idInput.value.trim())) {
         idInput.classList.add('field-error');
@@ -252,11 +246,10 @@
       pwd.focus();
       return;
     }
-    var btn = form.querySelector('[type=submit]');
-    if (btn) btn.disabled = true;
+    var btn = submitBtn || form.querySelector('[type=submit]');
+    if (btn) { btn.disabled = true; btn.dataset.busy = '1'; }
     if (errBox) errBox.hidden = true;
     try {
-      var totpBox = document.getElementById('regTotp');
       var onTotp = totpBox && !totpBox.hidden;
       var res;
       if (onTotp) {
@@ -279,25 +272,30 @@
       if (!res.ok) {
         showError((data && data.error) || '注册失败');
         if (!onTotp) refreshCaptcha();
-        if (btn) btn.disabled = false;
+        if (btn) { delete btn.dataset.busy; }
+        syncAgreeGate();
         return;
       }
       if (data && (data.step === 'totp' || data.step === 'totp_enroll')) {
         document.getElementById('regCred').hidden = true;
         document.getElementById('regCred').querySelectorAll('[required]').forEach(function (el) { el.required = false; });
+        var agreeWrap = document.getElementById('regAgreeWrap');
+        if (agreeWrap) agreeWrap.hidden = true;
         totpBox.hidden = false;
         document.getElementById('regTotpPending').value = data.pending || '';
         document.getElementById('regTotpQr').src = data.qr || '';
         document.getElementById('regTotpSecret').textContent = data.secret || '';
         var codeEl = form.querySelector('input[name=totp_code]');
         if (codeEl) { codeEl.required = true; codeEl.value = ''; codeEl.focus(); }
-        if (btn) btn.disabled = false;
+        if (btn) { delete btn.dataset.busy; }
+        syncAgreeGate();
         return;
       }
       location.href = UI.safeRedirect(data && data.redirect, '/console');
     } catch (err) {
       showError('网络错误');
-      if (btn) btn.disabled = false;
+      if (btn) { delete btn.dataset.busy; }
+      syncAgreeGate();
     }
   });
 })();

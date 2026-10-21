@@ -11,7 +11,7 @@
       <span>{{.SiteName}}</span>
     </a>
     <div class="auth-card">
-      <h1 class="auth-title">{{$.T "login.welcome" .SiteName}}</h1>
+      <h1 class="auth-title">{{$.T "login.welcomeLead"}} <strong class="auth-title-brand">{{.SiteName}}</strong></h1>
       <div class="alert alert-error" id="loginError" {{if not .error}}hidden{{end}}>{{.error}}</div>
       <form id="loginForm" novalidate onsubmit="event.preventDefault()">
         <div id="loginCred" {{if .totpStep}}hidden{{end}}>
@@ -70,7 +70,7 @@
       <div id="loginExtra" {{if .totpStep}}hidden{{end}}>
       <p class="auth-recover"><a href="/forgot-username" target="_blank" rel="noopener">{{$.T "recover.forgotUserLink"}}</a><span class="auth-recover-sep">|</span><a href="/forgot-password" target="_blank" rel="noopener">{{$.T "recover.forgotPwdLink"}}</a></p>
       <p class="auth-alt auth-alt-switch">{{$.T "login.noAccount"}}<a href="/register">{{$.T "login.registerLink"}}</a></p>
-      {{template "authOAuth" .}}
+      {{if not .totpStep}}{{template "authOAuth" .}}{{end}}
       </div>
     </div>
     <div class="auth-foot">
@@ -262,14 +262,7 @@
     }
   }
   // 协议勾选只锁邮箱/账号登录按钮；OAuth 可直接点
-  function syncAgreeGate() {
-    var ok = !agreeEl || agreeEl.checked || (totpBox && !totpBox.hidden);
-    if (submitBtn && !submitBtn.dataset.busy) submitBtn.disabled = !ok;
-  }
-  if (agreeEl) {
-    agreeEl.addEventListener('change', syncAgreeGate);
-    syncAgreeGate();
-  }
+  var syncAgreeGate = UI.bindAgreeGate({ agree: agreeEl, submit: submitBtn, totp: totpBox });
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
     if (!UI.validateForm(form)) return;

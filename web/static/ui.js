@@ -515,6 +515,23 @@ window.UI = (function () {
     return wrap.firstChild;
   }
 
+  // 登录/注册：未勾选协议则禁用提交按钮（OAuth 不由此门禁）；返回 sync 供提交失败后恢复
+  function bindAgreeGate(opts) {
+    opts = opts || {};
+    var agreeEl = opts.agree;
+    var submitBtn = opts.submit;
+    var totpBox = opts.totp;
+    function sync() {
+      var ok = !agreeEl || agreeEl.checked || (totpBox && !totpBox.hidden);
+      if (submitBtn && !submitBtn.dataset.busy) submitBtn.disabled = !ok;
+    }
+    if (agreeEl) {
+      agreeEl.addEventListener('change', sync);
+      sync();
+    }
+    return sync;
+  }
+
   // 密码框右侧眼睛：切换 type=password / text；图标靠 .is-plain 切换（不用 SVG hidden）
   function bindPasswordToggle(root) {
     var scope = root && root.querySelectorAll ? root : document;
@@ -549,6 +566,7 @@ window.UI = (function () {
     loadingEl: loadingEl,
     validateForm: validateForm,
     bindFormValidation: bindFormValidation,
+    bindAgreeGate: bindAgreeGate,
     bindPasswordToggle: bindPasswordToggle,
     bindFilterNav: bindFilterNav,
     safeRedirect: safeRedirect,

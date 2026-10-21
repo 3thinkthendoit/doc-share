@@ -292,8 +292,13 @@ func (a *App) OAuthCallback(c *gin.Context) {
 		msg := "获取用户信息失败"
 		if err != nil {
 			es := err.Error()
-			if strings.Contains(es, "exchange") || strings.Contains(es, "cannot fetch token") || strings.Contains(es, "oauth2:") {
+			switch {
+			case strings.Contains(es, "exchange") || strings.Contains(es, "cannot fetch token") || strings.Contains(es, "oauth2:"):
 				msg = "第三方登录换取令牌失败，请核对 Client Secret 与回调地址"
+			case strings.Contains(es, "github user"):
+				msg = "GitHub 用户信息获取失败，请检查网络或稍后重试"
+			case strings.Contains(es, "google userinfo") || strings.Contains(es, "id_token"):
+				msg = "Google 用户信息获取失败，请检查网络或稍后重试"
 			}
 		}
 		a.oauthFail(c, msg)
@@ -322,8 +327,9 @@ func (a *App) OAuthCallback(c *gin.Context) {
 }
 
 func (a *App) oauthFail(c *gin.Context, msg string) {
-	// msg 用中文原文作 i18n key（与站点其它登录错误一致）
-	c.Redirect(http.StatusFound, "/login?error="+url.QueryEscape(a.tr(c, msg)))
+	// msg 用中文原文作 i18n key；一次性 flash，地址栏保持 /login
+	a.setFlash(c, a.tr(c, msg))
+	c.Redirect(http.StatusFound, "/login")
 }
 
 // resolveOAuthUser：已绑定 → 用绑定用户；已验证邮箱命中本地用户 → 合并绑定；否则新建。
@@ -539,24 +545,36 @@ func randomHex(n int) (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+func setGitHubAPIHeaders(req *http.Request) {
+	// GitHub 强制要求 User-Agent，缺省会 403
+	req.Header.Set("User-Agent", "DocShare-OAuth")
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+}
+
 func defaultFetchGitHubUser(ctx context.Context, cfg *oauth2.Config, code string) (oauthProfile, error) {
 	tok, err := cfg.Exchange(ctx, code)
 	if err != nil {
-		return oauthProfile{}, err
+		return oauthProfile{}, fmt.Errorf("github token exchange: %w", err)
 	}
 	client := cfg.Client(ctx, tok)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/user", nil)
 	if err != nil {
 		return oauthProfile{}, err
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
+	setGitHubAPIHeaders(req)
 	res, err := client.Do(req)
 	if err != nil {
-		return oauthProfile{}, err
+		return oauthProfile{}, fmt.Errorf("github user: %w", err)
 	}
 	defer res.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if res.StatusCode != http.StatusOK {
+		snippet := strings.TrimSpace(string(body))
+		if len(snippet) > 200 {
+			snippet = snippet[:200]
+		}
+		log.Printf("[oauth] github /user status=%s body=%q", res.Status, snippet)
 		return oauthProfile{}, fmt.Errorf("github user: %s", res.Status)
 	}
 	var u struct {
@@ -590,7 +608,7 @@ func fetchGitHubPrimaryEmail(ctx context.Context, client *http.Client) (string, 
 	if err != nil {
 		return "", false
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
+	setGitHubAPIHeaders(req)
 	res, err := client.Do(req)
 	if err != nil {
 		return "", false

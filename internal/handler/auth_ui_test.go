@@ -38,7 +38,8 @@ func TestAuthSplitPageMarkup(t *testing.T) {
 		`class="auth-body auth-split"`,
 		`class="auth-brand-pane"`,
 		`class="auth-form-pane"`,
-		`欢迎登录 DocShare`,
+		`欢迎登录`,
+		`class="auth-title-brand">DocShare</strong>`,
 	} {
 		if !strings.Contains(login, want) {
 			t.Fatalf("login.html missing %q", want)
@@ -63,11 +64,15 @@ func TestAuthSplitPageMarkup(t *testing.T) {
 	reg["username"] = ""
 	reg["identifier"] = ""
 	out := render("register.html", reg)
+	if !strings.Contains(out, `欢迎注册`) || !strings.Contains(out, `class="auth-title-brand">DocShare</strong>`) {
+		t.Fatal("register title should bold SiteName")
+	}
 	if !strings.Contains(out, `id="mailCaptchaModal"`) {
 		t.Fatal("email register should include mailCaptchaModal")
 	}
 	// 弹层须在 </div> 关闭 auth-card 之后、</main> 之前：卡内不应包住 modal
-	cardEnd := strings.Index(out, `class="auth-alt"`)
+	// class 可能是 "auth-alt" 或 "auth-alt auth-alt-switch"，勿要求引号紧贴 auth-alt
+	cardEnd := strings.Index(out, `class="auth-alt`)
 	modalAt := strings.Index(out, `id="mailCaptchaModal"`)
 	mainEnd := strings.Index(out, `</main>`)
 	if cardEnd < 0 || modalAt < 0 || mainEnd < 0 {

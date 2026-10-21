@@ -130,8 +130,13 @@
     <span>{{.SiteName}}</span>
   </a>
   <div class="auth-brand-copy">
-    <p class="auth-brand-eyebrow">{{$.T "site.120"}}</p>
-    <h2 class="auth-brand-title">{{$.T "site.168"}}<br><em>{{$.T "site.169"}}</em></h2>
+    <ul class="auth-brand-pills" aria-label="{{$.T "site.120"}}">
+      <li>{{$.T "site.120a"}}</li>
+      <li>{{$.T "site.120b"}}</li>
+      <li>{{$.T "site.120c"}}</li>
+    </ul>
+    <h2 class="auth-brand-title"><span class="auth-brand-line">{{$.T "site.168"}}</span><em class="auth-brand-line">{{$.T "site.169"}}</em></h2>
+    <p class="auth-brand-lead">{{$.T "site.167"}}</p>
   </div>
   <div class="auth-brand-art" aria-hidden="true">
     <span class="auth-brand-folder"></span>

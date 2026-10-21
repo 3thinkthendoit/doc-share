@@ -148,13 +148,11 @@ func (a *App) ProjectShareView(c *gin.Context) {
 		return
 	}
 
-	errMsg := ""
-	switch c.Query("err") {
-	case "pwd":
-		errMsg = "share.pwdWrong"
-	case "lock":
-		errMsg = "share.tryLater"
+	cleanPath := "/ps/" + token
+	if a.consumeQueryFlash(c, "err", cleanPath, mapShareErrCode) {
+		return
 	}
+	errMsg := a.takeFlash(c)
 	applyStatus := ""
 	req := a.findProjectAccessRequest(c, project.ID)
 	if a.Settings().AllowShareApply && req != nil {
@@ -235,13 +233,13 @@ func (a *App) ProjectShareSubmit(c *gin.Context) {
 	}
 	ip := c.ClientIP()
 	if !a.Limiter.Allowed(ip, token) {
-		a.shareGateFail(c, "/ps/"+token, http.StatusTooManyRequests, "share.tryLater", "lock")
+		a.shareGateFail(c, "/ps/"+token, http.StatusTooManyRequests, "share.tryLater")
 		return
 	}
 	password := c.PostForm("password")
 	if bcrypt.CompareHashAndPassword([]byte(ps.Password), []byte(password)) != nil {
 		a.Limiter.Fail(ip, token)
-		a.shareGateFail(c, "/ps/"+token, http.StatusBadRequest, "share.pwdWrong", "pwd")
+		a.shareGateFail(c, "/ps/"+token, http.StatusBadRequest, "share.pwdWrong")
 		return
 	}
 	a.Limiter.Reset(ip, token)

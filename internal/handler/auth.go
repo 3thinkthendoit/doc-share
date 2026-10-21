@@ -19,9 +19,13 @@ const sessionTTL = 24 * time.Hour
 
 // LoginPage 渲染登录页
 func (a *App) LoginPage(c *gin.Context) {
+	// 旧链接 /login?error=xxx → flash 后清地址栏
+	if a.consumeQueryFlash(c, "error", "/login", nil) {
+		return
+	}
 	data := gin.H{"title": "登录"}
-	if err := strings.TrimSpace(c.Query("error")); err != "" {
-		data["error"] = err
+	if flash := a.takeFlash(c); flash != "" {
+		data["error"] = flash
 	}
 	for k, v := range a.oauthViewFlags() {
 		data[k] = v

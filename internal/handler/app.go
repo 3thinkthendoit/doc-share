@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 	"sync"
@@ -21,6 +22,9 @@ import (
 	"github.com/mojocn/base64Captcha"
 	"gorm.io/gorm"
 )
+
+// 一次性错误提示 Cookie：Redirect 后展示，读完即清，避免 ?error=/?err= 挂在地址栏
+const flashCookie = "ds_flash"
 
 // App 汇总各 handler 共享的依赖
 type App struct {
@@ -216,4 +220,43 @@ func (a *App) setCookie(c *gin.Context, name, value string, maxAge int) {
 	}
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie(name, value, maxAge, "/", "", secure, true)
+}
+
+func (a *App) setFlash(c *gin.Context, msg string) {
+	msg = strings.TrimSpace(msg)
+	if msg == "" {
+		a.setCookie(c, flashCookie, "", -1)
+		return
+	}
+	a.setCookie(c, flashCookie, url.QueryEscape(msg), 120)
+}
+
+func (a *App) takeFlash(c *gin.Context) string {
+	raw, err := c.Cookie(flashCookie)
+	a.setCookie(c, flashCookie, "", -1)
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return ""
+	}
+	msg, uerr := url.QueryUnescape(raw)
+	if uerr != nil {
+		return strings.TrimSpace(raw)
+	}
+	return strings.TrimSpace(msg)
+}
+
+// consumeQueryFlash 若 URL 带旧版错误参数，转入 flash 并 302 到干净路径；已跳转返回 true。
+func (a *App) consumeQueryFlash(c *gin.Context, queryKey, cleanPath string, mapCode func(string) string) bool {
+	q := strings.TrimSpace(c.Query(queryKey))
+	if q == "" {
+		return false
+	}
+	msg := q
+	if mapCode != nil {
+		if mapped := mapCode(q); mapped != "" {
+			msg = mapped
+		}
+	}
+	a.setFlash(c, msg)
+	c.Redirect(http.StatusFound, cleanPath)
+	return true
 }
