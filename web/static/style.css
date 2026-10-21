@@ -484,7 +484,7 @@ a.stat-card:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 .auth-card{background:var(--panel);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow-auth);padding:40px;width:380px;max-width:100%;box-sizing:border-box;margin-top:auto;margin-bottom:auto}
 .auth-card:not(.share-gate){position:relative;overflow:hidden;border-radius:20px;box-shadow:var(--shadow-gate);padding:36px 34px 32px;animation:shareGateIn .35s cubic-bezier(.2,.8,.3,1)}
 .auth-card:not(.share-gate)::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--grad)}
-.auth-title{text-align:center;margin:0;font-size:26px;font-weight:700;letter-spacing:-.03em;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.auth-title{text-align:center;margin:0;font-size:26px;font-weight:400;letter-spacing:-.03em;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 /* 认证页标题内联 logo：inline 排版不破坏渐变文字 */
 .auth-title .auth-logo{width:34px;height:34px;border-radius:8px;margin-right:10px;vertical-align:-9px}
 .auth-sub{text-align:center;color:var(--muted);margin:8px 0 0;font-size:13.5px;line-height:1.55}
@@ -496,9 +496,9 @@ a.stat-card:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 .auth-card label{display:block;margin-bottom:16px;font-weight:500;color:var(--text);font-size:13px}
 .auth-card .auth-field{display:block;margin-bottom:16px}
 .auth-card .auth-field>input,.auth-card .auth-field>.captcha-row{margin-top:0}
-.auth-card input{width:100%;margin-top:6px;padding:11px 14px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-size:15px;font-family:inherit;transition:border-color .15s,box-shadow .15s;background:var(--input-bg);color:var(--text)}
-.auth-card input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
-.auth-card input::placeholder{color:var(--faint)}
+.auth-card input:not([type=checkbox]):not([type=radio]){width:100%;margin-top:6px;padding:11px 14px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-size:15px;font-family:inherit;transition:border-color .15s,box-shadow .15s;background:var(--input-bg);color:var(--text)}
+.auth-card input:not([type=checkbox]):not([type=radio]):focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+.auth-card input:not([type=checkbox]):not([type=radio])::placeholder{color:var(--faint)}
 .auth-card .btn-block{margin-top:8px;padding:12px;font-size:15px;border-radius:10px}
 /* TOTP 步骤：替代模板 inline style，明暗主题一致 */
 .auth-totp-hint{font-size:13px;margin:0 0 10px;color:var(--muted);line-height:1.55;text-align:center}
@@ -534,8 +534,9 @@ a.stat-card:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 .auth-mobile-brand{display:none;align-items:center;gap:8px;font-weight:700;font-size:15px;color:var(--text);text-decoration:none;margin:0 0 8px}
 .auth-mobile-brand:hover{color:var(--text);text-decoration:none}
 .auth-mobile-brand img{width:28px;height:28px;border-radius:7px;display:block}
-.auth-split .auth-card{width:100%;max-width:380px;margin:auto}
-.auth-split .auth-foot{width:100%;max-width:380px;margin-top:0;padding:16px 0 calc(12px + env(safe-area-inset-bottom,0px))}
+/* 对齐阿里云/Qoder SSO 账密表单内容区宽度（约 350px） */
+.auth-split .auth-card{width:100%;max-width:350px;margin:auto}
+.auth-split .auth-foot{width:100%;max-width:350px;margin-top:0;padding:16px 0 calc(12px + env(safe-area-inset-bottom,0px))}
 /* Qoder 风格：分段 Tab + 大圆角输入 / 主按钮 */
 .auth-tabs{
   display:flex;align-items:stretch;gap:0;margin:0 0 20px;padding:4px;
@@ -555,24 +556,140 @@ a.stat-card:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 .auth-card .auth-field>.captcha-row{
   background:var(--bg-soft)
 }
-.auth-card .auth-submit.btn-block{
-  height:48px;margin-top:12px;padding:0 16px;border-radius:12px;font-size:16px;font-weight:700
+/* 验证码行：整行一颗胶囊，内层 input/图去掉圆角边框，避免「胶囊套胶囊」 */
+.auth-card .captcha-row{
+  display:flex;align-items:stretch;gap:0;margin-top:0;
+  border:1px solid var(--border-strong);border-radius:999px;overflow:hidden
 }
-.auth-agree{display:flex;align-items:flex-start;gap:8px;margin:4px 0 14px;font-size:12.5px;line-height:1.55;color:var(--muted);cursor:pointer}
-.auth-agree input{margin-top:3px;flex:none}
-.auth-agree a{color:var(--primary);text-decoration:none}
+.auth-card .captcha-row:focus-within{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+.auth-card .captcha-row input:not([type=checkbox]):not([type=radio]){
+  flex:1;min-width:0;width:auto;height:48px;margin:0;padding:0 20px;box-sizing:border-box;
+  border:none;border-radius:0;box-shadow:none;background:transparent;outline:none
+}
+.auth-card .captcha-row input:not([type=checkbox]):not([type=radio]):focus{
+  border:none;box-shadow:none;outline:none
+}
+.auth-card .captcha-row .captcha-img{
+  flex:none;width:120px;height:48px;aspect-ratio:auto;align-self:stretch;
+  border:none;border-left:1px solid var(--border);border-radius:0;box-shadow:none;
+  object-fit:cover;cursor:pointer;background:var(--bg-soft)
+}
+.auth-card .captcha-row .captcha-img:hover{box-shadow:none}
+.auth-card .captcha-row .btn,
+.auth-card .captcha-row .btn-sm{
+  flex:none;align-self:stretch;height:auto;min-height:48px;margin:0;padding:0 14px;
+  border:none;border-left:1px solid var(--border);border-radius:0;background:transparent;
+  color:var(--primary);font-weight:600;box-shadow:none;white-space:nowrap
+}
+.auth-card .auth-submit.btn-block{
+  height:48px;margin-top:12px;padding:0 20px;border-radius:999px;font-size:16px;font-weight:700
+}
+.auth-pwd-wrap{position:relative;display:block}
+.auth-pwd-wrap>input{padding-right:48px}
+.auth-pwd-toggle{
+  position:absolute;right:10px;top:50%;transform:translateY(-50%);
+  width:32px;height:32px;margin:0;padding:0;border:none;border-radius:8px;
+  background:transparent;color:var(--muted);cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center
+}
+.auth-pwd-toggle:hover{color:var(--text);background:var(--bg-soft)}
+.auth-pwd-toggle:focus-visible{outline:2px solid var(--primary);outline-offset:1px}
+.auth-pwd-toggle svg{display:block;flex:none}
+/* 盖过 .auth-card label{display:block}，否则 gap 不生效、勾选与文字贴死 */
+.auth-card label.auth-agree{
+  display:flex;align-items:center;gap:6px;
+  margin:2px 0 16px;font-size:12.5px;line-height:1.55;font-weight:400;
+  color:var(--muted);cursor:pointer
+}
+.auth-card .auth-agree input[type=checkbox]{
+  flex:none;width:14px;height:14px;margin:0;padding:0;
+  border:none;border-radius:0;box-shadow:none;background:transparent;
+  accent-color:var(--primary)
+}
+.auth-agree-text{flex:1;min-width:0}
+.auth-agree a{color:var(--primary);text-decoration:none;white-space:nowrap}
 .auth-agree a:hover{text-decoration:underline}
 .auth-recover{display:flex;justify-content:center;align-items:center;gap:10px;margin:12px 0 0;font-size:13px}
 .auth-recover a{color:var(--muted);text-decoration:none}
 .auth-recover a:hover{color:var(--primary);text-decoration:none}
 .auth-recover-sep{color:var(--faint)}
-.auth-legal-card{max-width:560px}
+/* 协议/隐私/找回：单栏居中，无左侧品牌图 */
+.auth-body.auth-legal-page,
+.auth-body.auth-solo-page{
+  display:flex;flex-direction:column;align-items:center;
+  min-height:100vh;min-height:100dvh;padding:24px 16px 0;box-sizing:border-box;
+  background:var(--bg-soft);background-image:var(--auth-fx)
+}
+.auth-legal-page .auth-tools,
+.auth-solo-page .auth-tools{position:absolute;top:18px;right:22px;z-index:2}
+.auth-legal-wrap,
+.auth-solo-wrap{
+  width:100%;max-width:720px;margin:auto;padding:48px 0 24px;box-sizing:border-box;
+  display:flex;flex-direction:column;align-items:stretch
+}
+.auth-solo-wrap{max-width:420px}
+.auth-solo-page .auth-card{
+  width:100%;max-width:none;margin:0;box-sizing:border-box
+}
+.auth-solo-page .auth-title{
+  text-align:center;-webkit-text-fill-color:unset;background:none;color:var(--text);
+  font-size:24px;font-weight:800;letter-spacing:-.03em
+}
+.auth-solo-page .auth-sub,.auth-solo-page .auth-alt{text-align:center}
+.auth-solo-page .auth-foot{width:100%;max-width:none;margin-top:8px;padding:12px 0 calc(16px + env(safe-area-inset-bottom,0px))}
+.auth-solo-page .auth-card .auth-field>input,
+.auth-solo-page .auth-card .auth-pwd-wrap>input{
+  margin-top:0;height:48px;padding:0 20px;box-sizing:border-box;
+  border-radius:999px;background:var(--bg-soft)
+}
+.auth-solo-page .auth-card .captcha-row{
+  display:flex;align-items:stretch;gap:0;margin-top:0;
+  border:1px solid var(--border-strong);border-radius:999px;background:var(--bg-soft);overflow:hidden
+}
+.auth-solo-page .auth-card .captcha-row:focus-within{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+.auth-solo-page .auth-card .captcha-row input:not([type=checkbox]):not([type=radio]){
+  flex:1;min-width:0;width:auto;height:48px;margin:0;padding:0 20px;box-sizing:border-box;
+  border:none;border-radius:0;box-shadow:none;background:transparent;outline:none
+}
+.auth-solo-page .auth-card .captcha-row input:not([type=checkbox]):not([type=radio]):focus{
+  border:none;box-shadow:none;outline:none
+}
+.auth-solo-page .auth-card .captcha-row .captcha-img{
+  flex:none;width:120px;height:48px;aspect-ratio:auto;align-self:stretch;
+  border:none;border-left:1px solid var(--border);border-radius:0;box-shadow:none;
+  object-fit:cover;background:var(--bg-soft)
+}
+.auth-solo-page .auth-card .captcha-row .captcha-img:hover{box-shadow:none}
+.auth-solo-page .auth-card .btn-block{
+  display:flex;align-items:center;justify-content:center;
+  height:48px;margin-top:12px;padding:0 20px;border-radius:999px;font-size:16px;font-weight:700
+}
+.auth-legal-brand{
+  display:inline-flex;align-items:center;gap:8px;align-self:center;
+  margin:0 0 20px;font-weight:700;font-size:15px;color:var(--text);text-decoration:none
+}
+.auth-legal-brand:hover{color:var(--text);text-decoration:none}
+.auth-legal-brand img{width:28px;height:28px;border-radius:7px;display:block}
+.auth-legal-card{
+  width:100%;max-width:none;margin:0;box-sizing:border-box;
+  padding:32px 36px 28px
+}
+.auth-legal-card .auth-title{
+  text-align:left;-webkit-text-fill-color:unset;background:none;color:var(--text);
+  font-size:26px;font-weight:800;letter-spacing:-.03em
+}
+.auth-legal-card .auth-alt{text-align:left;margin-top:20px}
+.auth-legal-page .auth-foot{width:100%;max-width:none;margin-top:8px;padding:12px 0 calc(16px + env(safe-area-inset-bottom,0px))}
 .auth-legal-meta{margin:6px 0 0;font-size:12.5px;color:var(--faint)}
-.auth-legal-body{margin-top:18px;font-size:14px;line-height:1.75;color:var(--muted);max-height:min(62vh,560px);overflow:auto;padding-right:4px}
+.auth-legal-body{margin-top:18px;font-size:14px;line-height:1.75;color:var(--muted);max-height:none;overflow:visible;padding-right:0}
 .auth-legal-body .auth-legal-lead{color:var(--text);font-weight:500}
 .auth-legal-body h2{margin:18px 0 8px;font-size:14.5px;font-weight:600;color:var(--text);line-height:1.4}
 .auth-legal-body h2:first-of-type{margin-top:14px}
 .auth-legal-body p{margin:0 0 10px}
+@media (max-width:640px){
+  .auth-legal-card{padding:24px 18px 20px}
+  .auth-legal-wrap{padding-top:56px}
+}
 .alert-ok{background:var(--ok-soft,rgba(22,163,74,.12));color:var(--ok,#16a34a);border:1px solid var(--ok-border,rgba(22,163,74,.28));padding:10px 12px;border-radius:10px;font-size:13px;margin:0 0 14px}
 .auth-oauth{margin-top:22px}
 .auth-oauth-divider{display:flex;align-items:center;gap:12px;margin:0 0 16px;color:var(--faint);font-size:12px}
@@ -594,34 +711,38 @@ a.stat-card:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 @media (min-width:901px){
   .auth-split .auth-card{border:none;box-shadow:none;background:transparent;border-radius:0;padding:0;animation:none;overflow:visible}
   .auth-split .auth-card::before{display:none}
-  .auth-split .auth-title{text-align:left;-webkit-text-fill-color:unset;background:none;color:var(--text);font-size:30px;font-weight:800;letter-spacing:-.04em;line-height:1.3}
+  .auth-split .auth-title{text-align:left;-webkit-text-fill-color:unset;background:none;color:var(--text);font-size:30px;font-weight:400;letter-spacing:-.04em;line-height:1.3}
   .auth-split .auth-sub{text-align:left;margin-top:10px;margin-bottom:0;font-size:14px;line-height:1.5}
-  .auth-split .auth-alt{text-align:left;margin-top:20px}
+  .auth-split .auth-alt{text-align:center;margin-top:16px}
   .auth-split .auth-card:not(.share-gate) form{margin-top:28px}
   .auth-split .auth-tabs{margin-bottom:22px}
   .auth-split .auth-card .auth-field>input{background:var(--bg-soft)}
   .auth-split .auth-card:not(.share-gate)>.alert:not([hidden])+form{margin-top:0}
   .auth-split .auth-card .auth-field{margin-bottom:18px}
   .auth-split .auth-card .auth-field>input,
-  .auth-split .auth-card input{
-    margin-top:0;height:48px;padding:0 16px;box-sizing:border-box;
-    border-radius:12px;border:1px solid var(--border-strong);background:var(--input-bg);font-size:15px
+  .auth-split .auth-card .auth-pwd-wrap>input{
+    margin-top:0;height:48px;padding:0 20px;box-sizing:border-box;
+    border-radius:999px;border:1px solid var(--border-strong);background:var(--input-bg);font-size:15px
   }
-  .auth-split .auth-card input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+  .auth-split .auth-card .auth-field>input:focus,
+  .auth-split .auth-card .auth-pwd-wrap>input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
   /* 仅表单卡内验证码行；勿选中 #mailCaptchaModal，避免弹层串用整行边框壳 */
   .auth-split .auth-card .captcha-row{
     display:flex;align-items:stretch;gap:0;margin-top:8px;
-    border:1px solid var(--border-strong);border-radius:12px;background:var(--input-bg);overflow:hidden
+    border:1px solid var(--border-strong);border-radius:999px;background:var(--input-bg);overflow:hidden
   }
   .auth-split .auth-card .captcha-row:focus-within{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
-  .auth-split .auth-card .captcha-row input{
-    flex:1;min-width:0;height:48px;margin:0;padding:0 16px;
-    border:none;border-radius:0;box-shadow:none;background:transparent
+  .auth-split .auth-card .captcha-row input:not([type=checkbox]):not([type=radio]){
+    flex:1;min-width:0;width:auto;height:48px;margin:0;padding:0 20px;box-sizing:border-box;
+    border:none;border-radius:0;box-shadow:none;background:transparent;outline:none
   }
-  .auth-split .auth-card .captcha-row input:focus{border:none;box-shadow:none}
+  .auth-split .auth-card .captcha-row input:not([type=checkbox]):not([type=radio]):focus{
+    border:none;box-shadow:none;outline:none
+  }
   .auth-split .auth-card .captcha-row .captcha-img{
     flex:none;width:120px;height:48px;aspect-ratio:auto;align-self:stretch;
-    border:none;border-left:1px solid var(--border);border-radius:0;object-fit:cover;background:var(--bg-soft)
+    border:none;border-left:1px solid var(--border);border-radius:0;box-shadow:none;
+    object-fit:cover;background:var(--bg-soft)
   }
   .auth-split .auth-card .captcha-row .captcha-img:hover{box-shadow:none}
   .auth-split .auth-card .captcha-row .btn,
@@ -634,8 +755,8 @@ a.stat-card:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
   .auth-split .auth-card .captcha-row .btn-sm:hover{background:var(--primary-soft);transform:none;filter:none}
   .auth-split .auth-card .btn-block{
     display:flex;align-items:center;justify-content:center;
-    width:100%;height:48px;margin-top:8px;padding:0 16px;box-sizing:border-box;
-    border-radius:12px;font-size:15px;font-weight:700;line-height:1
+    width:100%;height:48px;margin-top:8px;padding:0 20px;box-sizing:border-box;
+    border-radius:999px;font-size:15px;font-weight:700;line-height:1
   }
 }
 
@@ -682,8 +803,11 @@ a.stat-card:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 .field-error:focus{outline:none;border-color:var(--danger)!important;box-shadow:0 0 0 3px var(--danger-soft)!important}
 .badge-on{background:var(--ok-bg);color:var(--ok-text)}
 .badge-off{background:var(--danger-soft);color:var(--danger)}
-.auth-alt{text-align:center;margin:18px 0 0;font-size:13px;color:var(--muted)}
-.auth-alt a{color:var(--primary);font-weight:500}
+.auth-alt{text-align:center;margin:18px 0 0;font-size:13px;color:var(--muted);line-height:1.5;font-weight:400}
+.auth-alt a{color:var(--primary);font-weight:400;text-decoration:none}
+.auth-alt a:hover{text-decoration:underline}
+.auth-alt-switch{margin-top:10px;margin-bottom:0}
+.auth-alt-switch+.auth-oauth{margin-top:18px}
 .alert{padding:10px 14px;border-radius:var(--radius-sm);margin-bottom:16px;font-size:13px}
 .alert-error{background:var(--danger-soft);color:var(--danger);border:1px solid var(--danger-border)}
 .captcha-row{display:flex;gap:10px;align-items:stretch;margin-top:6px}
@@ -1198,8 +1322,10 @@ mark{background:var(--mark-bg);color:var(--mark-fg,var(--text));padding:0 1px;bo
     background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent
   }
   .auth-split .auth-sub,.auth-split .auth-alt{text-align:center}
-  .auth-split .auth-card input{border-radius:var(--radius-sm);padding:11px 14px}
-  .auth-split .auth-card .btn-block{margin-top:8px;padding:12px;border-radius:10px;font-weight:inherit}
+  .auth-split .auth-card .auth-field>input,
+  .auth-split .auth-card .auth-pwd-wrap>input{border-radius:999px;padding:0 20px}
+  .auth-split .auth-card .captcha-row input:not([type=checkbox]):not([type=radio]){border-radius:0;padding:0 20px}
+  .auth-split .auth-card .btn-block{margin-top:8px;padding:0 20px;border-radius:999px;font-weight:700}
   .auth-split .auth-foot{width:100%}
 }
 /* 桌面始终双栏，忽略窄屏切换态 */

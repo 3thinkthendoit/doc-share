@@ -2,11 +2,10 @@
 <!DOCTYPE html>
 <html lang="{{.Lang}}">
 <head>{{template "head" .}}</head>
-<body class="auth-body auth-split">
-  {{template "authBrandPane" .}}
-  <main class="auth-form-pane">
-    {{template "authFormTools" .}}
-    <a class="auth-mobile-brand" href="/">
+<body class="auth-body auth-solo-page">
+  {{template "authFormTools" .}}
+  <main class="auth-solo-wrap">
+    <a class="auth-legal-brand" href="/">
       {{if .SiteLogo}}<img src="{{.SiteLogo}}" alt="">{{else}}<img src="/static/logo-mark.svg" alt="">{{end}}
       <span>{{.SiteName}}</span>
     </a>

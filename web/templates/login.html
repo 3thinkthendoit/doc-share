@@ -16,12 +16,12 @@
       <form id="loginForm" novalidate onsubmit="event.preventDefault()">
         <div id="loginCred" {{if .totpStep}}hidden{{end}}>
         <div class="auth-tabs" role="tablist" aria-label="{{$.T "login.modeLabel"}}">
-          <button type="button" class="auth-tab" role="tab" data-mode="email" aria-selected="true" id="tabEmail">{{$.T "login.tabEmail"}}</button>
-          <button type="button" class="auth-tab" role="tab" data-mode="account" aria-selected="false" id="tabAccount">{{$.T "login.tabAccount"}}</button>
+          <button type="button" class="auth-tab" role="tab" data-mode="email" aria-selected="false" id="tabEmail">{{$.T "login.tabEmail"}}</button>
+          <button type="button" class="auth-tab is-active" role="tab" data-mode="account" aria-selected="true" id="tabAccount">{{$.T "login.tabAccount"}}</button>
         </div>
-        <input type="hidden" name="mode" id="loginMode" value="email">
+        <input type="hidden" name="mode" id="loginMode" value="account">
 
-        <div id="paneEmail" class="auth-pane">
+        <div id="paneEmail" class="auth-pane" hidden>
           <div class="auth-field">
             <input type="email" name="email" id="loginEmail" autocomplete="email" placeholder="{{$.T "login.emailPh"}}" aria-label="{{$.T "login.email"}}">
           </div>
@@ -33,12 +33,15 @@
           </div>
         </div>
 
-        <div id="paneAccount" class="auth-pane" hidden>
+        <div id="paneAccount" class="auth-pane">
           <div class="auth-field">
             <input type="text" name="username" id="loginUsername" autocomplete="username" placeholder="{{$.T "login.accountPh"}}" aria-label="{{$.T "login.account"}}">
           </div>
           <div class="auth-field">
-            <input type="password" name="password" id="loginPassword" autocomplete="current-password" placeholder="{{$.T "login.passwordPh"}}" aria-label="{{$.T "login.password"}}">
+            <div class="auth-pwd-wrap">
+              <input type="password" name="password" id="loginPassword" autocomplete="current-password" placeholder="{{$.T "login.passwordPh"}}" aria-label="{{$.T "login.password"}}">
+              {{template "authPwdToggle" $}}
+            </div>
           </div>
           <div class="auth-field">
             <div class="captcha-row">
@@ -60,15 +63,15 @@
           <input type="hidden" name="pending" id="totpPending" value="{{.totpPending}}">
         </div>
         {{if not .totpStep}}
-        <label class="auth-agree check"><input type="checkbox" name="agree" id="loginAgree" required> {{$.T "login.agreePrefix"}}《<a href="/terms" target="_blank" rel="noopener">{{$.T "legal.termsTitle"}}</a>》{{$.T "login.agreeAnd"}}《<a href="/privacy" target="_blank" rel="noopener">{{$.T "legal.privacyTitle"}}</a>》</label>
+        <label class="auth-agree"><input type="checkbox" name="agree" id="loginAgree" required><span class="auth-agree-text">{{$.T "login.agreePrefix"}}<a href="/terms" target="_blank" rel="noopener">《{{$.T "legal.termsTitle"}}》</a>{{$.T "login.agreeAnd"}}<a href="/privacy" target="_blank" rel="noopener">《{{$.T "legal.privacyTitle"}}》</a></span></label>
         {{end}}
         <button type="submit" class="btn btn-primary btn-block auth-submit">{{$.T "login.submit"}}</button>
       </form>
-      {{if not .totpStep}}
-      <p class="auth-recover"><a href="/forgot-username">{{$.T "recover.forgotUserLink"}}</a><span class="auth-recover-sep">|</span><a href="/forgot-password">{{$.T "recover.forgotPwdLink"}}</a></p>
+      <div id="loginExtra" {{if .totpStep}}hidden{{end}}>
+      <p class="auth-recover"><a href="/forgot-username" target="_blank" rel="noopener">{{$.T "recover.forgotUserLink"}}</a><span class="auth-recover-sep">|</span><a href="/forgot-password" target="_blank" rel="noopener">{{$.T "recover.forgotPwdLink"}}</a></p>
+      <p class="auth-alt auth-alt-switch">{{$.T "login.noAccount"}}<a href="/register">{{$.T "login.registerLink"}}</a></p>
       {{template "authOAuth" .}}
-      {{end}}
-      <p class="auth-alt">{{$.T "login.noAccount"}}<a href="/register">{{$.T "login.registerLink"}}</a></p>
+      </div>
     </div>
     <div class="auth-foot">
       <span>© {{now.Format "2006"}} {{.SiteName}}</span>
@@ -105,6 +108,7 @@
   var paneAccount = document.getElementById('paneAccount');
   var tabs = document.querySelectorAll('.auth-tab');
   UI.bindFormValidation(form);
+  UI.bindPasswordToggle(form);
 
   function showError(msg) {
     errBox.hidden = false;
@@ -136,7 +140,7 @@
   tabs.forEach(function (t) {
     t.addEventListener('click', function () { setMode(t.getAttribute('data-mode')); });
   });
-  setMode('email');
+  setMode('account');
 
   async function refreshCaptcha() {
     try {
@@ -228,8 +232,8 @@
   function showTOTP(data) {
     credBox.hidden = true;
     credBox.querySelectorAll('[required]').forEach(function (el) { el.required = false; });
-    var oauthBox = document.getElementById('loginOAuth');
-    if (oauthBox) oauthBox.hidden = true;
+    var extra = document.getElementById('loginExtra');
+    if (extra) extra.hidden = true;
     var agreeWrap = document.querySelector('.auth-agree');
     if (agreeWrap) agreeWrap.hidden = true;
     totpBox.hidden = false;

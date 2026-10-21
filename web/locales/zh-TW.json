@@ -188,6 +188,8 @@
   "login.codeMailIntro": "你的登入驗證碼為：",
   "login.password": "密碼",
   "login.passwordPh": "請輸入密碼",
+  "login.showPwd": "顯示密碼",
+  "login.hidePwd": "隱藏密碼",
   "login.captcha": "驗證碼",
   "login.captchaPh": "請輸入圖中 4 位數字",
   "login.captchaAlt": "驗證碼",

@@ -37,7 +37,10 @@
         {{end}}
 
         <div class="auth-field">
-          <input type="password" name="password" required minlength="6" autocomplete="new-password" placeholder="{{$.T "login.passwordPh"}}" aria-label="{{$.T "login.password"}}">
+          <div class="auth-pwd-wrap">
+            <input type="password" name="password" required minlength="6" autocomplete="new-password" placeholder="{{$.T "login.passwordPh"}}" aria-label="{{$.T "login.password"}}">
+            {{template "authPwdToggle" $}}
+          </div>
         </div>
 
         {{if ne .method "email"}}
@@ -61,11 +64,11 @@
           <input type="hidden" name="pending" id="regTotpPending">
         </div>
 
-        <label class="auth-agree check" id="regAgreeWrap"><input type="checkbox" name="agree" id="regAgree" required> {{$.T "login.agreePrefix"}}《<a href="/terms" target="_blank" rel="noopener">{{$.T "legal.termsTitle"}}</a>》{{$.T "login.agreeAnd"}}《<a href="/privacy" target="_blank" rel="noopener">{{$.T "legal.privacyTitle"}}</a>》</label>
+        <label class="auth-agree" id="regAgreeWrap"><input type="checkbox" name="agree" id="regAgree" required><span class="auth-agree-text">{{$.T "login.agreePrefix"}}<a href="/terms" target="_blank" rel="noopener">《{{$.T "legal.termsTitle"}}》</a>{{$.T "login.agreeAnd"}}<a href="/privacy" target="_blank" rel="noopener">《{{$.T "legal.privacyTitle"}}》</a></span></label>
         <button type="submit" class="btn btn-primary btn-block">{{$.T "reg.submit"}}</button>
       </form>
+      <p class="auth-alt auth-alt-switch">{{$.T "reg.hasAccount"}}<a href="/login">{{$.T "reg.toLogin"}}</a></p>
       {{template "authOAuth" .}}
-      <p class="auth-alt">{{$.T "reg.hasAccount"}}<a href="/login">{{$.T "reg.toLogin"}}</a></p>
     </div>
     <div class="auth-foot">
       <span>© {{now.Format "2006"}} {{.SiteName}}</span>
@@ -102,6 +105,7 @@
   var form = document.getElementById('registerForm');
   var idInput = document.getElementById('identifierInput');
   var codeInput = document.getElementById('codeInput');
+  if (form && UI.bindPasswordToggle) UI.bindPasswordToggle(form);
 
   async function refreshCaptcha() {
     var img = document.getElementById('captchaImg');

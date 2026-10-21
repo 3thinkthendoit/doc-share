@@ -188,6 +188,8 @@
   "login.codeMailIntro": "Your sign-in code is:",
   "login.password": "Password",
   "login.passwordPh": "Enter password",
+  "login.showPwd": "Show password",
+  "login.hidePwd": "Hide password",
   "login.captcha": "Captcha",
   "login.captchaPh": "Enter the 4 digits shown",
   "login.captchaAlt": "Captcha",

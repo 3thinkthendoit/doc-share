@@ -2,15 +2,14 @@
 <!DOCTYPE html>
 <html lang="{{.Lang}}">
 <head>{{template "head" .}}</head>
-<body class="auth-body auth-split">
-  {{template "authBrandPane" .}}
-  <main class="auth-form-pane">
-    {{template "authFormTools" .}}
-    <a class="auth-mobile-brand" href="/">
+<body class="auth-body auth-legal-page">
+  {{template "authFormTools" .}}
+  <main class="auth-legal-wrap">
+    <a class="auth-legal-brand" href="/">
       {{if .SiteLogo}}<img src="{{.SiteLogo}}" alt="">{{else}}<img src="/static/logo-mark.svg" alt="">{{end}}
       <span>{{.SiteName}}</span>
     </a>
-    <div class="auth-card auth-legal-card">
+    <article class="auth-card auth-legal-card">
       <h1 class="auth-title">{{$.T "legal.termsTitle"}}</h1>
       <p class="auth-legal-meta">{{$.T "legal.termsUpdated"}}</p>
       <div class="auth-legal-body">
@@ -34,7 +33,7 @@
       </div>
       <p class="auth-alt"><a href="/login">{{$.T "recover.backLogin"}}</a>
         · <a href="/privacy">{{$.T "legal.privacyTitle"}}</a></p>
-    </div>
+    </article>
     <div class="auth-foot">
       <span>© {{now.Format "2006"}} {{.SiteName}}</span>
     </div>

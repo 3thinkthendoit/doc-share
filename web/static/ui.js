@@ -515,6 +515,33 @@ window.UI = (function () {
     return wrap.firstChild;
   }
 
+  // 密码框右侧眼睛：切换 type=password / text
+  function bindPasswordToggle(root) {
+    var scope = root && root.querySelectorAll ? root : document;
+    scope.querySelectorAll('[data-pwd-toggle]').forEach(function (btn) {
+      if (btn.dataset.bound === '1') return;
+      btn.dataset.bound = '1';
+      var wrap = btn.closest('.auth-pwd-wrap');
+      var input = wrap && wrap.querySelector('input');
+      if (!input) return;
+      var iconShow = btn.querySelector('[data-pwd-icon="show"]');
+      var iconHide = btn.querySelector('[data-pwd-icon="hide"]');
+      function sync() {
+        var plain = input.type === 'text';
+        btn.setAttribute('aria-pressed', plain ? 'true' : 'false');
+        btn.setAttribute('aria-label', t(plain ? 'login.hidePwd' : 'login.showPwd'));
+        btn.title = t(plain ? 'login.hidePwd' : 'login.showPwd');
+        if (iconShow) iconShow.hidden = plain;
+        if (iconHide) iconHide.hidden = !plain;
+      }
+      btn.addEventListener('click', function () {
+        input.type = input.type === 'password' ? 'text' : 'password';
+        sync();
+      });
+      sync();
+    });
+  }
+
   return {
     t: t,
     lang: window.__LANG || 'zh-CN',
@@ -523,6 +550,7 @@ window.UI = (function () {
     loadingEl: loadingEl,
     validateForm: validateForm,
     bindFormValidation: bindFormValidation,
+    bindPasswordToggle: bindPasswordToggle,
     bindFilterNav: bindFilterNav,
     safeRedirect: safeRedirect,
     openModal: openModal,

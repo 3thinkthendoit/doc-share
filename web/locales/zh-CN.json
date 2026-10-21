@@ -188,6 +188,8 @@
   "login.codeMailIntro": "你的登录验证码为：",
   "login.password": "密码",
   "login.passwordPh": "请输入密码",
+  "login.showPwd": "显示密码",
+  "login.hidePwd": "隐藏密码",
   "login.captcha": "验证码",
   "login.captchaPh": "请输入图中 4 位数字",
   "login.captchaAlt": "验证码",
