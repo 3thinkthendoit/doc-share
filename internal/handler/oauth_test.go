@@ -1,9 +1,18 @@
 package handler
 
 import (
+	"context"
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"doc-share/internal/config"
 	"doc-share/internal/model"
@@ -289,6 +298,83 @@ func TestOAuthSecretKeepOnEmpty(t *testing.T) {
 	s := a.Settings()
 	if s.OAuthGitHubClientSecret != "keep-me" {
 		t.Fatalf("got %q", s.OAuthGitHubClientSecret)
+	}
+}
+
+func TestParseGoogleIDToken(t *testing.T) {
+	clientID := "123.apps.googleusercontent.com"
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("key: %v", err)
+	}
+	prev := lookupGoogleJWK
+	lookupGoogleJWK = func(ctx context.Context, kid string) (*rsa.PublicKey, error) {
+		if kid != "test-kid" {
+			return nil, errors.New("unknown kid")
+		}
+		return &priv.PublicKey, nil
+	}
+	t.Cleanup(func() { lookupGoogleJWK = prev })
+
+	mkToken := func(claims map[string]any) string {
+		t.Helper()
+		hdr, _ := json.Marshal(map[string]string{"alg": "RS256", "kid": "test-kid"})
+		body, _ := json.Marshal(claims)
+		hSeg := base64.RawURLEncoding.EncodeToString(hdr)
+		pSeg := base64.RawURLEncoding.EncodeToString(body)
+		sum := sha256.Sum256([]byte(hSeg + "." + pSeg))
+		sig, err := rsa.SignPKCS1v15(rand.Reader, priv, crypto.SHA256, sum[:])
+		if err != nil {
+			t.Fatalf("sign: %v", err)
+		}
+		return hSeg + "." + pSeg + "." + base64.RawURLEncoding.EncodeToString(sig)
+	}
+
+	token := mkToken(map[string]any{
+		"iss": "https://accounts.google.com",
+		"aud": clientID,
+		"sub": "google-sub-9",
+		"email": "user@gmail.com",
+		"email_verified": "true",
+		"name": "User",
+		"picture": "https://example.com/p.png",
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+	p, err := parseGoogleIDToken(context.Background(), token, clientID)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if p.Subject != "google-sub-9" || p.Email != "user@gmail.com" || !p.EmailVerified || p.Login != "user" {
+		t.Fatalf("profile=%+v", p)
+	}
+	if _, err := parseGoogleIDToken(context.Background(), token, "other-client"); err == nil {
+		t.Fatal("aud mismatch must fail")
+	}
+
+	noExp := mkToken(map[string]any{
+		"iss": "https://accounts.google.com", "aud": clientID, "sub": "x",
+	})
+	if _, err := parseGoogleIDToken(context.Background(), noExp, clientID); err == nil {
+		t.Fatal("missing exp must fail")
+	}
+
+	badSig := token[:len(token)-4] + "dead"
+	if _, err := parseGoogleIDToken(context.Background(), badSig, clientID); err == nil {
+		t.Fatal("bad signature must fail")
+	}
+}
+
+func TestOAuthFlexBool(t *testing.T) {
+	var b oauthFlexBool
+	for _, raw := range []string{`true`, `"true"`, `1`} {
+		if err := json.Unmarshal([]byte(raw), &b); err != nil || !bool(b) {
+			t.Fatalf("true case %s: err=%v v=%v", raw, err, b)
+		}
+	}
+	for _, raw := range []string{`false`, `"false"`, `0`, `null`} {
+		if err := json.Unmarshal([]byte(raw), &b); err != nil || bool(b) {
+			t.Fatalf("false case %s: err=%v v=%v", raw, err, b)
+		}
 	}
 }
 

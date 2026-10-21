@@ -515,7 +515,7 @@ window.UI = (function () {
     return wrap.firstChild;
   }
 
-  // 密码框右侧眼睛：切换 type=password / text
+  // 密码框右侧眼睛：切换 type=password / text；图标靠 .is-plain 切换（不用 SVG hidden）
   function bindPasswordToggle(root) {
     var scope = root && root.querySelectorAll ? root : document;
     scope.querySelectorAll('[data-pwd-toggle]').forEach(function (btn) {
@@ -524,17 +524,16 @@ window.UI = (function () {
       var wrap = btn.closest('.auth-pwd-wrap');
       var input = wrap && wrap.querySelector('input');
       if (!input) return;
-      var iconShow = btn.querySelector('[data-pwd-icon="show"]');
-      var iconHide = btn.querySelector('[data-pwd-icon="hide"]');
       function sync() {
         var plain = input.type === 'text';
+        btn.classList.toggle('is-plain', plain);
         btn.setAttribute('aria-pressed', plain ? 'true' : 'false');
         btn.setAttribute('aria-label', t(plain ? 'login.hidePwd' : 'login.showPwd'));
         btn.title = t(plain ? 'login.hidePwd' : 'login.showPwd');
-        if (iconShow) iconShow.hidden = plain;
-        if (iconHide) iconHide.hidden = !plain;
       }
-      btn.addEventListener('click', function () {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
         input.type = input.type === 'password' ? 'text' : 'password';
         sync();
       });

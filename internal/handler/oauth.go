@@ -2,17 +2,24 @@ package handler
 
 import (
 	"context"
+	"crypto"
 	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log"
+	"math/big"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -281,7 +288,15 @@ func (a *App) OAuthCallback(c *gin.Context) {
 		profile, err = fetchGoogleUser(ctx, cfg, code)
 	}
 	if err != nil || strings.TrimSpace(profile.Subject) == "" {
-		a.oauthFail(c, "获取用户信息失败")
+		log.Printf("[oauth] %s fetch profile failed: err=%v subject=%q redirect=%q", provider, err, profile.Subject, cfg.RedirectURL)
+		msg := "获取用户信息失败"
+		if err != nil {
+			es := err.Error()
+			if strings.Contains(es, "exchange") || strings.Contains(es, "cannot fetch token") || strings.Contains(es, "oauth2:") {
+				msg = "第三方登录换取令牌失败，请核对 Client Secret 与回调地址"
+			}
+		}
+		a.oauthFail(c, msg)
 		return
 	}
 
@@ -614,10 +629,254 @@ func fetchGitHubPrimaryEmail(ctx context.Context, client *http.Client) (string, 
 func defaultFetchGoogleUser(ctx context.Context, cfg *oauth2.Config, code string) (oauthProfile, error) {
 	tok, err := cfg.Exchange(ctx, code)
 	if err != nil {
-		return oauthProfile{}, err
+		return oauthProfile{}, fmt.Errorf("google token exchange: %w", err)
+	}
+	// 优先用换票返回的 id_token（OIDC，验签后用），避免再请求 userinfo
+	if raw, ok := tok.Extra("id_token").(string); ok && strings.TrimSpace(raw) != "" {
+		if p, perr := parseGoogleIDToken(ctx, raw, cfg.ClientID); perr == nil {
+			return p, nil
+		} else {
+			log.Printf("[oauth] google id_token parse: %v", perr)
+		}
 	}
 	client := cfg.Client(ctx, tok)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://openidconnect.googleapis.com/v1/userinfo", nil)
+	for _, endpoint := range []string{
+		"https://openidconnect.googleapis.com/v1/userinfo",
+		"https://www.googleapis.com/oauth2/v3/userinfo",
+	} {
+		p, uerr := fetchGoogleUserinfo(ctx, client, endpoint)
+		if uerr == nil {
+			return p, nil
+		}
+		log.Printf("[oauth] google userinfo %s: %v", endpoint, uerr)
+	}
+	return oauthProfile{}, fmt.Errorf("google userinfo unavailable")
+}
+
+// oauthFlexBool 兼容 Google 偶发把 email_verified 写成字符串 "true"/"false"
+type oauthFlexBool bool
+
+func (b *oauthFlexBool) UnmarshalJSON(data []byte) error {
+	s := strings.TrimSpace(string(data))
+	switch {
+	case s == "true" || s == `"true"` || s == "1":
+		*b = true
+	case s == "false" || s == `"false"` || s == "0" || s == "null" || s == "":
+		*b = false
+	default:
+		var v bool
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		*b = oauthFlexBool(v)
+	}
+	return nil
+}
+
+const googleJWKSURL = "https://www.googleapis.com/oauth2/v3/certs"
+
+var (
+	googleJWKSMu   sync.Mutex
+	googleJWKSKeys map[string]*rsa.PublicKey
+	googleJWKSExp  time.Time
+	// 测试可替换：按 kid 取公钥
+	lookupGoogleJWK = defaultLookupGoogleJWK
+)
+
+func parseGoogleIDToken(ctx context.Context, raw, clientID string) (oauthProfile, error) {
+	if err := verifyGoogleIDTokenRS256(ctx, raw); err != nil {
+		return oauthProfile{}, err
+	}
+	return parseGoogleIDTokenClaims(raw, clientID)
+}
+
+func verifyGoogleIDTokenRS256(ctx context.Context, raw string) error {
+	parts := strings.Split(raw, ".")
+	if len(parts) != 3 {
+		return fmt.Errorf("id_token segments")
+	}
+	hdrJSON, err := b64URLDecode(parts[0])
+	if err != nil {
+		return fmt.Errorf("id_token header: %w", err)
+	}
+	var hdr struct {
+		Kid string `json:"kid"`
+		Alg string `json:"alg"`
+	}
+	if err := json.Unmarshal(hdrJSON, &hdr); err != nil || hdr.Kid == "" {
+		return fmt.Errorf("id_token header kid")
+	}
+	if hdr.Alg != "" && hdr.Alg != "RS256" {
+		return fmt.Errorf("id_token alg %q", hdr.Alg)
+	}
+	pub, err := lookupGoogleJWK(ctx, hdr.Kid)
+	if err != nil {
+		return fmt.Errorf("id_token jwk: %w", err)
+	}
+	sig, err := b64URLDecode(parts[2])
+	if err != nil {
+		return fmt.Errorf("id_token sig: %w", err)
+	}
+	sum := sha256.Sum256([]byte(parts[0] + "." + parts[1]))
+	if err := rsa.VerifyPKCS1v15(pub, crypto.SHA256, sum[:], sig); err != nil {
+		return fmt.Errorf("id_token signature")
+	}
+	return nil
+}
+
+func defaultLookupGoogleJWK(ctx context.Context, kid string) (*rsa.PublicKey, error) {
+	googleJWKSMu.Lock()
+	if googleJWKSKeys != nil && time.Now().Before(googleJWKSExp) {
+		if k := googleJWKSKeys[kid]; k != nil {
+			googleJWKSMu.Unlock()
+			return k, nil
+		}
+	}
+	googleJWKSMu.Unlock()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, googleJWKSURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("jwks %s", res.Status)
+	}
+	var doc struct {
+		Keys []struct {
+			Kid string `json:"kid"`
+			Kty string `json:"kty"`
+			N   string `json:"n"`
+			E   string `json:"e"`
+		} `json:"keys"`
+	}
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return nil, err
+	}
+	keys := make(map[string]*rsa.PublicKey, len(doc.Keys))
+	for _, k := range doc.Keys {
+		if k.Kid == "" || k.Kty != "RSA" {
+			continue
+		}
+		pub, err := rsaPublicFromJWK(k.N, k.E)
+		if err != nil {
+			continue
+		}
+		keys[k.Kid] = pub
+	}
+	ttl := 1 * time.Hour
+	if cc := res.Header.Get("Cache-Control"); cc != "" {
+		for _, p := range strings.Split(cc, ",") {
+			p = strings.TrimSpace(p)
+			if strings.HasPrefix(p, "max-age=") {
+				if sec, err := strconv.Atoi(strings.TrimPrefix(p, "max-age=")); err == nil && sec > 60 {
+					ttl = time.Duration(sec) * time.Second
+				}
+			}
+		}
+	}
+	googleJWKSMu.Lock()
+	googleJWKSKeys = keys
+	googleJWKSExp = time.Now().Add(ttl)
+	pub := keys[kid]
+	googleJWKSMu.Unlock()
+	if pub == nil {
+		return nil, fmt.Errorf("kid %q not found", kid)
+	}
+	return pub, nil
+}
+
+func rsaPublicFromJWK(nB64, eB64 string) (*rsa.PublicKey, error) {
+	nb, err := b64URLDecode(nB64)
+	if err != nil || len(nb) == 0 {
+		return nil, fmt.Errorf("jwk n")
+	}
+	eb, err := b64URLDecode(eB64)
+	if err != nil || len(eb) == 0 {
+		return nil, fmt.Errorf("jwk e")
+	}
+	var eInt int
+	for _, b := range eb {
+		eInt = eInt<<8 | int(b)
+	}
+	if eInt <= 0 {
+		return nil, fmt.Errorf("jwk e value")
+	}
+	return &rsa.PublicKey{N: new(big.Int).SetBytes(nb), E: eInt}, nil
+}
+
+func b64URLDecode(s string) ([]byte, error) {
+	if b, err := base64.RawURLEncoding.DecodeString(s); err == nil {
+		return b, nil
+	}
+	return base64.URLEncoding.DecodeString(s)
+}
+
+func parseGoogleIDTokenClaims(raw, clientID string) (oauthProfile, error) {
+	parts := strings.Split(raw, ".")
+	if len(parts) != 3 {
+		return oauthProfile{}, fmt.Errorf("id_token segments")
+	}
+	payload, err := b64URLDecode(parts[1])
+	if err != nil {
+		return oauthProfile{}, fmt.Errorf("id_token payload: %w", err)
+	}
+	var claims struct {
+		Iss           string          `json:"iss"`
+		Aud           json.RawMessage `json:"aud"`
+		Sub           string          `json:"sub"`
+		Email         string          `json:"email"`
+		EmailVerified oauthFlexBool   `json:"email_verified"`
+		Name          string          `json:"name"`
+		Picture       string          `json:"picture"`
+		Exp           int64           `json:"exp"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil || claims.Sub == "" {
+		return oauthProfile{}, fmt.Errorf("id_token claims")
+	}
+	iss := strings.TrimSuffix(claims.Iss, "/")
+	if iss != "https://accounts.google.com" && iss != "accounts.google.com" {
+		return oauthProfile{}, fmt.Errorf("id_token iss %q", claims.Iss)
+	}
+	if claims.Exp <= 0 {
+		return oauthProfile{}, fmt.Errorf("id_token missing exp")
+	}
+	if time.Now().Unix() > claims.Exp+60 {
+		return oauthProfile{}, fmt.Errorf("id_token expired")
+	}
+	if !googleAudOK(claims.Aud, clientID) {
+		return oauthProfile{}, fmt.Errorf("id_token aud mismatch")
+	}
+	return googleProfileFromClaims(claims.Sub, claims.Email, bool(claims.EmailVerified), claims.Name, claims.Picture), nil
+}
+
+func googleAudOK(raw json.RawMessage, clientID string) bool {
+	clientID = strings.TrimSpace(clientID)
+	if clientID == "" || len(raw) == 0 {
+		return false
+	}
+	var one string
+	if json.Unmarshal(raw, &one) == nil {
+		return one == clientID
+	}
+	var many []string
+	if json.Unmarshal(raw, &many) == nil {
+		for _, a := range many {
+			if a == clientID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func fetchGoogleUserinfo(ctx context.Context, client *http.Client, endpoint string) (oauthProfile, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return oauthProfile{}, err
 	}
@@ -628,30 +887,34 @@ func defaultFetchGoogleUser(ctx context.Context, cfg *oauth2.Config, code string
 	defer res.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if res.StatusCode != http.StatusOK {
-		return oauthProfile{}, fmt.Errorf("google userinfo: %s", res.Status)
+		return oauthProfile{}, fmt.Errorf("%s", res.Status)
 	}
 	var u struct {
-		Sub           string `json:"sub"`
-		Email         string `json:"email"`
-		EmailVerified bool   `json:"email_verified"`
-		Name          string `json:"name"`
-		Picture       string `json:"picture"`
+		Sub           string        `json:"sub"`
+		Email         string        `json:"email"`
+		EmailVerified oauthFlexBool `json:"email_verified"`
+		Name          string        `json:"name"`
+		Picture       string        `json:"picture"`
 	}
 	if err := json.Unmarshal(body, &u); err != nil || u.Sub == "" {
-		return oauthProfile{}, fmt.Errorf("google userinfo parse")
+		return oauthProfile{}, fmt.Errorf("parse")
 	}
+	return googleProfileFromClaims(u.Sub, u.Email, bool(u.EmailVerified), u.Name, u.Picture), nil
+}
+
+func googleProfileFromClaims(sub, email string, verified bool, name, picture string) oauthProfile {
 	login := ""
-	if at := strings.Index(u.Email, "@"); at > 0 {
-		login = u.Email[:at]
+	if at := strings.Index(email, "@"); at > 0 {
+		login = email[:at]
 	}
 	return oauthProfile{
-		Subject:       u.Sub,
-		Email:         u.Email,
-		EmailVerified: u.EmailVerified,
+		Subject:       sub,
+		Email:         email,
+		EmailVerified: verified,
 		Login:         login,
-		Nickname:      u.Name,
-		Avatar:        u.Picture,
-	}, nil
+		Nickname:      name,
+		Avatar:        picture,
+	}
 }
 
 // oauthViewFlags 登录/注册页注入的按钮可见性

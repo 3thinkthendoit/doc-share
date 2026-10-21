@@ -594,7 +594,10 @@ a.stat-card:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 }
 .auth-pwd-toggle:hover{color:var(--text);background:var(--bg-soft)}
 .auth-pwd-toggle:focus-visible{outline:2px solid var(--primary);outline-offset:1px}
-.auth-pwd-toggle svg{display:block;flex:none}
+.auth-pwd-toggle .auth-pwd-ico{display:none;flex:none;overflow:visible}
+.auth-pwd-toggle .auth-pwd-ico-off{display:block}          /* 默认密文：划眼 */
+.auth-pwd-toggle.is-plain .auth-pwd-ico-off{display:none}
+.auth-pwd-toggle.is-plain .auth-pwd-ico-on{display:block}  /* 明文：睁眼 */
 /* 盖过 .auth-card label{display:block}，否则 gap 不生效、勾选与文字贴死 */
 .auth-card label.auth-agree{
   display:flex;align-items:center;gap:6px;

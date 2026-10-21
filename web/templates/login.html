@@ -65,7 +65,7 @@
         {{if not .totpStep}}
         <label class="auth-agree"><input type="checkbox" name="agree" id="loginAgree" required><span class="auth-agree-text">{{$.T "login.agreePrefix"}}<a href="/terms" target="_blank" rel="noopener">《{{$.T "legal.termsTitle"}}》</a>{{$.T "login.agreeAnd"}}<a href="/privacy" target="_blank" rel="noopener">《{{$.T "legal.privacyTitle"}}》</a></span></label>
         {{end}}
-        <button type="submit" class="btn btn-primary btn-block auth-submit">{{$.T "login.submit"}}</button>
+        <button type="submit" class="btn btn-primary btn-block auth-submit" id="loginSubmit" {{if not .totpStep}}disabled{{end}}>{{$.T "login.submit"}}</button>
       </form>
       <div id="loginExtra" {{if .totpStep}}hidden{{end}}>
       <p class="auth-recover"><a href="/forgot-username" target="_blank" rel="noopener">{{$.T "recover.forgotUserLink"}}</a><span class="auth-recover-sep">|</span><a href="/forgot-password" target="_blank" rel="noopener">{{$.T "recover.forgotPwdLink"}}</a></p>
@@ -229,6 +229,8 @@
   var credBox = document.getElementById('loginCred');
   var totpBox = document.getElementById('loginTotp');
   var pendingEl = document.getElementById('totpPending');
+  var agreeEl = document.getElementById('loginAgree');
+  var submitBtn = document.getElementById('loginSubmit');
   function showTOTP(data) {
     credBox.hidden = true;
     credBox.querySelectorAll('[required]').forEach(function (el) { el.required = false; });
@@ -236,6 +238,7 @@
     if (extra) extra.hidden = true;
     var agreeWrap = document.querySelector('.auth-agree');
     if (agreeWrap) agreeWrap.hidden = true;
+    if (submitBtn) submitBtn.disabled = false;
     totpBox.hidden = false;
     // 邮箱验证码与 TOTP 都曾用 name=code；进 TOTP 时去掉邮件码字段名，避免 FormData 冲突
     var mailCode = document.getElementById('loginMailCode');
@@ -258,26 +261,21 @@
       secret.textContent = '';
     }
   }
-  var agreeEl = document.getElementById('loginAgree');
-  function ensureAgree() {
-    if (totpBox && !totpBox.hidden) return true;
-    if (agreeEl && !agreeEl.checked) {
-      showError('login.needAgree');
-      return false;
-    }
-    return true;
+  // 协议勾选只锁邮箱/账号登录按钮；OAuth 可直接点
+  function syncAgreeGate() {
+    var ok = !agreeEl || agreeEl.checked || (totpBox && !totpBox.hidden);
+    if (submitBtn && !submitBtn.dataset.busy) submitBtn.disabled = !ok;
   }
-  document.querySelectorAll('#loginOAuth .auth-oauth-icon').forEach(function (a) {
-    a.addEventListener('click', function (e) {
-      if (!ensureAgree()) e.preventDefault();
-    });
-  });
+  if (agreeEl) {
+    agreeEl.addEventListener('change', syncAgreeGate);
+    syncAgreeGate();
+  }
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
     if (!UI.validateForm(form)) return;
-    if (!ensureAgree()) return;
-    var btn = form.querySelector('[type=submit]');
-    if (btn) btn.disabled = true;
+    if (agreeEl && !agreeEl.checked && (!totpBox || totpBox.hidden)) return;
+    var btn = submitBtn || form.querySelector('[type=submit]');
+    if (btn) { btn.disabled = true; btn.dataset.busy = '1'; }
     errBox.hidden = true;
     var totp = !totpBox.hidden;
     try {
@@ -290,18 +288,20 @@
       if (!res.ok) {
         showError((data && data.error) || '登录失败');
         if (!totp && modeEl.value === 'account') refreshCaptcha();
-        if (btn) btn.disabled = false;
+        if (btn) { delete btn.dataset.busy; }
+        syncAgreeGate();
         return;
       }
       if (data && (data.step === 'totp' || data.step === 'totp_enroll')) {
+        if (btn) { delete btn.dataset.busy; }
         showTOTP(data);
-        if (btn) btn.disabled = false;
         return;
       }
       location.href = UI.safeRedirect(data && data.redirect, '/console');
     } catch (err) {
       showError('网络错误');
-      if (btn) btn.disabled = false;
+      if (btn) { delete btn.dataset.busy; }
+      syncAgreeGate();
     }
   });
 })();

@@ -220,11 +220,7 @@
     }
     return true;
   }
-  document.querySelectorAll('#loginOAuth .auth-oauth-icon').forEach(function (a) {
-    a.addEventListener('click', function (e) {
-      if (!ensureAgree()) e.preventDefault();
-    });
-  });
+  // OAuth 与登录页一致：不强制先勾选协议
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
     if (!UI.validateForm(form)) return;
