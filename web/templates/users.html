@@ -50,7 +50,9 @@
                 <button type="button" role="menuitem" data-act="pwd">{{$.T "重置密码"}}</button>
                 <button type="button" role="menuitem" data-act="unlock">{{$.T "user.unlock"}}</button>
                 <button type="button" role="menuitem" data-act="totp">{{$.T "user.resetTotp"}}</button>
+                {{if ne .Role "admin"}}
                 <button type="button" role="menuitem" class="danger" data-act="del">{{$.T "删除"}}</button>
+                {{end}}
               </div>
             </div>
           </td>

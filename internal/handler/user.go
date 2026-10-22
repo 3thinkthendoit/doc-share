@@ -238,7 +238,7 @@ func (a *App) UpdateUser(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": user})
 }
 
-// DeleteUser 删除用户（禁止删除自己）；事务内级联清理其文档、分享链接与项目，
+// DeleteUser 删除用户（禁止删除自己与任意管理员）；事务内级联清理其文档、分享链接与项目，
 // 避免孤儿分享 token 仍可匿名访问（M1）
 func (a *App) DeleteUser(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
@@ -247,10 +247,13 @@ func (a *App) DeleteUser(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "不能删除当前登录账号"})
 		return
 	}
-	var exists int64
-	a.DB.Model(&model.User{}).Where("id = ?", id).Count(&exists)
-	if exists == 0 {
+	var target model.User
+	if err := a.DB.First(&target, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+		return
+	}
+	if target.Role == model.RoleAdmin {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "不能删除管理员账号"})
 		return
 	}
 	var deletedDocIDs []uint
