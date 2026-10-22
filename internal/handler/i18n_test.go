@@ -123,6 +123,7 @@ func TestPagesRender(t *testing.T) {
 		{"users.html", func() View {
 			v := withPager(base(), "/console/users")
 			v["users"] = []model.User{*user}
+			v["oauthByUser"] = map[uint][]string{}
 			return v
 		}},
 		{"share_view.html", func() View { v := base(); v["user"] = nil; v["doc"] = &doc; return v }},

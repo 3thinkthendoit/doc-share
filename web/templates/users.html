@@ -12,7 +12,7 @@
 
   <div class="panel">
     <table class="table">
-      <thead><tr><th>ID</th><th>{{$.T "头像"}}</th><th>{{$.T "用户名"}}</th><th>{{$.T "昵称"}}</th><th>{{$.T "角色"}}</th><th>{{$.T "状态"}}</th><th>{{$.T "创建时间"}}</th><th>{{$.T "最近活跃"}}</th><th class="col-actions">{{$.T "操作"}}</th></tr></thead>
+      <thead><tr><th>ID</th><th>{{$.T "头像"}}</th><th>{{$.T "用户名"}}</th><th>{{$.T "昵称"}}</th><th>{{$.T "user.colAuth"}}</th><th>{{$.T "角色"}}</th><th>{{$.T "状态"}}</th><th>{{$.T "创建时间"}}</th><th>{{$.T "最近活跃"}}</th><th class="col-actions">{{$.T "操作"}}</th></tr></thead>
       <tbody>
       {{range .users}}
         <tr data-id="{{.ID}}" data-username="{{.Username}}" data-nickname="{{.Nickname}}" data-role="{{.Role}}" data-status="{{.Status}}" data-avatar="{{.Avatar}}" data-email="{{.Email}}" data-phone="{{.Phone}}">
@@ -20,6 +20,20 @@
           <td><span class="user-avatar user-avatar-sm">{{if .Avatar}}<img src="{{.Avatar}}" alt="{{$.T "头像"}}">{{else}}{{avatar .Nickname .Username}}{{end}}</span></td>
           <td class="mono">{{.Username}}</td>
           <td>{{.Nickname}}</td>
+          <td>
+            {{$ps := index $.oauthByUser .ID}}
+            {{if not $ps}}<span class="muted">—</span>{{else}}
+            <span class="user-auth-providers">
+              {{range $ps}}
+              {{if eq . "github"}}
+              <span class="user-auth-icon" title="{{$.T "user.authGitHub"}}" aria-label="{{$.T "user.authGitHub"}}">{{template "iconOAuthGitHub" 18}}</span>
+              {{else if eq . "google"}}
+              <span class="user-auth-icon" title="{{$.T "user.authGoogle"}}" aria-label="{{$.T "user.authGoogle"}}">{{template "iconOAuthGoogle" 18}}</span>
+              {{end}}
+              {{end}}
+            </span>
+            {{end}}
+          </td>
           <td class="mono">{{.Role}}</td>
           <td>
             {{if eq .Status 1}}<span class="badge badge-on">{{$.T "启用"}}</span>{{else}}<span class="badge badge-off">{{$.T "禁用"}}</span>{{end}}

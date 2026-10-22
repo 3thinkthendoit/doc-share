@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -24,14 +25,61 @@ func (a *App) UsersPage(c *gin.Context) {
 	var users []model.User
 	tx.Order("id asc").Offset(pg.Offset).Limit(pg.Size).Find(&users)
 	data := gin.H{
-		"title":  "用户管理",
-		"users":  users,
-		"totpOn": a.Settings().TOTPEnabled,
+		"title":       "用户管理",
+		"users":       users,
+		"totpOn":      a.Settings().TOTPEnabled,
+		"oauthByUser": loadUserOAuthProviders(a.DB, users),
 	}
 	for k, v := range pagerFields(pg, "/console/users", "") {
 		data[k] = v
 	}
 	a.render(c, "users.html", data)
+}
+
+// loadUserOAuthProviders 批量查出本页用户绑定的三方登录方式（github/google），无绑定则 map 中无该 key。
+func loadUserOAuthProviders(db *gorm.DB, users []model.User) map[uint][]string {
+	out := map[uint][]string{}
+	if db == nil || len(users) == 0 {
+		return out
+	}
+	ids := make([]uint, len(users))
+	for i := range users {
+		ids[i] = users[i].ID
+	}
+	var idents []model.OAuthIdentity
+	if err := db.Select("user_id", "provider").Where("user_id IN ?", ids).Find(&idents).Error; err != nil {
+		log.Printf("[users] 查询 OAuth 绑定失败: %v", err)
+		return out
+	}
+	seen := map[uint]map[string]bool{}
+	for _, id := range idents {
+		p := strings.ToLower(strings.TrimSpace(id.Provider))
+		if p != model.OAuthProviderGitHub && p != model.OAuthProviderGoogle {
+			continue
+		}
+		if seen[id.UserID] == nil {
+			seen[id.UserID] = map[string]bool{}
+		}
+		if seen[id.UserID][p] {
+			continue
+		}
+		seen[id.UserID][p] = true
+		out[id.UserID] = append(out[id.UserID], p)
+	}
+	// 展示顺序固定：GitHub → Google
+	for uid, ps := range out {
+		ordered := make([]string, 0, len(ps))
+		for _, want := range []string{model.OAuthProviderGitHub, model.OAuthProviderGoogle} {
+			for _, p := range ps {
+				if p == want {
+					ordered = append(ordered, p)
+					break
+				}
+			}
+		}
+		out[uid] = ordered
+	}
+	return out
 }
 
 type userReq struct {

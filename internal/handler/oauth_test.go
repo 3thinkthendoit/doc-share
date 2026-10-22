@@ -11,6 +11,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -398,5 +399,96 @@ func TestOAuthStateRoundTrip(t *testing.T) {
 	a2 := &App{Signer: session.NewSigner("other-secret-key-at-least-32-bytes!")}
 	if _, ok := a2.parseOAuthState(state); ok {
 		t.Fatal("foreign signer must reject")
+	}
+}
+
+// TestLoadUserOAuthProviders 用户列表登录方式：无绑定为空；GitHub/Google 去重并固定顺序
+func TestLoadUserOAuthProviders(t *testing.T) {
+	a := oauthTestApp(t)
+	local := model.User{Username: "local1", Nickname: "本地", Role: model.RoleViewer, Status: model.StatusEnabled}
+	gh := model.User{Username: "gh1", Nickname: "GH", Role: model.RoleViewer, Status: model.StatusEnabled}
+	both := model.User{Username: "both1", Nickname: "Both", Role: model.RoleViewer, Status: model.StatusEnabled}
+	for _, u := range []*model.User{&local, &gh, &both} {
+		if err := a.DB.Create(u).Error; err != nil {
+			t.Fatalf("seed user: %v", err)
+		}
+	}
+	if err := a.DB.Create(&model.OAuthIdentity{Provider: model.OAuthProviderGitHub, Subject: "g1", UserID: gh.ID}).Error; err != nil {
+		t.Fatalf("seed gh: %v", err)
+	}
+	if err := a.DB.Create(&model.OAuthIdentity{Provider: model.OAuthProviderGoogle, Subject: "o1", UserID: both.ID}).Error; err != nil {
+		t.Fatalf("seed google: %v", err)
+	}
+	if err := a.DB.Create(&model.OAuthIdentity{Provider: model.OAuthProviderGitHub, Subject: "g2", UserID: both.ID}).Error; err != nil {
+		t.Fatalf("seed both gh: %v", err)
+	}
+
+	got := loadUserOAuthProviders(a.DB, []model.User{local, gh, both})
+	if _, ok := got[local.ID]; ok {
+		t.Fatalf("本地注册不应有绑定: %v", got[local.ID])
+	}
+	if ps := got[gh.ID]; len(ps) != 1 || ps[0] != model.OAuthProviderGitHub {
+		t.Fatalf("github only: %v", ps)
+	}
+	if ps := got[both.ID]; len(ps) != 2 || ps[0] != model.OAuthProviderGitHub || ps[1] != model.OAuthProviderGoogle {
+		t.Fatalf("order want github,google got %v", ps)
+	}
+}
+
+// tableRowByUserID 从用户表 HTML 中截取 data-id 对应的 <tr>…</tr>
+func tableRowByUserID(body string, id uint) string {
+	marker := `data-id="` + itoa(int(id)) + `"`
+	i := strings.Index(body, marker)
+	if i < 0 {
+		return ""
+	}
+	start := strings.LastIndex(body[:i], "<tr")
+	rest := body[i:]
+	end := strings.Index(rest, "</tr>")
+	if start < 0 || end < 0 {
+		return ""
+	}
+	return body[start : i+end+len("</tr>")]
+}
+
+// TestUsersPageAuthColumn 用户管理页按行展示登录方式：绑定用户有图标，本地用户该行为 —
+func TestUsersPageAuthColumn(t *testing.T) {
+	a := oauthTestApp(t)
+	render := newRenderApp(t, a.DB)
+	render.Signer = a.Signer
+	users, err := loadTestUsers(a)
+	if err != nil {
+		t.Fatalf("users: %v", err)
+	}
+	owner := users["owner"]
+	local := users["boss"]
+	if err := a.DB.Create(&model.OAuthIdentity{
+		Provider: model.OAuthProviderGitHub, Subject: "page-gh", UserID: owner.ID,
+	}).Error; err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	w, c := newCtx()
+	asUser(c, local, http.MethodGet, "/console/users", "")
+	render.UsersPage(c)
+	assertCode(t, w, http.StatusOK)
+	body := w.Body.String()
+
+	ownerRow := tableRowByUserID(body, owner.ID)
+	if ownerRow == "" {
+		t.Fatal("未找到 owner 行")
+	}
+	if !strings.Contains(ownerRow, `user-auth-icon`) || !strings.Contains(ownerRow, "GitHub") {
+		t.Fatalf("owner 行应显示 GitHub 图标: %s", ownerRow)
+	}
+
+	localRow := tableRowByUserID(body, local.ID)
+	if localRow == "" {
+		t.Fatal("未找到本地用户行")
+	}
+	if strings.Contains(localRow, `user-auth-icon`) {
+		t.Fatalf("本地用户行不应有三方图标: %s", localRow)
+	}
+	if !strings.Contains(localRow, `<span class="muted">—</span>`) {
+		t.Fatalf("本地用户行应显示 —: %s", localRow)
 	}
 }
