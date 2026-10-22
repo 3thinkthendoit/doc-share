@@ -460,6 +460,27 @@ func (a *App) cleanupHTMLDoc(doc *model.Document) {
 	}
 }
 
+// cleanupHTMLDocsByIDs 批量清理 HTML 站点文件：一次查出 Content，合并 key 后异步删除。
+func (a *App) cleanupHTMLDocsByIDs(ids []uint) {
+	if a == nil || a.DB == nil || len(ids) == 0 {
+		return
+	}
+	var rows []model.Document
+	if err := a.DB.Unscoped().Select("id", "content").Where("id IN ?", ids).Find(&rows).Error; err != nil {
+		log.Printf("[trash] 批量读取 HTML Content 失败: %v", err)
+		return
+	}
+	var keys []string
+	for i := range rows {
+		if m, err := parseHTMLManifest(rows[i].Content); err == nil {
+			keys = append(keys, htmlSiteKeys(m)...)
+		}
+	}
+	if len(keys) > 0 {
+		a.deleteSiteFilesAsync(keys)
+	}
+}
+
 // ---- API：创建 / 替换 ----
 
 // singlePageSiteFiles 将完整 HTML 字符串打成仅含 index.html 的站点文件清单（Agent 单页）。

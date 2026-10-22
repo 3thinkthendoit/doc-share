@@ -913,15 +913,18 @@ func (a *App) PurgeDoc(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-// EmptyTrash 清空回收站：彻底删除当前用户有权编辑的全部软删文档（忽略列表筛选/分页）
+// emptyTrashChunkSize 清空回收站时每批 IN 删除的文档数，避免超大 IN 列表。
+const emptyTrashChunkSize = 500
+
+// EmptyTrash 清空回收站：彻底删除当前用户有权编辑的全部软删文档（忽略列表筛选/分页）。
+// 权限过滤后按批 IN 删除关联表与文档行，避免逐篇开事务。
 func (a *App) EmptyTrash(c *gin.Context) {
 	user := middleware.CurrentUser(c)
 	if user == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "未登录"})
 		return
 	}
-	// 只拉鉴权与 purge 元数据，避免把 longtext Content 整表灌进内存；
-	// HTML 站点文件清理在 cleanupHTMLDoc 内按需再读 Content。
+	// 只拉鉴权与类型元数据；HTML Content 在批量站点清理时按需再查。
 	var docs []model.Document
 	if err := a.DB.Unscoped().Select("id", "owner_id", "project_id", "type").
 		Where("deleted_at IS NOT NULL").Find(&docs).Error; err != nil {
@@ -929,7 +932,6 @@ func (a *App) EmptyTrash(c *gin.Context) {
 		return
 	}
 	// 与 requireDocEdit 同权：属主 / 管理员 / 项目属主或 edit 成员。
-	// 非管理员一次预取可编辑项目，避免逐条 projectRole 打库。
 	editPids := map[uint]bool{}
 	if !user.IsAdmin() {
 		var owned []uint
@@ -949,18 +951,42 @@ func (a *App) EmptyTrash(c *gin.Context) {
 		}
 		return doc.ProjectID != 0 && editPids[doc.ProjectID]
 	}
-	purged, failed := 0, 0
+	ids := make([]uint, 0, len(docs))
+	htmlSet := map[uint]bool{}
 	for i := range docs {
-		doc := &docs[i]
-		if !canPurge(doc) {
+		if !canPurge(&docs[i]) {
 			continue
 		}
-		if err := a.purgeDoc(doc); err != nil {
-			log.Printf("[trash] 清空失败 doc=%d: %v", doc.ID, err)
-			failed++
+		ids = append(ids, docs[i].ID)
+		if docs[i].Type == model.DocTypeHTML {
+			htmlSet[docs[i].ID] = true
+		}
+	}
+	if len(ids) == 0 {
+		c.JSON(http.StatusOK, gin.H{"ok": true, "purged": 0, "failed": 0})
+		return
+	}
+	purged, failed := 0, 0
+	for start := 0; start < len(ids); start += emptyTrashChunkSize {
+		end := start + emptyTrashChunkSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		chunk := ids[start:end]
+		// 站点清理与本批硬删同批进行，避免后批失败时已删光全量 HTML 文件
+		htmlChunk := make([]uint, 0)
+		for _, id := range chunk {
+			if htmlSet[id] {
+				htmlChunk = append(htmlChunk, id)
+			}
+		}
+		a.cleanupHTMLDocsByIDs(htmlChunk)
+		if err := a.purgeDocs(chunk); err != nil {
+			log.Printf("[trash] 批量清空失败 n=%d: %v", len(chunk), err)
+			failed += len(chunk)
 			continue
 		}
-		purged++
+		purged += len(chunk)
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true, "purged": purged, "failed": failed})
 }
@@ -969,21 +995,32 @@ func (a *App) EmptyTrash(c *gin.Context) {
 // 站点文件 → 分享配置/分享申请/修订/访客/评论 → 文档行本身
 func (a *App) purgeDoc(doc *model.Document) error {
 	a.cleanupHTMLDoc(doc)
+	return a.purgeDocs([]uint{doc.ID})
+}
+
+// purgeDocs 按 id 集合批量硬删：关联表 WHERE document_id IN (?)，再删文档行；成功后异步去索引。
+func (a *App) purgeDocs(ids []uint) error {
+	if len(ids) == 0 {
+		return nil
+	}
 	err := a.DB.Transaction(func(tx *gorm.DB) error {
 		for _, m := range []any{
 			&model.Share{}, &model.ShareAccessRequest{}, &model.DocumentRevision{},
 			&model.DocumentVisitor{}, &model.Comment{},
 		} {
-			if err := tx.Where("document_id = ?", doc.ID).Delete(m).Error; err != nil {
+			if err := tx.Where("document_id IN ?", ids).Delete(m).Error; err != nil {
 				return err
 			}
 		}
-		return tx.Unscoped().Delete(&model.Document{}, doc.ID).Error
+		return tx.Unscoped().Where("id IN ?", ids).Delete(&model.Document{}).Error
 	})
-	if err == nil {
-		a.deindexDocAsync(doc.ID) // 硬删除：从 ES 移除，避免孤儿
+	if err != nil {
+		return err
 	}
-	return err
+	for _, id := range ids {
+		a.deindexDocAsync(id)
+	}
+	return nil
 }
 
 // StartTrashSweeper 回收站 30 天到期清扫：启动即扫一次，之后每小时一轮

@@ -165,6 +165,56 @@ func TestEmptyTrash(t *testing.T) {
 	}
 }
 
+// TestEmptyTrashBatch 多篇一次清空：属主两篇均硬删，关联分享一并清除
+func TestEmptyTrashBatch(t *testing.T) {
+	a, doc := newAuthApp(t)
+	users, err := loadTestUsers(a)
+	if err != nil {
+		t.Fatalf("load users: %v", err)
+	}
+	owner := users["owner"]
+	render := newRenderApp(t, a.DB)
+
+	doc2 := model.Document{Title: "第二篇", Slug: "batchtrash2", Content: "b", OwnerID: owner.ID}
+	if err := a.DB.Create(&doc2).Error; err != nil {
+		t.Fatalf("seed doc2: %v", err)
+	}
+	if err := a.DB.Create(&model.Share{DocumentID: doc.ID, ShareToken: "batchtok1"}).Error; err != nil {
+		t.Fatalf("seed share1: %v", err)
+	}
+	if err := a.DB.Create(&model.Share{DocumentID: doc2.ID, ShareToken: "batchtok2"}).Error; err != nil {
+		t.Fatalf("seed share2: %v", err)
+	}
+	if err := a.DB.Delete(&model.Document{}, doc.ID).Error; err != nil {
+		t.Fatalf("trash1: %v", err)
+	}
+	if err := a.DB.Delete(&model.Document{}, doc2.ID).Error; err != nil {
+		t.Fatalf("trash2: %v", err)
+	}
+
+	w, c := newCtx()
+	asUser(c, owner, http.MethodPost, "/console/api/docs/trash/empty", "")
+	render.EmptyTrash(c)
+	assertCode(t, w, http.StatusOK)
+	var resp struct {
+		OK     bool `json:"ok"`
+		Purged int  `json:"purged"`
+		Failed int  `json:"failed"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil || !resp.OK || resp.Purged != 2 || resp.Failed != 0 {
+		t.Fatalf("batch empty: body=%s err=%v", w.Body.String(), err)
+	}
+	var n int64
+	a.DB.Unscoped().Model(&model.Document{}).Where("id IN ?", []uint{doc.ID, doc2.ID}).Count(&n)
+	if n != 0 {
+		t.Fatalf("两篇均应硬删, left=%d", n)
+	}
+	a.DB.Model(&model.Share{}).Where("document_id IN ?", []uint{doc.ID, doc2.ID}).Count(&n)
+	if n != 0 {
+		t.Fatalf("关联分享应一并清除, left=%d", n)
+	}
+}
+
 // TestEmptyTrashEditorAndAdmin 项目 edit 成员可清项目内他人回收站文档；view 不可；管理员可清全站
 func TestEmptyTrashEditorAndAdmin(t *testing.T) {
 	a, doc := newAuthApp(t)
