@@ -58,6 +58,9 @@
         </select>
         <button type="submit" class="btn">{{$.T "docs.query"}}</button>
         <a href="/console/docs?size={{.size}}{{if .trash}}&amp;trash=1{{end}}" class="btn">{{$.T "重置"}}</a>
+        {{if .trash}}
+        <button type="button" class="btn" id="emptyTrashBtn" style="color:#d93025">{{$.T "docs.emptyTrash"}}</button>
+        {{end}}
       </form>
 
       {{if .q}}
@@ -925,7 +928,7 @@ ShareModal.bind({
   });
 })();
 </script>
-<!-- 回收站：还原 / 彻底删除（POST /console/api/docs/:id/restore|purge） -->
+<!-- 回收站：还原 / 彻底删除 / 清空（POST .../restore|purge 与 .../trash/empty） -->
 <script>
 (function () {
   document.addEventListener('click', async function (e) {
@@ -950,6 +953,35 @@ ShareModal.bind({
       btn.disabled = false;
     }
   });
+  var emptyBtn = document.getElementById('emptyTrashBtn');
+  if (emptyBtn && window.UI) {
+    emptyBtn.addEventListener('click', async function () {
+      if (!await UI.confirm(UI.t('docs.emptyTrashConfirm'), { danger: true })) return;
+      emptyBtn.disabled = true;
+      try {
+        var res = await fetch('/console/api/docs/trash/empty', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        var d = await res.json().catch(function () { return {}; });
+        if (res.ok) {
+          var n = (d && d.purged) || 0;
+          var fail = (d && d.failed) || 0;
+          if (fail > 0) {
+            UI.toast(UI.t('docs.emptyTrashPartial', n, fail), 'error');
+          } else if (n === 0) {
+            UI.toast(UI.t('docs.trashEmpty'), 'success');
+          } else {
+            UI.toast(UI.t('docs.emptyTrashOk', n), 'success');
+          }
+          setTimeout(function () { location.reload(); }, 600);
+        } else {
+          UI.alert((d && d.error) || UI.t('操作失败'));
+          emptyBtn.disabled = false;
+        }
+      } catch (err) {
+        UI.toast(UI.t('common.netErr'), 'error');
+        emptyBtn.disabled = false;
+      }
+    });
+  }
 })();
 </script>
 <!-- 创建/更新时间的相对化由 ui.js 全局 [data-ts] 处理，本页只需保留 data-ts 属性 -->

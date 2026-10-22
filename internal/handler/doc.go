@@ -913,6 +913,55 @@ func (a *App) PurgeDoc(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// EmptyTrash 清空回收站：彻底删除当前用户有权编辑的全部软删文档（忽略列表筛选/分页）
+func (a *App) EmptyTrash(c *gin.Context) {
+	user := middleware.CurrentUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未登录"})
+		return
+	}
+	var docs []model.Document
+	if err := a.DB.Unscoped().Where("deleted_at IS NOT NULL").Find(&docs).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
+		return
+	}
+	// 与 requireDocEdit 同权：属主 / 管理员 / 项目属主或 edit 成员。
+	// 非管理员一次预取可编辑项目，避免逐条 projectRole 打库。
+	editPids := map[uint]bool{}
+	if !user.IsAdmin() {
+		var owned []uint
+		a.DB.Model(&model.Project{}).Where("owner_id = ?", user.ID).Pluck("id", &owned)
+		for _, pid := range owned {
+			editPids[pid] = true
+		}
+		var ms []model.ProjectMember
+		a.DB.Where("user_id = ? AND role = ?", user.ID, model.MemberRoleEdit).Find(&ms)
+		for _, m := range ms {
+			editPids[m.ProjectID] = true
+		}
+	}
+	canPurge := func(doc *model.Document) bool {
+		if user.IsAdmin() || doc.OwnerID == user.ID {
+			return true
+		}
+		return doc.ProjectID != 0 && editPids[doc.ProjectID]
+	}
+	purged, failed := 0, 0
+	for i := range docs {
+		doc := &docs[i]
+		if !canPurge(doc) {
+			continue
+		}
+		if err := a.purgeDoc(doc); err != nil {
+			log.Printf("[trash] 清空失败 doc=%d: %v", doc.ID, err)
+			failed++
+			continue
+		}
+		purged++
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "purged": purged, "failed": failed})
+}
+
 // purgeDoc 真正销毁链：「彻底删除」端点与 30 天到期清扫共用；
 // 站点文件 → 分享配置/分享申请/修订/访客/评论 → 文档行本身
 func (a *App) purgeDoc(doc *model.Document) error {

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -94,6 +95,155 @@ func TestTrashRestorePurge(t *testing.T) {
 	a.DB.Model(&model.Share{}).Where("document_id = ?", doc.ID).Count(&shares)
 	if shares != 0 {
 		t.Fatalf("彻底删除应连带销毁分享配置")
+	}
+}
+
+// TestEmptyTrash 清空回收站：属主可清自己的；他人回收站文档不受影响；回收站页带清空按钮
+func TestEmptyTrash(t *testing.T) {
+	a, doc := newAuthApp(t)
+	users, err := loadTestUsers(a)
+	if err != nil {
+		t.Fatalf("load users: %v", err)
+	}
+	owner := users["owner"]
+	outsider := users["outsider"]
+	render := newRenderApp(t, a.DB)
+
+	other := model.Document{Title: "他人文档", Slug: "othertrash", Content: "y", OwnerID: outsider.ID}
+	if err := a.DB.Create(&other).Error; err != nil {
+		t.Fatalf("seed other: %v", err)
+	}
+	if err := a.DB.Delete(&model.Document{}, doc.ID).Error; err != nil {
+		t.Fatalf("trash own: %v", err)
+	}
+	if err := a.DB.Delete(&model.Document{}, other.ID).Error; err != nil {
+		t.Fatalf("trash other: %v", err)
+	}
+
+	// 回收站页应出现清空按钮
+	w, c := newCtx()
+	asUser(c, owner, http.MethodGet, "/console/docs?trash=1", "")
+	render.DocsPage(c)
+	assertCode(t, w, http.StatusOK)
+	if !strings.Contains(w.Body.String(), `id="emptyTrashBtn"`) {
+		t.Fatalf("回收站视图应提供清空按钮")
+	}
+
+	w, c = newCtx()
+	asUser(c, owner, http.MethodPost, "/console/api/docs/trash/empty", "")
+	render.EmptyTrash(c)
+	assertCode(t, w, http.StatusOK)
+	var resp struct {
+		OK     bool `json:"ok"`
+		Purged int  `json:"purged"`
+		Failed int  `json:"failed"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil || !resp.OK || resp.Purged != 1 || resp.Failed != 0 {
+		t.Fatalf("empty own trash: body=%s err=%v", w.Body.String(), err)
+	}
+	var n int64
+	a.DB.Unscoped().Model(&model.Document{}).Where("id = ?", doc.ID).Count(&n)
+	if n != 0 {
+		t.Fatalf("属主文档应被清空")
+	}
+	a.DB.Unscoped().Model(&model.Document{}).Where("id = ?", other.ID).Count(&n)
+	if n != 1 {
+		t.Fatalf("他人回收站文档不应被属主清空")
+	}
+
+	// 局外人清空：不能动属主已清完的、也不能误伤自己以外（此处 outsider 清自己那篇）
+	w, c = newCtx()
+	asUser(c, outsider, http.MethodPost, "/console/api/docs/trash/empty", "")
+	render.EmptyTrash(c)
+	assertCode(t, w, http.StatusOK)
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil || !resp.OK || resp.Purged != 1 {
+		t.Fatalf("outsider empty: body=%s err=%v", w.Body.String(), err)
+	}
+	a.DB.Unscoped().Model(&model.Document{}).Where("id = ?", other.ID).Count(&n)
+	if n != 0 {
+		t.Fatalf("outsider 应清空自己的回收站文档")
+	}
+}
+
+// TestEmptyTrashEditorAndAdmin 项目 edit 成员可清项目内他人回收站文档；view 不可；管理员可清全站
+func TestEmptyTrashEditorAndAdmin(t *testing.T) {
+	a, doc := newAuthApp(t)
+	users, err := loadTestUsers(a)
+	if err != nil {
+		t.Fatalf("load users: %v", err)
+	}
+	editor := users["editm"]
+	viewer := users["viewm"]
+	admin := users["boss"]
+	outsider := users["outsider"]
+	render := newRenderApp(t, a.DB)
+
+	other := model.Document{Title: "局外回收站", Slug: "outtrash2", Content: "z", OwnerID: outsider.ID}
+	if err := a.DB.Create(&other).Error; err != nil {
+		t.Fatalf("seed other: %v", err)
+	}
+	if err := a.DB.Delete(&model.Document{}, doc.ID).Error; err != nil {
+		t.Fatalf("trash project doc: %v", err)
+	}
+	if err := a.DB.Delete(&model.Document{}, other.ID).Error; err != nil {
+		t.Fatalf("trash other: %v", err)
+	}
+
+	decode := func(t *testing.T, body []byte) (purged, failed int) {
+		t.Helper()
+		var resp struct {
+			OK     bool `json:"ok"`
+			Purged int  `json:"purged"`
+			Failed int  `json:"failed"`
+		}
+		if err := json.Unmarshal(body, &resp); err != nil || !resp.OK {
+			t.Fatalf("decode: body=%s err=%v", body, err)
+		}
+		return resp.Purged, resp.Failed
+	}
+	alive := func(id uint) bool {
+		var n int64
+		a.DB.Unscoped().Model(&model.Document{}).Where("id = ?", id).Count(&n)
+		return n == 1
+	}
+
+	// view 成员清空：项目文档与局外文档均不动
+	w, c := newCtx()
+	asUser(c, viewer, http.MethodPost, "/console/api/docs/trash/empty", "")
+	render.EmptyTrash(c)
+	assertCode(t, w, http.StatusOK)
+	if p, f := decode(t, w.Body.Bytes()); p != 0 || f != 0 {
+		t.Fatalf("view empty want 0/0 got purged=%d failed=%d", p, f)
+	}
+	if !alive(doc.ID) || !alive(other.ID) {
+		t.Fatalf("view 不应清空任何回收站文档")
+	}
+
+	// edit 成员清空：仅项目内文档
+	w, c = newCtx()
+	asUser(c, editor, http.MethodPost, "/console/api/docs/trash/empty", "")
+	render.EmptyTrash(c)
+	assertCode(t, w, http.StatusOK)
+	if p, f := decode(t, w.Body.Bytes()); p != 1 || f != 0 {
+		t.Fatalf("edit empty want purged=1 failed=0 got %d/%d", p, f)
+	}
+	if alive(doc.ID) {
+		t.Fatalf("edit 应清空项目内回收站文档")
+	}
+	if !alive(other.ID) {
+		t.Fatalf("edit 不应清空局外文档")
+	}
+
+	// 管理员清空：剩余全站回收站
+	w, c = newCtx()
+	asUser(c, admin, http.MethodPost, "/console/api/docs/trash/empty", "")
+	render.EmptyTrash(c)
+	assertCode(t, w, http.StatusOK)
+	if p, f := decode(t, w.Body.Bytes()); p != 1 || f != 0 {
+		t.Fatalf("admin empty want purged=1 failed=0 got %d/%d", p, f)
+	}
+	if alive(other.ID) {
+		t.Fatalf("管理员应清空全站回收站")
 	}
 }
 

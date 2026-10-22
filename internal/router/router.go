@@ -148,6 +148,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.GET("/api/docs/:id/import", app.ImportDocStatus)
 		admin.PUT("/api/docs/:id", app.UpdateDoc)
 		admin.DELETE("/api/docs/:id", app.DeleteDoc)
+		admin.POST("/api/docs/trash/empty", app.EmptyTrash) // 静态路径；与 :id/restore|purge 分段不同，互不冲突
 		admin.POST("/api/docs/:id/restore", app.RestoreDoc)
 		admin.POST("/api/docs/:id/purge", app.PurgeDoc)
 		admin.POST("/api/docs/html", app.CreateHTMLDoc)
