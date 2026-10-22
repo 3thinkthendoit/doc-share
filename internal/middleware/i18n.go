@@ -28,7 +28,15 @@ func Lang(c *gin.Context) string {
 // /openapi 是对外契约、/static 与 /uploads 是文件流，都不参与翻译
 var capturePrefixes = []string{"/console", "/login", "/register", "/s/"}
 
+// skipCaptureSuffixes 流式或二进制响应路径：整包缓冲会破坏 SSE 首包、并吃掉导出内存。
+var skipCaptureSuffixes = []string{"/completions", "/export"}
+
 func shouldCapture(path string) bool {
+	for _, s := range skipCaptureSuffixes {
+		if strings.HasSuffix(path, s) {
+			return false
+		}
+	}
 	for _, p := range capturePrefixes {
 		if strings.HasPrefix(path, p) {
 			return true

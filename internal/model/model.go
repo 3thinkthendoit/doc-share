@@ -167,9 +167,9 @@ type Document struct {
 	// ContentVersion 乐观锁版本：每次内容落库原子 +1（见 ShareSaveContent / UpdateDoc）。
 	// 客户端保存时携带 base_version，与服务端不一致返回 409，防止并发编辑互相覆盖
 	ContentVersion int64     `gorm:"not null;default:0" json:"content_version"`
-	OwnerID        uint      `gorm:"index;not null" json:"owner_id"`
+	OwnerID        uint      `gorm:"index;index:idx_docs_owner_updated,priority:1;not null" json:"owner_id"`
 	Owner          User      `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
-	ProjectID      uint      `gorm:"index;not null;default:0" json:"project_id"` // 0 表示未分组
+	ProjectID      uint      `gorm:"index;index:idx_docs_project_updated,priority:1;not null;default:0" json:"project_id"` // 0 表示未分组
 	Project        *Project  `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
 	CategoryID     uint      `gorm:"index;not null;default:0" json:"category_id"` // 0 表示未分类
 	Category       *Category `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
@@ -185,7 +185,8 @@ type Document struct {
 	UpdatedVia  string    `gorm:"size:16;not null;default:''" json:"updated_via"`
 	UpdatedBy   *User     `gorm:"foreignKey:UpdatedByID" json:"updated_by,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	// UpdatedAt 参与列表 ORDER BY；与 owner_id / project_id 组成复合索引，避免大表 filesort
+	UpdatedAt time.Time `gorm:"index:idx_docs_owner_updated,priority:2;index:idx_docs_project_updated,priority:2" json:"updated_at"`
 	// DeletedAt 软删除（回收站）：Valid=true 表示在回收站，30 天内可还原，到期由清扫器彻底销毁；
 	// GORM 常规查询自动附加 deleted_at IS NULL，回收站文档天然退出列表/搜索/分享/开放平台
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`

@@ -58,27 +58,19 @@ func (a *App) ImportDocFromURL(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	// 控制台先落文档再后台抓取，避免图片下载堵住保存请求。开放接口仍同步返回成稿。
-	if !c.GetBool("viaOpenAPI") {
-		doc, err := a.createPendingImportDoc(user, req.URL, req.Title, a.tr(c, "edit.untitled"), c.ClientIP(), projectID, categoryID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-		go a.finishImportFromURL(doc.ID, req.URL, strings.TrimSpace(req.Title), doc.Title)
-		c.JSON(http.StatusOK, gin.H{"data": doc, "importing": true})
-		return
+	// 控制台与开放接口均先落占位文档再后台抓取，避免最长 importTimeout 占住 HTTP worker。
+	// 开放接口可轮询 GET /openapi/v1/docs/:id，看 content 是否仍含导入占位文案。
+	via := ""
+	if c.GetBool("viaOpenAPI") {
+		via = openapiVia(c)
 	}
-	doc, err := a.createDocFromPublicURL(c.Request.Context(), user, req.URL, req.Title, a.tr(c, "edit.untitled"), openapiVia(c), c.ClientIP(), projectID, categoryID)
+	doc, err := a.createPendingImportDoc(user, req.URL, req.Title, a.tr(c, "edit.untitled"), via, c.ClientIP(), projectID, categoryID)
 	if err != nil {
-		status := http.StatusBadRequest
-		if err.Error() == "创建失败" {
-			status = http.StatusInternalServerError
-		}
-		c.JSON(status, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": doc})
+	go a.finishImportFromURL(doc.ID, req.URL, strings.TrimSpace(req.Title), doc.Title)
+	c.JSON(http.StatusOK, gin.H{"data": doc, "importing": true})
 }
 
 // createDocFromPublicURL 抓取公网页面并落成可编辑 Markdown。调用方负责登录态与项目/分类归属校验。
@@ -145,7 +137,7 @@ func importPendingMarkdown(rawURL string) string {
 	return importPendingMark + "\n\n> 来源：" + strings.TrimSpace(rawURL) + "\n"
 }
 
-func (a *App) createPendingImportDoc(user *model.User, rawURL, title, untitled, clientIP string, projectID, categoryID uint) (*model.Document, error) {
+func (a *App) createPendingImportDoc(user *model.User, rawURL, title, untitled, via, clientIP string, projectID, categoryID uint) (*model.Document, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		title = untitled
@@ -164,6 +156,7 @@ func (a *App) createPendingImportDoc(user *model.User, rawURL, title, untitled, 
 		Content:     importPendingMarkdown(rawURL),
 		OwnerID:     user.ID,
 		UpdatedByID: user.ID,
+		UpdatedVia:  via,
 		ProjectID:   projectID,
 		CategoryID:  categoryID,
 	}

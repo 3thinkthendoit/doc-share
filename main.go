@@ -5,7 +5,9 @@ import (
 	"flag"
 	"io/fs"
 	"log"
+	"net/http"
 	"os"
+	"time"
 
 	"doc-share/internal/config"
 	"doc-share/internal/database"
@@ -100,8 +102,15 @@ func main() {
 	gin.SetMode(gin.ReleaseMode)
 	engine := router.New(app, staticRoot)
 
+	// 不设 WriteTimeout：聊天 SSE / 导出可能远超常规写超时；用 ReadHeaderTimeout + IdleTimeout 防慢连占坑。
+	srv := &http.Server{
+		Addr:              cfg.Server.Port,
+		Handler:           engine,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 	log.Printf("[boot] DocShare 已监听 http://0.0.0.0%s （docker logs / 采集 stdout）", cfg.Server.Port)
-	if err := engine.Run(cfg.Server.Port); err != nil {
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("服务启动失败: %v", err)
 	}
 }

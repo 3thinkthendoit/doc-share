@@ -207,11 +207,19 @@ func (a *App) normalizeCommentImages(urls []string) ([]string, error) {
 	return a.sanitizeCommentImages(urls, true)
 }
 
+// maxCommentsPerDoc 单篇评论拉取上限，避免爆文无限增长拖垮分享页。
+const maxCommentsPerDoc = 500
+
 func (a *App) listCommentViews(docID uint) []commentView {
 	var comments []model.Comment
-	a.DB.Where("document_id = ?", docID).Order("created_at ASC").Find(&comments)
+	// 取最近 N 条再正序展示，避免 ASC+Limit 丢掉最新评论
+	a.DB.Where("document_id = ?", docID).Order("created_at DESC, id DESC").
+		Limit(maxCommentsPerDoc).Find(&comments)
 	if len(comments) == 0 {
 		return []commentView{}
+	}
+	for i, j := 0, len(comments)-1; i < j; i, j = i+1, j-1 {
+		comments[i], comments[j] = comments[j], comments[i]
 	}
 	// 收集用户 ID 批量取昵称/头像，避免逐条查询
 	ids := make([]uint, 0, len(comments))

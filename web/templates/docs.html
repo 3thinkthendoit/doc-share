@@ -40,7 +40,7 @@
           <option value="0" {{if eq .project "0"}}selected{{end}}>{{$.T "未分组"}} ({{.docCountUngrouped}})</option>
           {{range .projects}}<option value="{{.ID}}" {{if eq $.project (print .ID)}}selected{{end}}>{{.Name}}{{if .Linked}} · {{$.T "docs.linked"}}{{end}} ({{.DocCount}})</option>{{end}}
         </select>
-        <input type="text" name="q" placeholder="{{$.T "搜索标题 / slug / 正文"}}" value="{{.q}}">
+        <input type="text" name="q" placeholder="{{$.T "docs.searchPh"}}" value="{{.q}}">
         <select name="category">
           <option value="">{{$.T "全部分类"}}</option>
           <option value="0" {{if eq .category "0"}}selected{{end}}>{{$.T "未分类"}}</option>

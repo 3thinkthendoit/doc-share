@@ -446,7 +446,16 @@ func (a *App) cleanupHTMLDoc(doc *model.Document) {
 	if doc == nil || doc.Type != model.DocTypeHTML {
 		return
 	}
-	if m, err := parseHTMLManifest(doc.Content); err == nil {
+	content := doc.Content
+	// 回收站清空/清扫刻意不预加载 Content；此处仅对 HTML 再取一次 manifest。
+	if content == "" && doc.ID != 0 {
+		var row model.Document
+		if err := a.DB.Unscoped().Select("content").First(&row, doc.ID).Error; err != nil {
+			return
+		}
+		content = row.Content
+	}
+	if m, err := parseHTMLManifest(content); err == nil {
 		a.deleteSiteFilesAsync(htmlSiteKeys(m))
 	}
 }

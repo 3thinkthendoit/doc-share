@@ -920,8 +920,11 @@ func (a *App) EmptyTrash(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "未登录"})
 		return
 	}
+	// 只拉鉴权与 purge 元数据，避免把 longtext Content 整表灌进内存；
+	// HTML 站点文件清理在 cleanupHTMLDoc 内按需再读 Content。
 	var docs []model.Document
-	if err := a.DB.Unscoped().Where("deleted_at IS NOT NULL").Find(&docs).Error; err != nil {
+	if err := a.DB.Unscoped().Select("id", "owner_id", "project_id", "type").
+		Where("deleted_at IS NOT NULL").Find(&docs).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": errDeleteFail})
 		return
 	}
@@ -996,7 +999,8 @@ func (a *App) StartTrashSweeper() {
 // sweepTrash 销毁所有 deleted_at 早于 30 天前的回收站文档
 func (a *App) sweepTrash() {
 	var docs []model.Document
-	if err := a.DB.Unscoped().Where("deleted_at < ?", time.Now().AddDate(0, 0, -30)).Find(&docs).Error; err != nil {
+	if err := a.DB.Unscoped().Select("id", "owner_id", "project_id", "type").
+		Where("deleted_at < ?", time.Now().AddDate(0, 0, -30)).Find(&docs).Error; err != nil {
 		log.Printf("[trash] 查询到期回收站失败: %v", err)
 		return
 	}

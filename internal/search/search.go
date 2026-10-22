@@ -250,15 +250,15 @@ func (s *Service) ScopeQuery(p Params) *gorm.DB {
 	return tx
 }
 
-// applyQuery 在 MySQL 后端叠加关键词匹配：title/slug/content LIKE，
-// html 整站文档的 content 只是 manifest（正文在对象存储），按类型显式排除。
+// applyQuery 在 MySQL 后端叠加关键词匹配：仅 title/slug LIKE。
+// 不对 content 做 leading-% LIKE：longtext 全表扫描在数据量上升后不可接受；
+// 正文全文检索依赖 ES（就绪时走 ES；未配置/降级时只能按标题与 slug 搜）。
 func applyQuery(tx *gorm.DB, q string) *gorm.DB {
 	if q == "" {
 		return tx
 	}
 	like := "%" + q + "%"
-	return tx.Where("title LIKE ? OR slug LIKE ? OR (type <> ? AND content LIKE ?)",
-		like, like, model.DocTypeHTML, like)
+	return tx.Where("title LIKE ? OR slug LIKE ?", like, like)
 }
 
 // Reindex 把单篇文档同步进 ES（软删文档也会带上 deleted 标记，供回收站视图搜索）。

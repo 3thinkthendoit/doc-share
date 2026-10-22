@@ -1780,10 +1780,14 @@ func (a *App) ListChatMessages(c *gin.Context) {
 		return
 	}
 	var msgs []model.ChatMessage
-	// 兜底上限：超长会话一次性全量拉取会拖垮响应，正常对话远达不到该条数
-	if err := a.DB.Where("session_id = ?", s.ID).Order("id asc").Limit(500).Find(&msgs).Error; err != nil {
+	// 兜底上限：取最近 N 条（desc 再反转），避免超长会话一次灌入大量 longtext
+	const chatListMessageLimit = 200
+	if err := a.DB.Where("session_id = ?", s.ID).Order("id desc").Limit(chatListMessageLimit).Find(&msgs).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "加载消息失败"})
 		return
+	}
+	for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+		msgs[i], msgs[j] = msgs[j], msgs[i]
 	}
 	c.JSON(http.StatusOK, gin.H{"messages": msgs})
 }

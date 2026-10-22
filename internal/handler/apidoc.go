@@ -225,13 +225,14 @@ func openAPIGroups() []apiGroup {
     "version": "v1.0.0",
     "slug": "mN4pQ8sT",
     "type": "markdown",
-    "content": "# 接入指南\n\n> 来源：https://example.com/guide\n\n正文…",
+    "content": "正在从链接导入，完成后正文会自动出现。\n\n> 来源：https://example.com/guide\n",
     "owner_id": 2,
     "project_id": 3,
     "category_id": 1,
     "is_shared": false,
     "view_count": 0
-  }
+  },
+  "importing": true
 }`},
 			{Method: "POST", Path: openAPIBase + "/docs/html", DescKey: "ep.docCreateHTML", LabelKey: "ep.tDocCreateHTML", CodeLang: "HTTP",
 				ReqExample: `Content-Type: multipart/form-data; boundary=----docshare

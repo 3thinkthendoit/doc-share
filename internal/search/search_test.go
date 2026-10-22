@@ -194,7 +194,7 @@ func newTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func TestMySQLFallbackScopeAndContent(t *testing.T) {
+func TestMySQLFallbackScopeAndTitle(t *testing.T) {
 	db := newTestDB(t)
 	svc := New(config.SearchConfig{}, db) // ESURL 空 → 仅 MySQL
 	if svc.ESEnabled() {
@@ -202,10 +202,11 @@ func TestMySQLFallbackScopeAndContent(t *testing.T) {
 	}
 	now := time.Now()
 	seed := []model.Document{
-		{Title: "正文甲", Slug: "s1", Type: model.DocTypeMarkdown, Content: "包含关键词紫电", OwnerID: 1, UpdatedAt: now.Add(-1 * time.Hour)},
+		{Title: "标题含紫电甲", Slug: "s1", Type: model.DocTypeMarkdown, Content: "正文无此词", OwnerID: 1, UpdatedAt: now.Add(-1 * time.Hour)},
 		{Title: "整站丙", Slug: "s2", Type: model.DocTypeHTML, Content: `{"files":["紫电.html"]}`, OwnerID: 1, UpdatedAt: now.Add(-2 * time.Hour)},
-		{Title: "私有丁", Slug: "s3", Type: model.DocTypeMarkdown, Content: "紫电在别人私有文档", OwnerID: 2, UpdatedAt: now.Add(-3 * time.Hour)},
-		{Title: "项目戊", Slug: "s4", Type: model.DocTypeMarkdown, Content: "紫电在项目正文", OwnerID: 9, ProjectID: 5, UpdatedAt: now.Add(-4 * time.Hour)},
+		{Title: "私有紫电丁", Slug: "s3", Type: model.DocTypeMarkdown, Content: "别人的", OwnerID: 2, UpdatedAt: now.Add(-3 * time.Hour)},
+		{Title: "项目紫电戊", Slug: "s4", Type: model.DocTypeMarkdown, Content: "项目正文", OwnerID: 9, ProjectID: 5, UpdatedAt: now.Add(-4 * time.Hour)},
+		{Title: "仅正文有词", Slug: "s5", Type: model.DocTypeMarkdown, Content: "包含关键词紫电", OwnerID: 1, UpdatedAt: now.Add(-5 * time.Hour)},
 	}
 	for i := range seed {
 		if err := db.Create(&seed[i]).Error; err != nil {
@@ -213,7 +214,7 @@ func TestMySQLFallbackScopeAndContent(t *testing.T) {
 		}
 	}
 
-	// 用户 1 参与项目 5：应命中自己的正文甲、标题匹配的整站丙、所参与项目的项目戊；不得看到私有丁
+	// MySQL 路径只搜 title/slug：用户 1 参与项目 5，应命中自有标题甲与项目戊；不得命中私有丁、仅正文有词、manifest 含词的整站
 	p := DefaultParams()
 	p.Query = "紫电"
 	p.UserID = 1
@@ -227,20 +228,22 @@ func TestMySQLFallbackScopeAndContent(t *testing.T) {
 		got[id] = true
 	}
 	if !got[seed[0].ID] {
-		t.Fatal("应通过正文命中 正文甲")
+		t.Fatal("应通过标题命中 标题含紫电甲")
 	}
 	if got[seed[1].ID] {
-		// 整站丙标题不含「紫电」，其 manifest 里的「紫电」被 html 类型排除，故不应命中
-		t.Fatal("html 整站丙 的 manifest 关键词不应使其命中")
+		t.Fatal("html 整站 manifest 不应参与 MySQL 搜索")
 	}
 	if !got[seed[3].ID] {
-		t.Fatal("项目戊 应通过所参与项目正文命中")
+		t.Fatal("项目紫电戊 应通过标题命中")
 	}
 	if got[seed[2].ID] {
 		t.Fatal("私有丁 属于他人且未挂参与项目，不得命中")
 	}
+	if got[seed[4].ID] {
+		t.Fatal("MySQL 路径不应再按 content LIKE 命中")
+	}
 
-	// 标题匹配的 html 整站：用其标题词搜应命中（标题始终参与搜索，仅正文 manifest 被排除）
+	// 标题匹配的 html 整站仍可用标题搜到
 	p3 := DefaultParams()
 	p3.Query = "整站丙"
 	p3.UserID = 1
@@ -248,18 +251,6 @@ func TestMySQLFallbackScopeAndContent(t *testing.T) {
 	ids3, _ := svc.Page(p3)
 	if len(ids3) != 1 || ids3[0] != seed[1].ID {
 		t.Fatalf("html 整站应通过标题命中，得到 %v", ids3)
-	}
-
-	// html 整站的 manifest 不应参与正文匹配：用只出现在 manifest 里的词搜，整站丙不应命中
-	p2 := DefaultParams()
-	p2.Query = "files"
-	p2.UserID = 1
-	p2.MemberPids = []uint{5}
-	ids2, _ := svc.Page(p2)
-	for _, id := range ids2 {
-		if id == seed[1].ID {
-			t.Fatal("html 整站 manifest 不应参与正文搜索")
-		}
 	}
 
 	// ScopeQuery 权限兜底：即便给定越权 id，回表也应剔除不可见文档
@@ -329,7 +320,7 @@ func newReadyService(t *testing.T, db *gorm.DB, esURL string) *Service {
 func TestESSearchErrorFallsBackToMySQL(t *testing.T) {
 	db := newTestDB(t)
 	now := time.Now()
-	d := model.Document{Title: "降级甲", Slug: "fb1", Type: model.DocTypeMarkdown, Content: "关键词紫电", OwnerID: 1, UpdatedAt: now}
+	d := model.Document{Title: "降级紫电甲", Slug: "fb1", Type: model.DocTypeMarkdown, Content: "正文无词", OwnerID: 1, UpdatedAt: now}
 	if err := db.Create(&d).Error; err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -517,15 +508,16 @@ func TestSearchHighlightOnlyWhenRequested(t *testing.T) {
 	}
 }
 
-// TestMySQLFallbackSnippet 降级路径也出正文摘要（展示后端无关）：片段带占位标记、非整篇两端省略号，
-// 且 html 整站正文（manifest）不参与摘要。
+// TestMySQLFallbackSnippet 标题命中后，降级路径仍可为正文中的同一词切摘要（展示用）；
+// 仅 content 含词、标题/slug 不含时不会进结果集。html manifest 不参与匹配。
 func TestMySQLFallbackSnippet(t *testing.T) {
 	db := newTestDB(t)
 	svc := New(config.SearchConfig{}, db)
 	now := time.Now()
 	seed := []model.Document{
-		{Title: "正文甲", Slug: "s1", Type: model.DocTypeMarkdown, Content: strings.Repeat("铺垫内容，", 20) + "这里出现探子关键词" + strings.Repeat("，收尾内容", 20), OwnerID: 1, UpdatedAt: now},
+		{Title: "探子报告", Slug: "s1", Type: model.DocTypeMarkdown, Content: strings.Repeat("铺垫内容，", 20) + "这里出现探子关键词" + strings.Repeat("，收尾内容", 20), OwnerID: 1, UpdatedAt: now},
 		{Title: "整站乙", Slug: "s2", Type: model.DocTypeHTML, Content: `{"files":["探子.html"]}`, OwnerID: 1, UpdatedAt: now.Add(-time.Hour)},
+		{Title: "仅正文", Slug: "s3", Type: model.DocTypeMarkdown, Content: "这里出现探子关键词", OwnerID: 1, UpdatedAt: now.Add(-2 * time.Hour)},
 	}
 	for i := range seed {
 		if err := db.Create(&seed[i]).Error; err != nil {
@@ -540,11 +532,11 @@ func TestMySQLFallbackSnippet(t *testing.T) {
 		t.Fatalf("PageWithHighlight: %v", err)
 	}
 	if len(ids) != 1 || ids[0] != seed[0].ID {
-		t.Fatalf("html 整站 manifest 不应命中，应仅命中 markdown: %v", ids)
+		t.Fatalf("应仅标题命中 markdown，得到 %v", ids)
 	}
 	frag, ok := hl[seed[0].ID]
 	if !ok {
-		t.Fatal("降级路径应为 markdown 正文提供摘要")
+		t.Fatal("降级路径应为命中文档提供正文摘要")
 	}
 	if !strings.Contains(frag, hlPre+"探子"+hlPost) {
 		t.Fatalf("摘要应包占位标记: %q", frag)
