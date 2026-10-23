@@ -264,6 +264,12 @@
 .chat-u-btns{display:inline-flex;align-items:center;gap:2px}
 .chat-u-acts button{border:none;background:none;color:var(--muted);cursor:pointer;padding:3px;border-radius:6px;display:inline-flex}
 .chat-u-acts button:hover{color:var(--text);background:var(--bg-soft)}
+/* 助手气泡下方：左对齐复制正文（不含思考过程）；换行后对齐气泡左缘 */
+.chat-a-acts{display:inline-flex;align-items:center;gap:2px;flex:0 0 100%;width:100%;box-sizing:border-box;margin:0;padding:0 2px 0 38px;font-size:11.5px;color:var(--muted);opacity:.55;transition:opacity .15s;user-select:none}
+.chat-a-acts[hidden]{display:none!important}
+.chat-m.assistant:hover .chat-a-acts,.chat-m.assistant:focus-within .chat-a-acts{opacity:1}
+.chat-a-acts button{border:none;background:none;color:var(--muted);cursor:pointer;padding:3px;border-radius:6px;display:inline-flex}
+.chat-a-acts button:hover{color:var(--text);background:var(--bg-soft)}
 .chat-think{width:100%;margin:0;border:none;background:transparent;font-size:12.5px;color:var(--muted)}
 .chat-think summary{cursor:pointer;padding:0 0 2px;user-select:none;list-style:none;opacity:.85}
 .chat-think summary::-webkit-details-marker{display:none}
@@ -368,7 +374,7 @@
 @media (hover:none){
   .chat-s-item .chat-s-time{display:none}
   .chat-s-item .chat-s-actions{display:inline-flex}
-  .chat-u-acts{opacity:1}
+  .chat-u-acts,.chat-a-acts{opacity:1}
   .chat-m.user .chat-attach-chip{cursor:pointer}
 }
 </style>
@@ -922,6 +928,32 @@
     }
   }
 
+  var COPY_ICON_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  function makeCopyBtn(wrap) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.title = UI.t('chat.copy');
+    btn.innerHTML = COPY_ICON_SVG;
+    btn.addEventListener('click', function () { copyText(wrap._raw || '', btn); });
+    return btn;
+  }
+  // 助手无正文可复制时隐藏按钮（流式等待、reset 清空等）
+  function syncAssistantCopy(wrap) {
+    if (!wrap) return;
+    var acts = wrap.querySelector('.chat-a-acts');
+    if (!acts) return;
+    acts.hidden = !(wrap._raw && String(wrap._raw).length);
+  }
+  // 状态类文案（中断/停止等）写入 DOM 时同步 _raw，避免复制空串
+  function setAssistantStatus(ai, text) {
+    if (!ai || !ai.wrap) return;
+    var el = contentEl(ai);
+    if (!el) return;
+    el.textContent = text || '';
+    ai.wrap._raw = text || '';
+    syncAssistantCopy(ai.wrap);
+  }
+
   // ===== 消息渲染 =====
   // opts.createdAt：历史消息时间；用户消息无头像，操作条在气泡正下方
   function addMsg(role, text, streaming, opts) {
@@ -942,11 +974,6 @@
       ts.textContent = formatMsgTime(opts.createdAt);
       var btns = document.createElement('span');
       btns.className = 'chat-u-btns';
-      var copyBtn = document.createElement('button');
-      copyBtn.type = 'button';
-      copyBtn.title = UI.t('chat.copy');
-      copyBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-      copyBtn.addEventListener('click', function () { copyText(wrap._raw || '', copyBtn); });
       var resendBtn = document.createElement('button');
       resendBtn.type = 'button';
       resendBtn.title = UI.t('chat.resend');
@@ -966,7 +993,7 @@
         autoGrow();
         inputEl.focus();
       });
-      btns.appendChild(copyBtn);
+      btns.appendChild(makeCopyBtn(wrap));
       btns.appendChild(resendBtn);
       btns.appendChild(editBtn);
       acts.appendChild(ts);
@@ -980,10 +1007,16 @@
       body = document.createElement('div');
       body.className = 'chat-bubble-body';
       bubble.appendChild(body);
-      if (streaming) { body.innerHTML = workingHtml(); wrap._raw = text || ''; }
+      wrap._raw = text || '';
+      if (streaming) body.innerHTML = workingHtml();
       else setBubbleContent(body, text);
       wrap.appendChild(av);
       wrap.appendChild(bubble);
+      var aActs = document.createElement('div');
+      aActs.className = 'chat-a-acts';
+      aActs.appendChild(makeCopyBtn(wrap));
+      wrap.appendChild(aActs);
+      syncAssistantCopy(wrap);
     }
     msgsEl.appendChild(wrap);
     scrollBottom(true);
@@ -998,6 +1031,7 @@
   function appendDelta(target, delta) {
     target.wrap._raw = (target.wrap._raw || '') + delta;
     setBubbleContent(contentEl(target), target.wrap._raw);
+    syncAssistantCopy(target.wrap);
     scrollBottom(false);
   }
 
@@ -1345,7 +1379,7 @@
   }
   function showInterruptedPlaceholder(afterUserId) {
     var ai = addMsg('assistant', '', false);
-    contentEl(ai).textContent = UI.t('chat.genInterrupted');
+    setAssistantStatus(ai, UI.t('chat.genInterrupted'));
     var re = document.createElement('button');
     re.type = 'button';
     re.className = 'chat-resend';
@@ -1394,7 +1428,7 @@
         if (ai && !ai.gotDelta && String(currentId) === String(sessionId)) {
           ai._live = false;
           disarmWaiting(ai);
-          contentEl(ai).textContent = UI.t('chat.genInterrupted');
+          setAssistantStatus(ai, UI.t('chat.genInterrupted'));
         }
         return;
       }
@@ -1646,6 +1680,7 @@
             if (ai.status) { stopStatusAnim(ai); ai.status.remove(); ai.status = null; }
             disarmWaiting(ai);
             contentEl(ai).textContent = '';
+            syncAssistantCopy(ai.wrap);
             // 静默重试前清空思考面板，避免与新一轮内容叠在一起
             if (ai.think) { ai.think.remove(); ai.think = null; ai.thinkPre = null; }
             armWaiting(ai, true);
@@ -1670,7 +1705,11 @@
             if (ai.status) { stopStatusAnim(ai); ai.status.remove(); ai.status = null; }
             disarmWaiting(ai);
             if (ai.think) { ai.think.open = false; }
-            if (!ai.gotDelta) { ai.wrap._raw = ''; contentEl(ai).textContent = ''; }
+            if (!ai.gotDelta) {
+              ai.wrap._raw = '';
+              contentEl(ai).textContent = '';
+              syncAssistantCopy(ai.wrap);
+            }
             ai.gotDelta = true;
             appendDelta(ai, payload.delta);
             armWaiting(ai, false);
@@ -1687,10 +1726,15 @@
             });
           }
           if (payload.error) {
-            if (!ai.gotDelta) contentEl(ai).textContent = '';
+            var errText = UI.t('chat.streamError') + payload.error;
+            if (!ai.gotDelta) {
+              contentEl(ai).textContent = '';
+              ai.wrap._raw = errText;
+              syncAssistantCopy(ai.wrap);
+            }
             var errEl = document.createElement('div');
             errEl.className = 'chat-m-error';
-            errEl.textContent = UI.t('chat.streamError') + payload.error;
+            errEl.textContent = errText;
             contentEl(ai).appendChild(errEl);
             if (lastSent) {
               var re = document.createElement('button');
@@ -1720,10 +1764,15 @@
         var work = cel.querySelector('.chat-working');
         if (work) work.remove();
         if (!aborted && !ai.gotDelta && !ai.think) cel.innerHTML = '';
+        var statusText = aborted ? UI.t('chat.stopped') : (e.message || UI.t('chat.sendFailed'));
         var el = document.createElement('div');
         el.className = 'chat-m-error';
-        el.textContent = aborted ? UI.t('chat.stopped') : (e.message || UI.t('chat.sendFailed'));
+        el.textContent = statusText;
         cel.appendChild(el);
+        if (!ai.gotDelta) {
+          ai.wrap._raw = statusText;
+          syncAssistantCopy(ai.wrap);
+        }
         if (lastSent && !aborted) {
           var re2 = document.createElement('button');
           re2.type = 'button'; re2.className = 'chat-resend';
@@ -1796,7 +1845,7 @@
       if (pollAi) {
         pollAi._live = false;
         disarmWaiting(pollAi);
-        if (contentEl(pollAi)) contentEl(pollAi).textContent = UI.t('chat.stopped');
+        if (contentEl(pollAi)) setAssistantStatus(pollAi, UI.t('chat.stopped'));
       }
     }
     if (stream) {
