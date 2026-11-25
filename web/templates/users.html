@@ -29,6 +29,12 @@
               <span class="user-auth-icon" title="{{$.T "user.authGitHub"}}" aria-label="{{$.T "user.authGitHub"}}">{{template "iconOAuthGitHub" 18}}</span>
               {{else if eq . "google"}}
               <span class="user-auth-icon" title="{{$.T "user.authGoogle"}}" aria-label="{{$.T "user.authGoogle"}}">{{template "iconOAuthGoogle" 18}}</span>
+              {{else if eq . "gitee"}}
+              <span class="user-auth-icon" title="{{$.T "user.authGitee"}}" aria-label="{{$.T "user.authGitee"}}">{{template "iconOAuthGitee" 18}}</span>
+              {{else if eq . "gitlab"}}
+              <span class="user-auth-icon" title="{{$.T "user.authGitLab"}}" aria-label="{{$.T "user.authGitLab"}}">{{template "iconOAuthGitLab" 18}}</span>
+              {{else if eq . "qq"}}
+              <span class="user-auth-icon" title="{{$.T "user.authQQ"}}" aria-label="{{$.T "user.authQQ"}}">{{template "iconOAuthQQ" 18}}</span>
               {{end}}
               {{end}}
             </span>

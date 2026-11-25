@@ -81,6 +81,9 @@ func (a *App) render(c *gin.Context, name string, data gin.H) {
 		return
 	}
 	c.Status(http.StatusOK)
+	if st, ok := data["httpStatus"].(int); ok && st >= 200 && st < 600 {
+		c.Status(st) // 错误页也要回正确的状态码（如 OAuth 授权页 400 / 403）
+	}
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	_, _ = c.Writer.Write(buf.Bytes())
 }

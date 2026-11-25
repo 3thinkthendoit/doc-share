@@ -56,6 +56,9 @@ type oauthFetcher func(ctx context.Context, cfg *oauth2.Config, code string) (oa
 var (
 	fetchGitHubUser = defaultFetchGitHubUser
 	fetchGoogleUser = defaultFetchGoogleUser
+	fetchGiteeUser  = defaultFetchGiteeUser
+	fetchGitLabUser = defaultFetchGitLabUser
+	fetchQQUser     = defaultFetchQQUser
 )
 
 // mintOAuthState 签发带过期时间的 state（HMAC，多实例可用）；配合 Cookie 双提交防 CSRF。
@@ -90,7 +93,7 @@ func (a *App) parseOAuthState(state string) (provider string, ok bool) {
 		return "", false
 	}
 	p := parts[1]
-	if p != model.OAuthProviderGitHub && p != model.OAuthProviderGoogle {
+	if !model.IsOAuthProvider(p) {
 		return "", false
 	}
 	return p, true
@@ -116,6 +119,12 @@ func (a *App) OAuthEnabled(provider string) bool {
 		return s.OAuthGitHubEnabled
 	case model.OAuthProviderGoogle:
 		return s.OAuthGoogleEnabled
+	case model.OAuthProviderGitee:
+		return s.OAuthGiteeEnabled
+	case model.OAuthProviderGitLab:
+		return s.OAuthGitLabEnabled
+	case model.OAuthProviderQQ:
+		return s.OAuthQQEnabled
 	default:
 		return false
 	}
@@ -133,10 +142,16 @@ func (a *App) oauthProviderCfg(provider string) (config.OAuthProviderConfig, boo
 			out = a.Cfg.Auth.GitHub
 		case model.OAuthProviderGoogle:
 			out = a.Cfg.Auth.Google
+		case model.OAuthProviderGitee:
+			out = a.Cfg.Auth.Gitee
+		case model.OAuthProviderGitLab:
+			out = a.Cfg.Auth.GitLab
+		case model.OAuthProviderQQ:
+			out = a.Cfg.Auth.QQ
 		default:
 			return config.OAuthProviderConfig{}, false
 		}
-	} else if provider != model.OAuthProviderGitHub && provider != model.OAuthProviderGoogle {
+	} else if !model.IsOAuthProvider(provider) {
 		return config.OAuthProviderConfig{}, false
 	}
 	s := a.Settings()
@@ -159,6 +174,39 @@ func (a *App) oauthProviderCfg(provider string) (config.OAuthProviderConfig, boo
 			out.ClientSecret = v
 		}
 		if v := strings.TrimSpace(s.OAuthGoogleRedirectURL); v != "" {
+			out.RedirectURL = v
+		}
+	case model.OAuthProviderGitee:
+		if v := strings.TrimSpace(s.OAuthGiteeClientID); v != "" {
+			out.ClientID = v
+		}
+		if v := strings.TrimSpace(s.OAuthGiteeClientSecret); v != "" {
+			out.ClientSecret = v
+		}
+		if v := strings.TrimSpace(s.OAuthGiteeRedirectURL); v != "" {
+			out.RedirectURL = v
+		}
+	case model.OAuthProviderGitLab:
+		if v := strings.TrimSpace(s.OAuthGitLabClientID); v != "" {
+			out.ClientID = v
+		}
+		if v := strings.TrimSpace(s.OAuthGitLabClientSecret); v != "" {
+			out.ClientSecret = v
+		}
+		if v := strings.TrimSpace(s.OAuthGitLabRedirectURL); v != "" {
+			out.RedirectURL = v
+		}
+		if v := strings.TrimSpace(s.OAuthGitLabBaseURL); v != "" {
+			out.BaseURL = v
+		}
+	case model.OAuthProviderQQ:
+		if v := strings.TrimSpace(s.OAuthQQClientID); v != "" {
+			out.ClientID = v
+		}
+		if v := strings.TrimSpace(s.OAuthQQClientSecret); v != "" {
+			out.ClientSecret = v
+		}
+		if v := strings.TrimSpace(s.OAuthQQRedirectURL); v != "" {
 			out.RedirectURL = v
 		}
 	}
@@ -218,6 +266,32 @@ func (a *App) oauth2Config(c *gin.Context, provider string) (*oauth2.Config, err
 			Scopes:       []string{"openid", "email", "profile"},
 			Endpoint:     google.Endpoint,
 		}, nil
+	case model.OAuthProviderGitee:
+		return &oauth2.Config{
+			ClientID:     strings.TrimSpace(pcfg.ClientID),
+			ClientSecret: strings.TrimSpace(pcfg.ClientSecret),
+			RedirectURL:  redirect,
+			// Gitee 要求 scope 非空，否则只能拿到匿名授权；邮箱不被信任（不合并账号），故不申请 emails
+			Scopes:   []string{"user_info"},
+			Endpoint: giteeEndpoint,
+		}, nil
+	case model.OAuthProviderGitLab:
+		return &oauth2.Config{
+			ClientID:     strings.TrimSpace(pcfg.ClientID),
+			ClientSecret: strings.TrimSpace(pcfg.ClientSecret),
+			RedirectURL:  redirect,
+			Scopes:       []string{"read_user"},
+			Endpoint:     gitlabEndpoint(pcfg.BaseURL),
+		}, nil
+	case model.OAuthProviderQQ:
+		// QQ 换票/取 openid 非标准，由 defaultFetchQQUser 手工完成；此处仅用于生成授权地址
+		return &oauth2.Config{
+			ClientID:     strings.TrimSpace(pcfg.ClientID),
+			ClientSecret: strings.TrimSpace(pcfg.ClientSecret),
+			RedirectURL:  redirect,
+			Scopes:       []string{"get_user_info"},
+			Endpoint:     qqEndpoint,
+		}, nil
 	default:
 		return nil, fmt.Errorf("unknown provider")
 	}
@@ -241,13 +315,18 @@ func (a *App) OAuthStart(c *gin.Context) {
 		return
 	}
 	a.setCookie(c, oauthStateCookie, state, int(oauthStateTTL.Seconds()))
-	c.Redirect(http.StatusFound, cfg.AuthCodeURL(state, oauth2.AccessTypeOnline))
+	// access_type 是 Google 专有参数；其它提供方不带，避免个别平台对未知参数报错
+	var opts []oauth2.AuthCodeOption
+	if provider == model.OAuthProviderGoogle {
+		opts = append(opts, oauth2.AccessTypeOnline)
+	}
+	c.Redirect(http.StatusFound, cfg.AuthCodeURL(state, opts...))
 }
 
 // OAuthCallback GET /auth/:provider/callback
 func (a *App) OAuthCallback(c *gin.Context) {
 	provider := strings.ToLower(strings.TrimSpace(c.Param("provider")))
-	if provider != model.OAuthProviderGitHub && provider != model.OAuthProviderGoogle {
+	if !model.IsOAuthProvider(provider) {
 		a.oauthFail(c, "不支持的登录方式")
 		return
 	}
@@ -279,13 +358,28 @@ func (a *App) OAuthCallback(c *gin.Context) {
 	}
 
 	var profile oauthProfile
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), oauthHTTPTimeout)
 	defer cancel()
+	// GitHub / Google / gitlab.com 换票与拉资料经代理出站（Gitee / QQ / 自建 GitLab 直连）；代理已启用但配置损坏时拒绝而非静默直连
+	httpClient, err := a.oauthHTTPClient(provider)
+	if err != nil {
+		log.Printf("[oauth] %s outbound proxy: %v", provider, err)
+		a.oauthFail(c, "第三方登录代理配置无效，请联系管理员")
+		return
+	}
+	// oauth2 库的 Exchange / Client 都从 ctx 取 HTTPClient，fetch* 签名无需变化
+	ctx = context.WithValue(ctx, oauth2.HTTPClient, httpClient)
 	switch provider {
 	case model.OAuthProviderGitHub:
 		profile, err = fetchGitHubUser(ctx, cfg, code)
 	case model.OAuthProviderGoogle:
 		profile, err = fetchGoogleUser(ctx, cfg, code)
+	case model.OAuthProviderGitee:
+		profile, err = fetchGiteeUser(ctx, cfg, code)
+	case model.OAuthProviderGitLab:
+		profile, err = fetchGitLabUser(ctx, cfg, code)
+	case model.OAuthProviderQQ:
+		profile, err = fetchQQUser(ctx, cfg, code)
 	}
 	if err != nil || strings.TrimSpace(profile.Subject) == "" {
 		log.Printf("[oauth] %s fetch profile failed: err=%v subject=%q redirect=%q", provider, err, profile.Subject, cfg.RedirectURL)
@@ -299,6 +393,14 @@ func (a *App) OAuthCallback(c *gin.Context) {
 				msg = "GitHub 用户信息获取失败，请检查网络或稍后重试"
 			case strings.Contains(es, "google userinfo") || strings.Contains(es, "id_token"):
 				msg = "Google 用户信息获取失败，请检查网络或稍后重试"
+			case strings.Contains(es, "gitee user"):
+				msg = "Gitee 用户信息获取失败，请检查网络或稍后重试"
+			case strings.Contains(es, "gitlab account inactive"):
+				msg = "该 GitLab 账号已被封禁或停用"
+			case strings.Contains(es, "gitlab user"):
+				msg = "GitLab 用户信息获取失败，请检查网络或稍后重试"
+			case strings.Contains(es, "qq openid") || strings.Contains(es, "qq user"):
+				msg = "QQ 用户信息获取失败，请检查网络或稍后重试"
 			}
 		}
 		a.oauthFail(c, msg)
@@ -756,7 +858,7 @@ func defaultLookupGoogleJWK(ctx context.Context, kid string) (*rsa.PublicKey, er
 	if err != nil {
 		return nil, err
 	}
-	res, err := http.DefaultClient.Do(req)
+	res, err := oauthCtxHTTPClient(ctx).Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -940,6 +1042,9 @@ func (a *App) oauthViewFlags() gin.H {
 	return gin.H{
 		"oauthGitHub": a.OAuthEnabled(model.OAuthProviderGitHub),
 		"oauthGoogle": a.OAuthEnabled(model.OAuthProviderGoogle),
+		"oauthGitee":  a.OAuthEnabled(model.OAuthProviderGitee),
+		"oauthGitLab": a.OAuthEnabled(model.OAuthProviderGitLab),
+		"oauthQQ":     a.OAuthEnabled(model.OAuthProviderQQ),
 	}
 }
 

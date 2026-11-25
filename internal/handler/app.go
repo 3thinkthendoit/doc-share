@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"crypto/rsa"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -15,6 +16,7 @@ import (
 	"doc-share/internal/config"
 	"doc-share/internal/i18n"
 	"doc-share/internal/middleware"
+	"doc-share/internal/proxy"
 	"doc-share/internal/search"
 	"doc-share/internal/session"
 
@@ -42,6 +44,13 @@ type App struct {
 	setCache *SiteSettings // nil 表示未加载
 
 	searchOnce sync.Once // 保障 Search 惰性初始化（仅测试/手动构造 App 时生效）
+
+	proxyOnce sync.Once      // 第三方登录出站代理管理器惰性初始化
+	proxyMgr  *proxy.Manager // GitHub / Google / gitlab.com OAuth 出站代理（vless 内嵌 xray / http / socks5）
+
+	oidcKeyMu sync.Mutex      // OIDC id_token 签名密钥（RSA）惰性加载 / 生成
+	oidcKey   *rsa.PrivateKey // 加密存于 system_settings，多实例共用
+	oidcKid   string
 
 	approvals sync.Map // AI 敏感操作待审批表：approvalID -> chatApproval
 	chatGens  sync.Map // 会话级生成取消：sessionID(uint) -> *chatGenToken；刷新不断开生成，停止按钮显式取消

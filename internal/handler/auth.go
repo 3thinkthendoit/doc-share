@@ -228,9 +228,13 @@ func (a *App) SendLoginCode(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true, "message": okMsg})
 }
 
-// Logout 登出
+// Logout 登出；带 next（仅限授权页地址）时，重新登录后回到该页（授权页「换个账号」）
 func (a *App) Logout(c *gin.Context) {
 	a.setCookie(c, middleware.CookieSession, "", -1)
+	a.setCookie(c, loginNextCookie, "", -1)
+	if next := c.Query("next"); next != "" {
+		a.setLoginNext(c, next)
+	}
 	if isAjax(c) {
 		c.JSON(http.StatusOK, gin.H{"ok": true, "redirect": "/login"})
 		return

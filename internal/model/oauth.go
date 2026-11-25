@@ -6,7 +6,23 @@ import "time"
 const (
 	OAuthProviderGitHub = "github"
 	OAuthProviderGoogle = "google"
+	OAuthProviderGitee  = "gitee"
+	OAuthProviderGitLab = "gitlab"
+	OAuthProviderQQ     = "qq"
 )
+
+// OAuthProviders 全部支持的提供方（展示顺序）
+var OAuthProviders = []string{OAuthProviderGitHub, OAuthProviderGoogle, OAuthProviderGitee, OAuthProviderGitLab, OAuthProviderQQ}
+
+// IsOAuthProvider 是否为受支持的 OAuth 提供方
+func IsOAuthProvider(p string) bool {
+	for _, v := range OAuthProviders {
+		if v == p {
+			return true
+		}
+	}
+	return false
+}
 
 // OAuthIdentity 外部登录身份与本地用户的绑定（provider+subject 唯一）
 type OAuthIdentity struct {

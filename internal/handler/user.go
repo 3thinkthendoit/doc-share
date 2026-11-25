@@ -36,7 +36,7 @@ func (a *App) UsersPage(c *gin.Context) {
 	a.render(c, "users.html", data)
 }
 
-// loadUserOAuthProviders 批量查出本页用户绑定的三方登录方式（github/google），无绑定则 map 中无该 key。
+// loadUserOAuthProviders 批量查出本页用户绑定的三方登录方式，无绑定则 map 中无该 key。
 func loadUserOAuthProviders(db *gorm.DB, users []model.User) map[uint][]string {
 	out := map[uint][]string{}
 	if db == nil || len(users) == 0 {
@@ -54,7 +54,7 @@ func loadUserOAuthProviders(db *gorm.DB, users []model.User) map[uint][]string {
 	seen := map[uint]map[string]bool{}
 	for _, id := range idents {
 		p := strings.ToLower(strings.TrimSpace(id.Provider))
-		if p != model.OAuthProviderGitHub && p != model.OAuthProviderGoogle {
+		if !model.IsOAuthProvider(p) {
 			continue
 		}
 		if seen[id.UserID] == nil {
@@ -66,10 +66,10 @@ func loadUserOAuthProviders(db *gorm.DB, users []model.User) map[uint][]string {
 		seen[id.UserID][p] = true
 		out[id.UserID] = append(out[id.UserID], p)
 	}
-	// 展示顺序固定：GitHub → Google
+	// 展示顺序固定：按 model.OAuthProviders（GitHub → Google → Gitee → GitLab → QQ）
 	for uid, ps := range out {
 		ordered := make([]string, 0, len(ps))
-		for _, want := range []string{model.OAuthProviderGitHub, model.OAuthProviderGoogle} {
+		for _, want := range model.OAuthProviders {
 			for _, p := range ps {
 				if p == want {
 					ordered = append(ordered, p)
@@ -273,6 +273,14 @@ func (a *App) DeleteUser(c *gin.Context) {
 			return err
 		}
 		if err := tx.Where("owner_id = ?", id).Delete(&model.Project{}).Error; err != nil {
+			return err
+		}
+		// 第三方登录绑定：不清理的话，该 GitHub/Google 等账号此后再登录会一直报「绑定账号不存在」
+		if err := tx.Where("user_id = ?", id).Delete(&model.OAuthIdentity{}).Error; err != nil {
+			return err
+		}
+		// OAuth 授权服务器：本人的授权记录与其名下的第三方应用
+		if err := purgeUserOAuthServerData(tx, uint(id)); err != nil {
 			return err
 		}
 		return tx.Delete(&model.User{}, id).Error

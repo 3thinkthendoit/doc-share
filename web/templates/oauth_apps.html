@@ -1,0 +1,180 @@
+{{define "oauth_apps.html"}}
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>{{template "head" .}}</head>
+<body>
+{{template "nav" .}}
+<main class="container">
+  <style>
+    .oauth-sec{margin-bottom:22px}
+    .oauth-sec h2{font-size:16px;margin:0 0 10px}
+    .oauth-tbl td{vertical-align:middle}
+    .oauth-tbl td.mono{font-size:13px}
+    .badge-wait{background:var(--primary-soft);color:var(--primary-dark)}
+    .badge-gray{background:var(--bg-soft);color:var(--muted)}
+    .oauth-reason{display:block;font-size:12px;margin-top:3px;max-width:260px;white-space:normal}
+    .oauth-ep{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;font-size:13px;padding:14px 16px}
+    .oauth-ep code{word-break:break-all}
+    .oauth-uris{width:100%;min-height:92px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px}
+  </style>
+  <div class="page-head">
+    <h1>{{$.T "oauthsrv.manage"}}</h1>
+    <button class="btn btn-primary" id="btnNewApp">{{$.T "oauthsrv.newApp"}}</button>
+  </div>
+
+  <section class="oauth-sec">
+    <h2>{{$.T "oauthsrv.myConsents"}}</h2>
+    <div class="panel">
+      <table class="table oauth-tbl">
+        <thead><tr><th>{{$.T "oauthsrv.colApp"}}</th><th>{{$.T "oauthsrv.colScopes"}}</th><th>{{$.T "oauthsrv.colGranted"}}</th><th class="col-actions">{{$.T "操作"}}</th></tr></thead>
+        <tbody>
+        {{range .consents}}
+          <tr>
+            <td>{{if .Homepage}}<a href="{{.Homepage}}" target="_blank" rel="noopener noreferrer">{{.AppName}}</a>{{else}}{{.AppName}}{{end}}</td>
+            <td class="mono">{{.Scopes}}</td>
+            <td>{{.GrantedAt.Format "2006-01-02 15:04:05"}}</td>
+            <td class="col-actions"><button class="btn btn-sm btn-danger" data-client="{{.ClientID}}" data-name="{{.AppName}}" onclick="revokeConsent(this)">{{$.T "oauthsrv.revoke"}}</button></td>
+          </tr>
+        {{else}}
+          <tr class="empty-row"><td colspan="4">{{$.T "oauthsrv.noConsents"}}</td></tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="oauth-sec">
+    <h2>{{if and .user .user.IsAdmin}}{{$.T "oauthsrv.allApps"}}{{if .pendingCount}} <span class="badge badge-wait">{{$.T "oauthsrv.pendingN" .pendingCount}}</span>{{end}}{{else}}{{$.T "oauthsrv.myApps"}}{{end}}</h2>
+    <form method="get" action="/console/oauth-apps" class="search-bar filter-bar">
+      <input type="hidden" name="size" value="{{.size}}">
+      <select name="status" aria-label="{{$.T "状态"}}">
+        <option value="" {{if eq .status ""}}selected{{end}}>{{$.T "oauthsrv.statusAll"}}</option>
+        <option value="pending" {{if eq .status "pending"}}selected{{end}}>{{$.T "oauthsrv.status.pending"}}</option>
+        <option value="approved" {{if eq .status "approved"}}selected{{end}}>{{$.T "oauthsrv.status.approved"}}</option>
+        <option value="rejected" {{if eq .status "rejected"}}selected{{end}}>{{$.T "oauthsrv.status.rejected"}}</option>
+        <option value="disabled" {{if eq .status "disabled"}}selected{{end}}>{{$.T "oauthsrv.status.disabled"}}</option>
+      </select>
+      <button type="submit" class="btn">{{$.T "docs.query"}}</button>
+    </form>
+    <div class="panel">
+      <table class="table oauth-tbl">
+        <thead>
+          <tr><th>{{$.T "oauthsrv.colApp"}}</th><th>Client ID</th><th>{{$.T "oauthsrv.colType"}}</th><th>{{$.T "状态"}}</th>{{if and .user .user.IsAdmin}}<th>{{$.T "所有者"}}</th>{{end}}<th>{{$.T "创建时间"}}</th><th class="col-actions">{{$.T "操作"}}</th></tr>
+        </thead>
+        <tbody>
+        {{range .apps}}
+          <tr>
+            <td>{{.Name}}{{if .HomepageURL}}<br><a class="muted" style="font-size:12px" href="{{.HomepageURL}}" target="_blank" rel="noopener noreferrer">{{.HomepageURL}}</a>{{end}}</td>
+            <td class="mono">{{.ClientID}}</td>
+            <td>{{if .IsPublic}}{{$.T "oauthsrv.typeShortPublic"}}{{else}}{{$.T "oauthsrv.typeShortConfidential"}}{{end}}</td>
+            <td>
+              {{if eq .Status "approved"}}<span class="badge badge-on">{{$.T "oauthsrv.status.approved"}}</span>
+              {{else if eq .Status "pending"}}<span class="badge badge-wait">{{$.T "oauthsrv.status.pending"}}</span>
+              {{else if eq .Status "rejected"}}<span class="badge badge-off">{{$.T "oauthsrv.status.rejected"}}</span>
+              {{else}}<span class="badge badge-gray">{{$.T "oauthsrv.status.disabled"}}</span>{{end}}
+              {{if .RejectReason}}<span class="oauth-reason muted">{{.RejectReason}}</span>{{end}}
+            </td>
+            {{if and $.user $.user.IsAdmin}}<td>{{if .Owner.Nickname}}{{.Owner.Nickname}}{{else}}{{.Owner.Username}}{{end}}</td>{{end}}
+            <td>{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
+            <td class="col-actions">
+              {{if and $.user $.user.IsAdmin}}
+                {{if ne .Status "approved"}}<button class="btn btn-sm btn-primary" data-id="{{.ID}}" data-name="{{.Name}}" data-action="approve" onclick="reviewApp(this)">{{$.T "oauthsrv.approve"}}</button>{{end}}
+                {{if eq .Status "pending"}}<button class="btn btn-sm" data-id="{{.ID}}" data-name="{{.Name}}" data-action="reject" onclick="reviewApp(this)">{{$.T "oauthsrv.reject"}}</button>{{end}}
+                {{if eq .Status "approved"}}<button class="btn btn-sm" data-id="{{.ID}}" data-name="{{.Name}}" data-action="disable" onclick="reviewApp(this)">{{$.T "oauthsrv.disable"}}</button>{{end}}
+              {{end}}
+              <button class="btn btn-sm" data-id="{{.ID}}" data-name="{{.Name}}" data-homepage="{{.HomepageURL}}" data-uris="{{.RedirectURIs}}" onclick="editApp(this)">{{$.T "编辑"}}</button>
+              {{if not .IsPublic}}<button class="btn btn-sm" data-id="{{.ID}}" data-name="{{.Name}}" onclick="rotateApp(this)">{{$.T "oauthsrv.rotate"}}</button>{{end}}
+              <button class="btn btn-sm btn-danger" data-id="{{.ID}}" data-name="{{.Name}}" onclick="delApp(this)">{{$.T "删除"}}</button>
+            </td>
+          </tr>
+        {{else}}
+          <tr class="empty-row"><td colspan="{{if and $.user $.user.IsAdmin}}7{{else}}6{{end}}">{{$.T "oauthsrv.noApps"}}</td></tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{template "pager" .}}
+  </section>
+
+  <section class="oauth-sec">
+    <h2>{{$.T "oauthsrv.guide"}} <a class="btn btn-sm" style="margin-left:8px;vertical-align:middle" href="/console/oauthdoc">{{$.T "oauthdoc.fullDoc"}}</a></h2>
+    <div class="panel">
+      <div class="oauth-ep">
+        <span class="muted">{{$.T "oauthsrv.epDiscovery"}}</span><code>GET {{.epDiscovery}}</code>
+        <span class="muted">Issuer</span><span><code>{{.issuer}}</code>{{if not .issuerFromSetting}}<br><span class="muted" style="font-size:12px">{{$.T "oauthsrv.guideIssuerTip"}}</span>{{end}}</span>
+        <span class="muted">{{$.T "oauthsrv.epAuthorize"}}</span><code>GET {{.epAuthorize}}?response_type=code&amp;client_id=…&amp;redirect_uri=…&amp;scope=openid%20profile%20email&amp;state=…&amp;nonce=…&amp;code_challenge=…&amp;code_challenge_method=S256</code>
+        <span class="muted">{{$.T "oauthsrv.epToken"}}</span><code>POST {{.epToken}}  (grant_type=authorization_code | refresh_token)</code>
+        <span class="muted">{{$.T "oauthsrv.epUserinfo"}}</span><code>GET {{.epUserinfo}}  (Authorization: Bearer &lt;access_token&gt;)</code>
+        <span class="muted">{{$.T "oauthsrv.epRevoke"}}</span><code>POST {{.epRevoke}}  (token=&lt;refresh_token&gt;)</code>
+        <span class="muted">{{$.T "oauthsrv.epJWKS"}}</span><code>GET {{.epJWKS}}</code>
+        <span class="muted">Scope</span><span>{{$.T "oauthsrv.guideScope"}}</span>
+        <span class="muted">{{$.T "oauthsrv.guideNoteTitle"}}</span><span>{{$.T "oauthsrv.guideNote"}}</span>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="modal-overlay" id="appModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="{{$.T "oauthsrv.newApp"}}">
+    <div class="modal-head">
+      <h2 id="appModalTitle">{{$.T "oauthsrv.newApp"}}</h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+    </div>
+    <form id="appForm" novalidate>
+      <input type="hidden" name="id">
+      <div class="modal-body share-body">
+        <label>{{$.T "oauthsrv.fieldName"}}
+          <input type="text" name="name" required maxlength="64" placeholder="{{$.T "oauthsrv.fieldNamePh"}}">
+        </label>
+        <label id="appTypeField">{{$.T "oauthsrv.fieldType"}}
+          <select name="client_type">
+            <option value="confidential">{{$.T "oauthsrv.typeConfidential"}}</option>
+            <option value="public">{{$.T "oauthsrv.typePublic"}}</option>
+          </select>
+          <span class="muted" style="font-size:12px">{{$.T "oauthsrv.typeTip"}}</span>
+        </label>
+        <label>{{$.T "oauthsrv.fieldHomepage"}}
+          <input type="url" name="homepage_url" maxlength="500" placeholder="https://app.example.com">
+        </label>
+        <label>{{$.T "oauthsrv.fieldRedirects"}}
+          <textarea name="redirect_uris" class="oauth-uris" required placeholder="https://app.example.com/auth/docshare/callback"></textarea>
+          <span class="muted" style="font-size:12px">{{$.T "oauthsrv.fieldRedirectsTip"}}</span>
+        </label>
+        {{if not (and .user .user.IsAdmin)}}<p class="muted" style="font-size:12px;margin:0">{{$.T "oauthsrv.reviewTip"}}</p>{{end}}
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" data-close-modal>{{$.T "取消"}}</button>
+        <button type="submit" class="btn btn-primary">{{$.T "保存"}}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="appSecretModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="{{$.T "oauthsrv.secretTitle"}}">
+    <div class="modal-head">
+      <h2 id="appSecretTitle">{{$.T "oauthsrv.secretTitle"}}</h2>
+      <button type="button" class="modal-close" data-close-modal aria-label="{{$.T "关闭"}}">✕</button>
+    </div>
+    <div class="modal-body share-body">
+      <div class="secret-warn" id="appSecretWarn">{{$.T "oauthsrv.secretWarn"}}</div>
+      <label>Client ID
+        <div class="secret-row"><input type="text" id="outClientId" readonly><button type="button" class="btn btn-sm" data-copy="outClientId">{{$.T "复制"}}</button></div>
+      </label>
+      <label id="outClientSecretRow">Client Secret
+        <div class="secret-row"><input type="text" id="outClientSecret" readonly><button type="button" class="btn btn-sm" data-copy="outClientSecret">{{$.T "复制"}}</button></div>
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn" id="btnDownloadApp">{{$.T "key.download"}}</button>
+      <button type="button" class="btn btn-primary" data-close-modal>{{$.T "我已保存"}}</button>
+    </div>
+  </div>
+</div>
+
+<script>window.__OAUTH_EP={authorize:{{.epAuthorize}},token:{{.epToken}},userinfo:{{.epUserinfo}},discovery:{{.epDiscovery}},issuer:{{.issuer}}};</script>
+<script src="/static/oauth_apps.js"></script>
+{{template "adminfoot" .}}
+</body>
+</html>
+{{end}}

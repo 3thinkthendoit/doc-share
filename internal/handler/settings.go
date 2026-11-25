@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"doc-share/internal/model"
+	"doc-share/internal/proxy"
 	"doc-share/internal/storage"
 	"doc-share/internal/util"
 
@@ -96,6 +97,22 @@ type SiteSettings struct {
 	OAuthGoogleClientID    string
 	OAuthGoogleClientSecret string
 	OAuthGoogleRedirectURL string
+	OAuthGiteeEnabled      bool
+	OAuthGiteeClientID     string
+	OAuthGiteeClientSecret string
+	OAuthGiteeRedirectURL  string
+	OAuthGitLabEnabled      bool
+	OAuthGitLabClientID     string
+	OAuthGitLabClientSecret string
+	OAuthGitLabRedirectURL  string
+	OAuthGitLabBaseURL      string // 自建 GitLab 地址，空 = https://gitlab.com
+	OAuthQQEnabled          bool
+	OAuthQQClientID         string // APP ID
+	OAuthQQClientSecret     string // APP Key
+	OAuthQQRedirectURL      string
+	// GitHub / Google / gitlab.com 服务端出站代理（vless:// / http:// / socks5://）；Gitee、QQ、自建 GitLab 始终直连
+	OAuthProxyEnabled bool
+	OAuthProxyURL     string
 
 	// 智能体创建文档配额。未入库时用默认值。
 	AIMaxCreatesPerReq int // 一次用户消息内 create/duplicate/apply_template 合计上限
@@ -154,6 +171,21 @@ const (
 	keyOAuthGoogleClientID     = "oauth_google_client_id"
 	keyOAuthGoogleClientSecret = "oauth_google_client_secret"
 	keyOAuthGoogleRedirectURL  = "oauth_google_redirect_url"
+	keyOAuthGiteeEnabled       = "oauth_gitee_enabled"
+	keyOAuthGiteeClientID      = "oauth_gitee_client_id"
+	keyOAuthGiteeClientSecret  = "oauth_gitee_client_secret"
+	keyOAuthGiteeRedirectURL   = "oauth_gitee_redirect_url"
+	keyOAuthGitLabEnabled      = "oauth_gitlab_enabled"
+	keyOAuthGitLabClientID     = "oauth_gitlab_client_id"
+	keyOAuthGitLabClientSecret = "oauth_gitlab_client_secret"
+	keyOAuthGitLabRedirectURL  = "oauth_gitlab_redirect_url"
+	keyOAuthGitLabBaseURL      = "oauth_gitlab_base_url"
+	keyOAuthQQEnabled          = "oauth_qq_enabled"
+	keyOAuthQQClientID         = "oauth_qq_client_id"
+	keyOAuthQQClientSecret     = "oauth_qq_client_secret"
+	keyOAuthQQRedirectURL      = "oauth_qq_redirect_url"
+	keyOAuthProxyEnabled       = "oauth_proxy_enabled"
+	keyOAuthProxyURL           = "oauth_proxy_url"
 
 	keyAIMaxCreatesPerReq = "ai_max_creates_per_req" // 一次用户消息内智能体新建篇数
 	keyAIMaxCreatesPerDay = "ai_max_creates_per_day" // 单用户单日智能体新建篇数
@@ -285,6 +317,36 @@ func (a *App) Settings() SiteSettings {
 			s.OAuthGoogleClientSecret = r.Value
 		case keyOAuthGoogleRedirectURL:
 			s.OAuthGoogleRedirectURL = r.Value
+		case keyOAuthGiteeEnabled:
+			s.OAuthGiteeEnabled = boolVal(r.Value)
+		case keyOAuthGiteeClientID:
+			s.OAuthGiteeClientID = r.Value
+		case keyOAuthGiteeClientSecret:
+			s.OAuthGiteeClientSecret = r.Value
+		case keyOAuthGiteeRedirectURL:
+			s.OAuthGiteeRedirectURL = r.Value
+		case keyOAuthGitLabEnabled:
+			s.OAuthGitLabEnabled = boolVal(r.Value)
+		case keyOAuthGitLabClientID:
+			s.OAuthGitLabClientID = r.Value
+		case keyOAuthGitLabClientSecret:
+			s.OAuthGitLabClientSecret = r.Value
+		case keyOAuthGitLabRedirectURL:
+			s.OAuthGitLabRedirectURL = r.Value
+		case keyOAuthGitLabBaseURL:
+			s.OAuthGitLabBaseURL = strings.TrimSpace(r.Value)
+		case keyOAuthQQEnabled:
+			s.OAuthQQEnabled = boolVal(r.Value)
+		case keyOAuthQQClientID:
+			s.OAuthQQClientID = r.Value
+		case keyOAuthQQClientSecret:
+			s.OAuthQQClientSecret = r.Value
+		case keyOAuthQQRedirectURL:
+			s.OAuthQQRedirectURL = r.Value
+		case keyOAuthProxyEnabled:
+			s.OAuthProxyEnabled = boolVal(r.Value)
+		case keyOAuthProxyURL:
+			s.OAuthProxyURL = strings.TrimSpace(r.Value)
 		case keyAIMaxCreatesPerReq:
 			if n, err := strconv.Atoi(strings.TrimSpace(r.Value)); err == nil && n >= minAIMaxCreatesPerReq && n <= maxAIMaxCreatesPerReq {
 				s.AIMaxCreatesPerReq = n
@@ -323,9 +385,15 @@ func (a *App) SettingsPage(c *gin.Context) {
 		"title": a.tr(c, "set.title"),
 		"set":   s,
 		"llms":  llms,
-		// 展示实际会发给 GitHub/Google 的 callback，便于与 OAuth App 登记地址逐字对齐
+		// 展示实际会发给各提供方的 callback，便于与 OAuth App 登记地址逐字对齐
 		"oauthGitHubCallback": a.oauthEffectiveRedirect(c, model.OAuthProviderGitHub),
 		"oauthGoogleCallback": a.oauthEffectiveRedirect(c, model.OAuthProviderGoogle),
+		"oauthGiteeCallback":  a.oauthEffectiveRedirect(c, model.OAuthProviderGitee),
+		"oauthGitLabCallback": a.oauthEffectiveRedirect(c, model.OAuthProviderGitLab),
+		"oauthQQCallback":     a.oauthEffectiveRedirect(c, model.OAuthProviderQQ),
+		// 代理地址含凭据，只回显协议 + host:port
+		"oauthProxyPreview":   a.oauthProxyPreview(),
+		"oauthProxyFromCfg":   a.Cfg != nil && strings.TrimSpace(a.Cfg.Auth.OAuthProxy) != "" && strings.TrimSpace(s.OAuthProxyURL) == "",
 	})
 }
 
@@ -377,6 +445,22 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		OAuthGoogleClientID     string `json:"oauth_google_client_id"`
 		OAuthGoogleClientSecret string `json:"oauth_google_client_secret"`
 		OAuthGoogleRedirectURL  string `json:"oauth_google_redirect_url"`
+		OAuthGiteeEnabled       bool   `json:"oauth_gitee_enabled"`
+		OAuthGiteeClientID      string `json:"oauth_gitee_client_id"`
+		OAuthGiteeClientSecret  string `json:"oauth_gitee_client_secret"`
+		OAuthGiteeRedirectURL   string `json:"oauth_gitee_redirect_url"`
+		OAuthGitLabEnabled      bool   `json:"oauth_gitlab_enabled"`
+		OAuthGitLabClientID     string `json:"oauth_gitlab_client_id"`
+		OAuthGitLabClientSecret string `json:"oauth_gitlab_client_secret"`
+		OAuthGitLabRedirectURL  string `json:"oauth_gitlab_redirect_url"`
+		OAuthGitLabBaseURL      string `json:"oauth_gitlab_base_url"`
+		OAuthQQEnabled          bool   `json:"oauth_qq_enabled"`
+		OAuthQQClientID         string `json:"oauth_qq_client_id"`
+		OAuthQQClientSecret     string `json:"oauth_qq_client_secret"`
+		OAuthQQRedirectURL      string `json:"oauth_qq_redirect_url"`
+		OAuthProxyEnabled       bool   `json:"oauth_proxy_enabled"`
+		OAuthProxyURL           string `json:"oauth_proxy_url"`   // 留空 = 保留原值
+		OAuthProxyClear         bool   `json:"oauth_proxy_clear"` // 显式清除已保存的代理地址
 		AIMaxCreatesPerReq      int    `json:"ai_max_creates_per_req"`
 		AIMaxCreatesPerDay      int    `json:"ai_max_creates_per_day"`
 		AIStreamTimeoutMin      int    `json:"ai_stream_timeout_min"`
@@ -527,6 +611,48 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "set.oauthRedirectInvalid")})
 		return
 	}
+	geRedirect, err := normalizeOAuthRedirectURL(req.OAuthGiteeRedirectURL)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "set.oauthRedirectInvalid")})
+		return
+	}
+	glRedirect, err := normalizeOAuthRedirectURL(req.OAuthGitLabRedirectURL)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "set.oauthRedirectInvalid")})
+		return
+	}
+	// 自建 GitLab 根地址：带主机的 http(s) 绝对地址，不允许查询串/锚点/账号，空 = gitlab.com
+	glBaseURL, err := normalizeGitLabBaseURL(req.OAuthGitLabBaseURL)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "set.oauthGitLabBaseInvalid")})
+		return
+	}
+	qqRedirect, err := normalizeOAuthRedirectURL(req.OAuthQQRedirectURL)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "set.oauthRedirectInvalid")})
+		return
+	}
+	// 出站代理：留空保留原值；勾选清除则置空；新填写的地址先校验格式
+	proxyURL := strings.TrimSpace(req.OAuthProxyURL)
+	switch {
+	case req.OAuthProxyClear:
+		proxyURL = ""
+	case proxyURL == "":
+		proxyURL = a.Settings().OAuthProxyURL
+	default:
+		if len(proxyURL) > 2048 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "set.oauthProxyInvalid")})
+			return
+		}
+		if err := proxy.Validate(proxyURL); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "set.oauthProxyInvalid") + "：" + err.Error()})
+			return
+		}
+	}
+	if req.OAuthProxyEnabled && proxyURL == "" && (a.Cfg == nil || strings.TrimSpace(a.Cfg.Auth.OAuthProxy) == "") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "set.oauthProxyEmpty")})
+		return
+	}
 
 	values := map[string]string{
 		model.SettingSiteName:   name,
@@ -562,6 +688,18 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		keyOAuthGitHubRedirectURL: ghRedirect,
 		keyOAuthGoogleClientID:  strings.TrimSpace(req.OAuthGoogleClientID),
 		keyOAuthGoogleRedirectURL: ggRedirect,
+		keyOAuthGiteeEnabled:      boolStr(req.OAuthGiteeEnabled),
+		keyOAuthGiteeClientID:     strings.TrimSpace(req.OAuthGiteeClientID),
+		keyOAuthGiteeRedirectURL:  geRedirect,
+		keyOAuthGitLabEnabled:     boolStr(req.OAuthGitLabEnabled),
+		keyOAuthGitLabClientID:    strings.TrimSpace(req.OAuthGitLabClientID),
+		keyOAuthGitLabRedirectURL: glRedirect,
+		keyOAuthGitLabBaseURL:     glBaseURL,
+		keyOAuthQQEnabled:         boolStr(req.OAuthQQEnabled),
+		keyOAuthQQClientID:        strings.TrimSpace(req.OAuthQQClientID),
+		keyOAuthQQRedirectURL:     qqRedirect,
+		keyOAuthProxyEnabled:      boolStr(req.OAuthProxyEnabled),
+		keyOAuthProxyURL:          proxyURL,
 		keyAIMaxCreatesPerReq:   strconv.Itoa(createsPerReq),
 		keyAIMaxCreatesPerDay:   strconv.Itoa(createsPerDay),
 		keyAIStreamTimeoutMin:   strconv.Itoa(streamTimeoutMin),
@@ -578,6 +716,21 @@ func (a *App) UpdateSettings(c *gin.Context) {
 	}
 	values[keyOAuthGitHubClientSecret] = ghSecret
 	values[keyOAuthGoogleClientSecret] = ggSecret
+	geSecret := strings.TrimSpace(req.OAuthGiteeClientSecret)
+	if geSecret == "" {
+		geSecret = prev.OAuthGiteeClientSecret
+	}
+	values[keyOAuthGiteeClientSecret] = geSecret
+	glSecret := strings.TrimSpace(req.OAuthGitLabClientSecret)
+	if glSecret == "" {
+		glSecret = prev.OAuthGitLabClientSecret
+	}
+	values[keyOAuthGitLabClientSecret] = glSecret
+	qqSecret := strings.TrimSpace(req.OAuthQQClientSecret)
+	if qqSecret == "" {
+		qqSecret = prev.OAuthQQClientSecret
+	}
+	values[keyOAuthQQClientSecret] = qqSecret
 	// 单条批量 upsert（INSERT ... ON DUPLICATE KEY UPDATE）：
 	// 一次网络往返写完全部设置。逐条 SELECT+UPDATE 在远程 MySQL 上要 2N 次往返，保存明显变慢
 	rows := make([]model.SystemSetting, 0, len(values))
@@ -731,6 +884,21 @@ func (a *App) fileStorage() (storage.Storage, error) {
 	default:
 		return &storage.Local{Dir: a.Cfg.Upload.Dir}, nil
 	}
+}
+
+// normalizeGitLabBaseURL 校验自建 GitLab 根地址；空串合法（= gitlab.com）。
+// 会被直接拼接 /oauth/authorize、/api/v4/user，因此拒绝查询串、锚点与内嵌账号。
+func normalizeGitLabBaseURL(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", nil
+	}
+	u, err := url.Parse(s)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") ||
+		u.RawQuery != "" || u.Fragment != "" || u.User != nil || len(s) > 300 {
+		return "", errors.New("invalid gitlab base url")
+	}
+	return strings.TrimRight(u.String(), "/"), nil
 }
 
 // normalizeOAuthRedirectURL 校验 OAuth 回调绝对地址；空串合法（走站点域名推导）。

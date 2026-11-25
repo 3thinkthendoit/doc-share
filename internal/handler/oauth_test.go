@@ -226,6 +226,35 @@ func TestSanitizeOAuthUsername(t *testing.T) {
 	}
 }
 
+func TestOAuthStartAccessTypeOnlyForGoogle(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	a := oauthTestApp(t)
+	a.Cfg.Auth.Google = config.OAuthProviderConfig{ClientID: "g", ClientSecret: "s"}
+	a.Cfg.Auth.Gitee = config.OAuthProviderConfig{ClientID: "e", ClientSecret: "s"}
+	a.Cfg.Auth.QQ = config.OAuthProviderConfig{ClientID: "q", ClientSecret: "s"}
+	a.setCache = &SiteSettings{SiteName: "DocShare", RegMethod: "username",
+		OAuthGoogleEnabled: true, OAuthGiteeEnabled: true, OAuthQQEnabled: true}
+	start := func(provider string) string {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "http://localhost/auth/"+provider, nil)
+		c.Params = gin.Params{{Key: "provider", Value: provider}}
+		a.OAuthStart(c)
+		if w.Code != http.StatusFound {
+			t.Fatalf("%s: code=%d", provider, w.Code)
+		}
+		return w.Header().Get("Location")
+	}
+	if loc := start(model.OAuthProviderGoogle); !strings.Contains(loc, "access_type=online") {
+		t.Fatalf("google 应带 access_type: %s", loc)
+	}
+	for _, p := range []string{model.OAuthProviderGitee, model.OAuthProviderQQ} {
+		if loc := start(p); strings.Contains(loc, "access_type") || !strings.Contains(loc, "state=") {
+			t.Fatalf("%s 不应带 access_type: %s", p, loc)
+		}
+	}
+}
+
 func TestNormalizeOAuthRedirectURL(t *testing.T) {
 	if got, err := normalizeOAuthRedirectURL(""); err != nil || got != "" {
 		t.Fatalf("empty: %q %v", got, err)

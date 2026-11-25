@@ -65,6 +65,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.POST("/api/settings/test-mail", middleware.RequireAdmin(), app.TestMail)
 		admin.POST("/api/settings/test-rustfs", middleware.RequireAdmin(), app.TestRustFS)
 		admin.POST("/api/settings/test-cos", middleware.RequireAdmin(), app.TestCOS)
+		admin.POST("/api/settings/test-oauth-proxy", middleware.RequireAdmin(), app.TestOAuthProxy)
 		admin.GET("/api/llm-configs", middleware.RequireAdmin(), app.ListLLMConfigs)
 		admin.POST("/api/llm-configs", middleware.RequireAdmin(), app.CreateLLMConfig)
 		admin.POST("/api/llm-configs/test", middleware.RequireAdmin(), app.TestLLMConfig)
@@ -142,6 +143,15 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 		admin.PUT("/api/apikeys/:id/status", app.UpdateAPIKeyStatus)
 		admin.DELETE("/api/apikeys/:id", app.DeleteAPIKey)
 
+		// 授权登录：第三方应用接入（开发者自助注册，管理员审核）与「我授权过的应用」
+		admin.GET("/oauth-apps", app.OAuthAppsPage)
+		admin.POST("/api/oauth-apps", app.CreateOAuthApp)
+		admin.PUT("/api/oauth-apps/:id", app.UpdateOAuthApp)
+		admin.POST("/api/oauth-apps/:id/rotate-secret", app.RotateOAuthAppSecret)
+		admin.DELETE("/api/oauth-apps/:id", app.DeleteOAuthApp)
+		admin.POST("/api/oauth-apps/:id/review", middleware.RequireAdmin(), app.ReviewOAuthApp)
+		admin.DELETE("/api/oauth-consents/:clientId", app.RevokeOAuthConsent)
+
 		// 文档 API
 		admin.POST("/api/docs", app.CreateDoc)
 		admin.POST("/api/docs/from-url", app.ImportDocFromURL)
@@ -217,6 +227,7 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 	// 可选认证注入登录态，已登录时顶栏菜单与控制台其他页一致，避免跨页「菜单不一样」
 	r.GET("/console/apidoc", middleware.OptionalAuth(app.DB, app.Signer, totpOn), app.APIDocPage)
 	r.GET("/console/mcpdoc", middleware.OptionalAuth(app.DB, app.Signer, totpOn), app.MCPDocPage)
+	r.GET("/console/oauthdoc", middleware.OptionalAuth(app.DB, app.Signer, totpOn), app.OAuthDocPage)
 
 	// 认证
 	r.GET("/captcha", app.Captcha)
@@ -227,6 +238,29 @@ func New(app *handler.App, staticFS fs.FS) *gin.Engine {
 	r.GET("/register", app.RegisterPage)
 	r.GET("/auth/:provider", app.OAuthStart)
 	r.GET("/auth/:provider/callback", app.OAuthCallback)
+	// OAuth2 授权服务器：第三方应用「使用本站账号登录」。授权页可选认证（未登录先去登录再回来）；
+	// token / userinfo 为第三方服务器调用，凭 client_secret / Bearer 令牌，不认站内会话
+	r.GET("/oauth/authorize", middleware.OptionalAuth(app.DB, app.Signer, totpOn), app.OAuthAuthorizePage)
+	r.POST("/oauth/authorize", middleware.OptionalAuth(app.DB, app.Signer, totpOn), app.OAuthAuthorizeSubmit)
+	// 以下端点供第三方服务器 / 浏览器端公开客户端调用：允许跨域（不认 Cookie，凭 client 凭据或 Bearer 令牌）
+	noop := func(*gin.Context) {}
+	for path, h := range map[string]gin.HandlerFunc{
+		"/oauth/token":  app.OAuthToken,
+		"/oauth/revoke": app.OAuthRevoke,
+	} {
+		r.POST(path, handler.OAuthCORS, h)
+		r.OPTIONS(path, handler.OAuthCORS, noop)
+	}
+	for path, h := range map[string]gin.HandlerFunc{
+		"/oauth/userinfo":                         app.OAuthUserInfo,
+		"/oauth/jwks":                             app.OIDCJWKS,
+		"/.well-known/openid-configuration":       app.OIDCDiscovery,
+		"/.well-known/oauth-authorization-server": app.OIDCDiscovery,
+	} {
+		r.GET(path, handler.OAuthCORS, h)
+		r.OPTIONS(path, handler.OAuthCORS, noop)
+	}
+	r.POST("/oauth/userinfo", handler.OAuthCORS, app.OAuthUserInfo)
 	r.POST("/register", app.Register)
 	r.POST("/register/email-code", app.SendRegisterCode)
 	r.GET("/terms", app.TermsPage)

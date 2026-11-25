@@ -48,7 +48,8 @@ func Init(cfg *config.Config) (*gorm.DB, error) {
 
 	if err := db.AutoMigrate(&model.User{}, &model.Project{}, &model.Category{}, &model.ApiKey{}, &model.Document{}, &model.Share{}, &model.ProjectShare{}, &model.ShareAccessRequest{}, &model.SystemSetting{},
 		&model.DocumentRevision{}, &model.Comment{}, &model.DocumentVisitor{}, &model.ProjectMember{}, &model.Message{}, &model.DocTemplate{},
-		&model.ChatSession{}, &model.ChatMessage{}, &model.ChatSkill{}, &model.LLMConfig{}, &model.OpenAPINonce{}, &model.OAuthIdentity{}); err != nil {
+		&model.ChatSession{}, &model.ChatMessage{}, &model.ChatSkill{}, &model.LLMConfig{}, &model.OpenAPINonce{}, &model.OAuthIdentity{},
+		&model.OAuthClient{}, &model.OAuthCode{}, &model.OAuthConsent{}, &model.OAuthRefreshToken{}); err != nil {
 		return nil, fmt.Errorf("auto migrate: %w", err)
 	}
 

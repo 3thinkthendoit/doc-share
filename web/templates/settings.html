@@ -98,6 +98,66 @@
         <span class="muted" style="font-size:12px">{{$.T "set.oauthRedirectTip"}}</span>
         <span class="muted" style="font-size:12px;display:block;margin-top:4px">{{$.T "set.oauthRedirectEffective"}} <code style="word-break:break-all">{{.oauthGoogleCallback}}</code></span>
       </label>
+      <label class="check" style="margin-top:14px"><input type="checkbox" name="oauth_gitee_enabled" {{if .set.OAuthGiteeEnabled}}checked{{end}}> {{$.T "set.oauthGitee"}}</label>
+      <div class="smtp-grid" style="margin:8px 0 12px">
+        <label>{{$.T "set.oauthClientID"}}
+          <input type="text" name="oauth_gitee_client_id" value="{{.set.OAuthGiteeClientID}}" autocomplete="off" placeholder="Gitee Client ID">
+        </label>
+        <label>{{$.T "set.oauthClientSecret"}}
+          <input type="password" name="oauth_gitee_client_secret" value="" placeholder="{{if .set.OAuthGiteeClientSecret}}{{$.T "set.oauthSecretKeep"}}{{else}}Client Secret{{end}}" autocomplete="new-password">
+        </label>
+      </div>
+      <label>{{$.T "set.oauthRedirectURL"}}
+        <input type="text" name="oauth_gitee_redirect_url" value="{{.set.OAuthGiteeRedirectURL}}" placeholder="https://docs.example.com/auth/gitee/callback" autocomplete="off">
+        <span class="muted" style="font-size:12px">{{$.T "set.oauthRedirectTip"}}</span>
+        <span class="muted" style="font-size:12px;display:block;margin-top:4px">{{$.T "set.oauthRedirectEffective"}} <code style="word-break:break-all">{{.oauthGiteeCallback}}</code></span>
+      </label>
+      <label class="check" style="margin-top:14px"><input type="checkbox" name="oauth_gitlab_enabled" {{if .set.OAuthGitLabEnabled}}checked{{end}}> {{$.T "set.oauthGitLab"}}</label>
+      <div class="smtp-grid" style="margin:8px 0 12px">
+        <label>{{$.T "set.oauthClientID"}}
+          <input type="text" name="oauth_gitlab_client_id" value="{{.set.OAuthGitLabClientID}}" autocomplete="off" placeholder="GitLab Application ID">
+        </label>
+        <label>{{$.T "set.oauthClientSecret"}}
+          <input type="password" name="oauth_gitlab_client_secret" value="" placeholder="{{if .set.OAuthGitLabClientSecret}}{{$.T "set.oauthSecretKeep"}}{{else}}Secret{{end}}" autocomplete="new-password">
+        </label>
+      </div>
+      <label style="margin-bottom:12px">{{$.T "set.oauthGitLabBaseURL"}}
+        <input type="text" name="oauth_gitlab_base_url" value="{{.set.OAuthGitLabBaseURL}}" placeholder="https://gitlab.com" autocomplete="off">
+        <span class="muted" style="font-size:12px">{{$.T "set.oauthGitLabBaseTip"}}</span>
+      </label>
+      <label>{{$.T "set.oauthRedirectURL"}}
+        <input type="text" name="oauth_gitlab_redirect_url" value="{{.set.OAuthGitLabRedirectURL}}" placeholder="https://docs.example.com/auth/gitlab/callback" autocomplete="off">
+        <span class="muted" style="font-size:12px">{{$.T "set.oauthRedirectTip"}}</span>
+        <span class="muted" style="font-size:12px;display:block;margin-top:4px">{{$.T "set.oauthRedirectEffective"}} <code style="word-break:break-all">{{.oauthGitLabCallback}}</code></span>
+      </label>
+      <label class="check" style="margin-top:14px"><input type="checkbox" name="oauth_qq_enabled" {{if .set.OAuthQQEnabled}}checked{{end}}> {{$.T "set.oauthQQ"}}</label>
+      <p class="muted" style="font-size:12px;margin:2px 0 0">{{$.T "set.oauthQQTip"}}</p>
+      <div class="smtp-grid" style="margin:8px 0 12px">
+        <label>APP ID
+          <input type="text" name="oauth_qq_client_id" value="{{.set.OAuthQQClientID}}" autocomplete="off" placeholder="APP ID">
+        </label>
+        <label>APP Key
+          <input type="password" name="oauth_qq_client_secret" value="" placeholder="{{if .set.OAuthQQClientSecret}}{{$.T "set.oauthSecretKeep"}}{{else}}APP Key{{end}}" autocomplete="new-password">
+        </label>
+      </div>
+      <label>{{$.T "set.oauthRedirectURL"}}
+        <input type="text" name="oauth_qq_redirect_url" value="{{.set.OAuthQQRedirectURL}}" placeholder="https://docs.example.com/auth/qq/callback" autocomplete="off">
+        <span class="muted" style="font-size:12px">{{$.T "set.oauthRedirectTip"}}</span>
+        <span class="muted" style="font-size:12px;display:block;margin-top:4px">{{$.T "set.oauthRedirectEffective"}} <code style="word-break:break-all">{{.oauthQQCallback}}</code></span>
+      </label>
+
+      <div class="settings-section" style="margin-top:18px">{{$.T "set.oauthProxyTitle"}}</div>
+      <p class="muted" style="font-size:12.5px;margin:0 0 10px">{{$.T "set.oauthProxyTip"}}</p>
+      <label class="check"><input type="checkbox" name="oauth_proxy_enabled" {{if .set.OAuthProxyEnabled}}checked{{end}}> {{$.T "set.oauthProxyEnabled"}}</label>
+      <label style="margin-top:8px">{{$.T "set.oauthProxyURL"}}
+        <input type="password" name="oauth_proxy_url" value="" autocomplete="new-password"
+          placeholder="{{if .oauthProxyPreview}}{{$.T "set.oauthSecretKeep"}}（{{.oauthProxyPreview}}）{{else}}vless://… / http://127.0.0.1:7890 / socks5://127.0.0.1:1080{{end}}">
+        {{if .oauthProxyFromCfg}}<span class="muted" style="font-size:12px;display:block;margin-top:4px">{{$.T "set.oauthProxyFromCfg"}}</span>{{end}}
+      </label>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:4px 0 6px">
+        {{if .oauthProxyPreview}}<label class="check" style="margin:0"><input type="checkbox" name="oauth_proxy_clear"> {{$.T "set.oauthProxyClear"}}</label>{{end}}
+        <button type="button" class="btn btn-sm" id="testOAuthProxyBtn">{{$.T "set.oauthProxyTest"}}</button>
+      </div>
       </section>
 
       <section id="sec-share" class="set-sec">
@@ -473,6 +533,30 @@
     });
   });
   showSec(/^#sec-/.test(location.hash) ? location.hash.slice(1) : 'sec-basic');
+
+  var testOAuthProxyBtn = document.getElementById('testOAuthProxyBtn');
+  if (testOAuthProxyBtn) testOAuthProxyBtn.addEventListener('click', async function () {
+    var btn = this;
+    btn.disabled = true;
+    try {
+      var res = await fetch('/console/api/settings/test-oauth-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({ oauth_proxy_url: form.oauth_proxy_url ? form.oauth_proxy_url.value.trim() : '' })
+      });
+      var data = await res.json();
+      if (!res.ok) { UI.alert((data && data.error) || UI.t('set.oauthProxyTestFail')); return; }
+      var lines = (data.results || []).map(function (r) {
+        return r.name + '：' + (r.ok ? ('OK ' + r.latency_ms + 'ms') : ('✗ ' + (r.error || '')));
+      });
+      if (data.ok) UI.toast(UI.t('set.oauthProxyTestOk') + ' ' + lines.join('；'), 'success');
+      else UI.alert(UI.t('set.oauthProxyTestFail') + '\n' + lines.join('\n'));
+    } catch (e) {
+      UI.alert(UI.t('set.oauthProxyTestFail'));
+    } finally {
+      btn.disabled = false;
+    }
+  });
 
   document.getElementById('testRustFSBtn').addEventListener('click', async function () {
     var btn = this;
@@ -887,6 +971,22 @@
       oauth_google_client_id: form.oauth_google_client_id ? form.oauth_google_client_id.value.trim() : '',
       oauth_google_client_secret: form.oauth_google_client_secret ? form.oauth_google_client_secret.value : '',
       oauth_google_redirect_url: form.oauth_google_redirect_url ? form.oauth_google_redirect_url.value.trim() : '',
+      oauth_gitee_enabled: !!(form.oauth_gitee_enabled && form.oauth_gitee_enabled.checked),
+      oauth_gitee_client_id: form.oauth_gitee_client_id ? form.oauth_gitee_client_id.value.trim() : '',
+      oauth_gitee_client_secret: form.oauth_gitee_client_secret ? form.oauth_gitee_client_secret.value : '',
+      oauth_gitee_redirect_url: form.oauth_gitee_redirect_url ? form.oauth_gitee_redirect_url.value.trim() : '',
+      oauth_gitlab_enabled: !!(form.oauth_gitlab_enabled && form.oauth_gitlab_enabled.checked),
+      oauth_gitlab_client_id: form.oauth_gitlab_client_id ? form.oauth_gitlab_client_id.value.trim() : '',
+      oauth_gitlab_client_secret: form.oauth_gitlab_client_secret ? form.oauth_gitlab_client_secret.value : '',
+      oauth_gitlab_redirect_url: form.oauth_gitlab_redirect_url ? form.oauth_gitlab_redirect_url.value.trim() : '',
+      oauth_gitlab_base_url: form.oauth_gitlab_base_url ? form.oauth_gitlab_base_url.value.trim() : '',
+      oauth_qq_enabled: !!(form.oauth_qq_enabled && form.oauth_qq_enabled.checked),
+      oauth_qq_client_id: form.oauth_qq_client_id ? form.oauth_qq_client_id.value.trim() : '',
+      oauth_qq_client_secret: form.oauth_qq_client_secret ? form.oauth_qq_client_secret.value : '',
+      oauth_qq_redirect_url: form.oauth_qq_redirect_url ? form.oauth_qq_redirect_url.value.trim() : '',
+      oauth_proxy_enabled: !!(form.oauth_proxy_enabled && form.oauth_proxy_enabled.checked),
+      oauth_proxy_url: form.oauth_proxy_url ? form.oauth_proxy_url.value.trim() : '',
+      oauth_proxy_clear: !!(form.oauth_proxy_clear && form.oauth_proxy_clear.checked),
       ai_max_creates_per_req: parseInt(form.ai_max_creates_per_req.value, 10),
       ai_max_creates_per_day: parseInt(form.ai_max_creates_per_day.value, 10),
       ai_stream_timeout_min: parseInt(form.ai_stream_timeout_min.value, 10)

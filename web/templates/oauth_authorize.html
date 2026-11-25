@@ -1,0 +1,84 @@
+{{define "oauth_authorize.html"}}
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>
+{{template "head" .}}
+<style>
+  .oauth-card{max-width:440px}
+  .oauth-apps{display:flex;align-items:center;justify-content:center;gap:14px;margin:4px 0 14px}
+  .oauth-app-badge{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;
+    font-size:22px;font-weight:600;background:var(--primary-soft);color:var(--primary-dark)}
+  .oauth-app-badge img{width:100%;height:100%;border-radius:14px;object-fit:cover}
+  .oauth-link{color:var(--faint);font-size:18px}
+  .oauth-title{font-size:18px;text-align:center;margin:0 0 6px;line-height:1.5}
+  .oauth-meta{text-align:center;font-size:12.5px;margin:0 0 16px;word-break:break-all}
+  .oauth-scopes{list-style:none;padding:12px 14px;margin:0 0 14px;border:1px solid var(--border);border-radius:10px}
+  .oauth-scopes li{display:flex;gap:8px;align-items:flex-start;padding:5px 0;font-size:14px}
+  .oauth-scopes li::before{content:"✓";color:var(--primary);font-weight:700}
+  .oauth-who{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;margin:0 0 16px}
+  .oauth-who .user-avatar{width:26px;height:26px;font-size:12px}
+  .oauth-actions{display:flex;gap:10px}
+  .oauth-actions .btn{flex:1}
+  .oauth-note{font-size:12px;text-align:center;margin:14px 0 0}
+</style>
+</head>
+<body class="auth-body has-site-nav">
+  {{template "siteNav" .}}
+  <div class="auth-card share-gate oauth-card">
+    {{if .oauthError}}
+    <div class="share-gate-icon" aria-hidden="true">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg>
+    </div>
+    <h1 class="share-gate-title">{{$.T "oauthsrv.errTitle"}}</h1>
+    <div class="alert alert-error">{{.oauthError}}</div>
+    <a class="btn btn-block" href="/">{{$.T "oauthsrv.backHome"}}</a>
+    {{else}}
+    <div class="oauth-apps">
+      <span class="oauth-app-badge">{{avatar .client.Name}}</span>
+      <span class="oauth-link" aria-hidden="true">⇄</span>
+      <span class="oauth-app-badge">{{if .SiteLogo}}<img src="{{.SiteLogo}}" alt="">{{else}}<img src="/static/logo-mark.svg" alt="">{{end}}</span>
+    </div>
+    <h1 class="oauth-title">{{$.T "oauthsrv.heading" .client.Name .SiteName}}</h1>
+    <p class="oauth-meta muted">
+      {{if .client.HomepageURL}}<a href="{{.client.HomepageURL}}" target="_blank" rel="noopener noreferrer">{{.client.HomepageURL}}</a> · {{end}}{{$.T "oauthsrv.developer" .clientOwner}}
+    </p>
+
+    <ul class="oauth-scopes">
+      <li>{{$.T "oauthsrv.scopeBasic"}}</li>
+      {{if .hasEmail}}<li>{{$.T "oauthsrv.scopeEmail"}}</li>{{end}}
+      {{if .hasOffline}}<li>{{$.T "oauthsrv.scopeOffline"}}</li>{{end}}
+    </ul>
+
+    <div class="oauth-who">
+      <span style="display:flex;align-items:center;gap:8px">
+        <span class="user-avatar">{{if .user.Avatar}}<img src="{{.user.Avatar}}" alt="">{{else}}{{avatar .user.Nickname .user.Username}}{{end}}</span>
+        <span>{{$.T "oauthsrv.loggedAs" .user.DisplayName}}</span>
+      </span>
+      <a href="/logout?next={{.Path}}">{{$.T "oauthsrv.switchAccount"}}</a>
+    </div>
+
+    <form method="post" action="/oauth/authorize">
+      <input type="hidden" name="response_type" value="code">
+      <input type="hidden" name="client_id" value="{{.client.ClientID}}">
+      <input type="hidden" name="redirect_uri" value="{{.req.RedirectURI}}">
+      <input type="hidden" name="scope" value="{{.scopeStr}}">
+      <input type="hidden" name="state" value="{{.req.State}}">
+      {{if .req.CodeChallenge}}<input type="hidden" name="code_challenge" value="{{.req.CodeChallenge}}">
+      <input type="hidden" name="code_challenge_method" value="{{.req.CodeChallengeMethod}}">{{end}}
+      {{if .req.Nonce}}<input type="hidden" name="nonce" value="{{.req.Nonce}}">{{end}}
+      <input type="hidden" name="csrf" value="{{.csrf}}">
+      <div class="oauth-actions">
+        <button type="submit" name="decision" value="deny" class="btn">{{$.T "oauthsrv.deny"}}</button>
+        <button type="submit" name="decision" value="allow" class="btn btn-primary" autofocus>{{$.T "oauthsrv.allow"}}</button>
+      </div>
+    </form>
+    <p class="oauth-note muted">{{$.T "oauthsrv.redirectNote" .redirectHost}}<br>{{$.T "oauthsrv.revokeNote"}}</p>
+    {{end}}
+  </div>
+  <div class="auth-foot">
+    <span>© {{now.Format "2006"}} {{.SiteName}}</span>
+    <span>Powered by <a href="https://github.com/3thinkthendoit/doc-share" target="_blank" rel="noopener">DocShare</a></span>
+  </div>
+</body>
+</html>
+{{end}}

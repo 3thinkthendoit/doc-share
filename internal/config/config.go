@@ -69,6 +69,12 @@ type AuthConfig struct {
 	// 第三方登录：config/环境变量作兜底；系统设置非空优先，且需后台开关开启
 	GitHub OAuthProviderConfig `yaml:"github"`
 	Google OAuthProviderConfig `yaml:"google"`
+	Gitee  OAuthProviderConfig `yaml:"gitee"`
+	GitLab OAuthProviderConfig `yaml:"gitlab"` // BaseURL 可填自建 GitLab，空 = https://gitlab.com
+	QQ     OAuthProviderConfig `yaml:"qq"`     // QQ 互联：ClientID = APP ID，ClientSecret = APP Key
+	// OAuthProxy GitHub / Google / gitlab.com 出站代理兜底（vless:// / http:// / socks5://）；
+	// 系统设置未填写代理地址时使用，且视为始终启用。Gitee、QQ、自建 GitLab 始终直连。
+	OAuthProxy string `yaml:"oauth_proxy"`
 }
 
 // OAuthProviderConfig 单个 OAuth 应用凭据；ClientID 为空视为未配置
@@ -76,6 +82,7 @@ type OAuthProviderConfig struct {
 	ClientID     string `yaml:"client_id"`
 	ClientSecret string `yaml:"client_secret"`
 	RedirectURL  string `yaml:"redirect_url"` // 可选；空则用站点域名 + /auth/{provider}/callback
+	BaseURL      string `yaml:"base_url"`     // 仅 GitLab：自建实例地址，空 = https://gitlab.com
 }
 
 // UploadConfig 图片上传存储配置

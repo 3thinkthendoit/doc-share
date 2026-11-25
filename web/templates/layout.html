@@ -75,9 +75,11 @@
       <button type="button" class="drop-btn" aria-haspopup="true" aria-expanded="false">{{$.T "openapi.name"}}<svg class="drop-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
       <div class="drop-menu" role="menu">
         {{/* 密钥管理属登录后才能操作的页面：未登录不提供入口 */}}
-        {{if .user}}<a role="menuitem" href="/console/apikeys">{{$.T "key.manage"}}</a>{{end}}
+        {{if .user}}<a role="menuitem" href="/console/apikeys">{{$.T "key.manage"}}</a>
+        <a role="menuitem" href="/console/oauth-apps">{{$.T "oauthsrv.manage"}}</a>{{end}}
         <a role="menuitem" href="/console/apidoc">{{$.T "nav.apidoc"}}</a>
         <a role="menuitem" href="/console/mcpdoc">{{$.T "nav.mcpdoc"}}</a>
+        <a role="menuitem" href="/console/oauthdoc">{{$.T "oauthdoc.nav"}}</a>
       </div>
     </div>
   </div>
@@ -181,9 +183,20 @@
 </svg>
 {{end}}
 
-{{/* 第三方登录：圆形 Logo 图标（GitHub / Google），与参考登录页「其他方式」一致 */}}
+{{define "iconOAuthGitee"}}
+<svg viewBox="0 0 24 24" width="{{or . 22}}" height="{{or . 22}}" aria-hidden="true"><path fill="#C71D23" d="M11.984 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.016 0zm6.09 5.333c.328 0 .593.266.592.593v1.482a.594.594 0 0 1-.593.592H9.777c-.982 0-1.778.796-1.778 1.778v5.63c0 .327.266.592.593.592h5.63c.982 0 1.778-.796 1.778-1.778v-.296a.593.593 0 0 0-.592-.593h-4.15a.592.592 0 0 1-.592-.592v-1.482a.593.593 0 0 1 .593-.592h6.815c.327 0 .593.265.593.592v3.408a4 4 0 0 1-4 4H5.926a.593.593 0 0 1-.593-.593V9.778a4.444 4.444 0 0 1 4.445-4.444h8.296z"/></svg>
+{{end}}
+
+{{define "iconOAuthGitLab"}}
+<svg viewBox="0 0 24 24" width="{{or . 22}}" height="{{or . 22}}" aria-hidden="true"><path fill="#FC6D26" d="m23.6 9.593-.033-.086L20.3.98a.851.851 0 0 0-.336-.405.875.875 0 0 0-1 .054.875.875 0 0 0-.29.44L16.47 7.818H7.537L5.333 1.07a.857.857 0 0 0-.29-.441.875.875 0 0 0-1-.054.859.859 0 0 0-.336.405L.433 9.502l-.032.086a6.066 6.066 0 0 0 2.012 7.01l.01.009.03.021 4.977 3.727 2.462 1.863 1.5 1.132a1.008 1.008 0 0 0 1.22 0l1.499-1.132 2.461-1.863 5.006-3.75.013-.01a6.068 6.068 0 0 0 2.01-7.002z"/></svg>
+{{end}}
+{{define "iconOAuthQQ"}}
+<svg viewBox="0 0 24 24" width="{{or . 22}}" height="{{or . 22}}" aria-hidden="true"><path fill="#1EBAFC" d="M21.395 15.035a40 40 0 0 0-.803-2.264l-1.079-2.695c.001-.032.014-.562.014-.836C19.526 4.632 17.351 0 12 0S4.474 4.632 4.474 9.241c0 .274.013.804.014.836l-1.08 2.695a39 39 0 0 0-.802 2.264c-1.021 3.283-.69 4.643-.438 4.673.54.065 2.103-2.472 2.103-2.472 0 1.469.756 3.387 2.394 4.771-.612.188-1.363.479-1.845.835-.434.32-.379.646-.301.778.343.578 5.883.369 7.482.189 1.6.18 7.14.389 7.483-.189.078-.132.132-.458-.301-.778-.483-.356-1.233-.646-1.846-.836 1.637-1.384 2.393-3.302 2.393-4.771 0 0 1.563 2.537 2.103 2.472.251-.03.581-1.39-.438-4.673"/></svg>
+{{end}}
+
+{{/* 第三方登录：圆形 Logo 图标（GitHub / Google / Gitee / GitLab / QQ），与参考登录页「其他方式」一致 */}}
 {{define "authOAuth"}}
-{{if or .oauthGitHub .oauthGoogle}}
+{{if or .oauthGitHub .oauthGoogle .oauthGitee .oauthGitLab .oauthQQ}}
 <div class="auth-oauth" id="loginOAuth">
   <div class="auth-oauth-divider"><span>{{$.T "login.oauthOr"}}</span></div>
   <div class="auth-oauth-icons">
@@ -195,6 +208,21 @@
     {{if .oauthGoogle}}
     <a class="auth-oauth-icon" href="/auth/google" title="{{$.T "login.oauthGoogle"}}" aria-label="{{$.T "login.oauthGoogle"}}">
       {{template "iconOAuthGoogle" 22}}
+    </a>
+    {{end}}
+    {{if .oauthGitee}}
+    <a class="auth-oauth-icon" href="/auth/gitee" title="{{$.T "login.oauthGitee"}}" aria-label="{{$.T "login.oauthGitee"}}">
+      {{template "iconOAuthGitee" 22}}
+    </a>
+    {{end}}
+    {{if .oauthGitLab}}
+    <a class="auth-oauth-icon" href="/auth/gitlab" title="{{$.T "login.oauthGitLab"}}" aria-label="{{$.T "login.oauthGitLab"}}">
+      {{template "iconOAuthGitLab" 22}}
+    </a>
+    {{end}}
+    {{if .oauthQQ}}
+    <a class="auth-oauth-icon" href="/auth/qq" title="{{$.T "login.oauthQQ"}}" aria-label="{{$.T "login.oauthQQ"}}">
+      {{template "iconOAuthQQ" 22}}
     </a>
     {{end}}
   </div>
@@ -223,9 +251,11 @@
       <button type="button" class="drop-btn" aria-haspopup="true" aria-expanded="false">{{$.T "openapi.name"}}<svg class="drop-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
       <div class="drop-menu" role="menu">
         {{/* 密钥管理属登录后才能操作的页面：未登录不提供入口 */}}
-        {{if .user}}<a role="menuitem" href="/console/apikeys">{{$.T "key.manage"}}</a>{{end}}
+        {{if .user}}<a role="menuitem" href="/console/apikeys">{{$.T "key.manage"}}</a>
+        <a role="menuitem" href="/console/oauth-apps">{{$.T "oauthsrv.manage"}}</a>{{end}}
         <a role="menuitem" href="/console/apidoc">{{$.T "nav.apidoc"}}</a>
         <a role="menuitem" href="/console/mcpdoc">{{$.T "nav.mcpdoc"}}</a>
+        <a role="menuitem" href="/console/oauthdoc">{{$.T "oauthdoc.nav"}}</a>
       </div>
     </div>
   </div>

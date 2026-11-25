@@ -343,9 +343,14 @@ func (a *App) issueSession(c *gin.Context, user *model.User) {
 	// 开启全站 TOTP 时，会话必须带验证标记；否则旧会话在中间件会被拒绝
 	token := a.Signer.MakeUserToken(user.ID, sessionTTL, a.Settings().TOTPEnabled)
 	a.setCookie(c, middleware.CookieSession, token, int(sessionTTL.Seconds()))
+	// 从第三方应用授权页跳来登录的：登录（含 TOTP、第三方登录、注册）完成后回到授权页
+	target := "/console"
+	if next := a.takeLoginNext(c); next != "" {
+		target = next
+	}
 	if isAjax(c) {
-		c.JSON(http.StatusOK, gin.H{"ok": true, "redirect": "/console"})
+		c.JSON(http.StatusOK, gin.H{"ok": true, "redirect": target})
 		return
 	}
-	c.Redirect(http.StatusFound, "/console")
+	c.Redirect(http.StatusFound, target)
 }

@@ -1,0 +1,344 @@
+{{define "oauthdoc.html"}}
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>{{template "head" .}}
+{{/* 代码块（.api-code）恒为暗色背景，高亮主题固定 github-dark，与 API 文档页一致 */}}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.9.0/styles/github-dark.min.css">
+<style>
+.api-code{color:#c9d6ec}
+.api-code.hljs{background:#0b1424;color:#c9d6ec}
+.api-code .t-key,.api-code .hljs-attr{color:#a5b4fc}
+.api-code .t-str,.api-code .hljs-string{color:#4ade80}
+.api-code .t-num,.api-code .t-lit,.api-code .hljs-number,.api-code .hljs-literal{color:#22d3ee}
+.api-code .hljs-comment{color:#6d80a3;font-style:italic}
+.oauthdoc-page.doc-wrap{max-width:min(1180px,calc(100vw - 48px))}
+.oauthdoc-page .doc-layout{gap:34px}
+.oauthdoc-page .doc-side{width:230px;top:88px;max-height:calc(100vh - 112px)}
+.oauthdoc-page .doc-sec{padding:28px 32px;margin-bottom:22px}
+.oauthdoc-page .doc-sec h2{margin:0 0 18px;padding-bottom:14px;font-size:22px;font-weight:800;letter-spacing:-.02em}
+.oauthdoc-page .doc-sec h3{margin:22px 0 8px;font-size:16px}
+.oauthdoc-page .doc-sec p{margin:12px 0;font-size:15px;line-height:1.75}
+.oauthdoc-page .doc-sec ul{margin:10px 0;padding-left:20px;font-size:14.5px;line-height:1.8}
+.oauthdoc-page .table{min-width:0;width:100%}
+.oauthdoc-page .doc-sec .table th,.oauthdoc-page .doc-sec .table td{white-space:normal;vertical-align:top;padding:10px 14px;font-size:14px;line-height:1.6}
+.oauthdoc-page .doc-sec .table td code{font-family:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;font-size:12.5px;color:var(--primary-dark);word-break:break-all}
+.oauthdoc-page .doc-sec .table td:first-child{white-space:nowrap}
+.oauthdoc-page .api-code{padding:16px 18px;font-size:12.5px;line-height:1.7;max-height:620px;overflow:auto}
+.oauthdoc-page .code-wrap{margin:12px 0 4px}
+.oauthdoc-page .code-tabs{display:flex;flex-wrap:wrap;gap:4px;margin:14px 0 0}
+.oauthdoc-page .code-tab{border:1px solid var(--border);background:var(--bg-soft);color:var(--muted);border-radius:8px 8px 0 0;padding:6px 16px;font-size:12.5px;font-family:inherit;cursor:pointer}
+.oauthdoc-page .code-tab.active{background:#0b1424;border-color:rgba(122,168,255,.28);color:#e8eefb;font-weight:600}
+.oauthdoc-page .code-tabs + .code-wrap{margin-top:0}
+.oauthdoc-page .flow{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0;padding:0;list-style:none;counter-reset:f}
+.oauthdoc-page .flow li{counter-increment:f;flex:1 1 150px;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.55;background:var(--bg-soft)}
+.oauthdoc-page .flow li::before{content:counter(f);display:inline-flex;width:20px;height:20px;border-radius:50%;align-items:center;justify-content:center;margin-right:6px;font-size:11.5px;font-weight:700;background:var(--primary-soft);color:var(--primary-dark)}
+.oauthdoc-page .tag{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;background:var(--bg-soft);color:var(--muted)}
+.oauthdoc-page .tag-req{background:var(--primary-soft);color:var(--primary-dark)}
+</style>
+</head>
+<body>
+{{template "nav" .}}
+<main class="container doc-wrap oauthdoc-page">
+  <div class="page-head">
+    <h1>{{$.T "oauthdoc.title"}}</h1>
+    {{if .user}}<a class="btn" href="/console/oauth-apps">{{$.T "oauthdoc.manageApps"}}</a>{{end}}
+  </div>
+
+  <div class="doc-layout">
+    <aside class="doc-side">
+      <a href="#sec-intro" class="active">{{$.T "oauthdoc.secIntro"}}</a>
+      <a href="#sec-steps">{{$.T "oauthdoc.secSteps"}}</a>
+      <a href="#sec-endpoints">{{$.T "oauthdoc.secEndpoints"}}</a>
+      <a href="#sec-params">{{$.T "oauthdoc.secParams"}}</a>
+      <a href="#sec-scopes">{{$.T "oauthdoc.secScopes"}}</a>
+      <a href="#sec-server">{{$.T "oauthdoc.secServer"}}</a>
+      <a href="#sec-pkce">{{$.T "oauthdoc.secPKCE"}}</a>
+      <a href="#sec-oidc">{{$.T "oauthdoc.secOIDC"}}</a>
+      <a href="#sec-resp">{{$.T "oauthdoc.secResp"}}</a>
+      <a href="#sec-refresh">{{$.T "oauthdoc.secRefresh"}}</a>
+      <a href="#sec-errors">{{$.T "oauthdoc.secErrors"}}</a>
+      <a href="#sec-security">{{$.T "oauthdoc.secSecurity"}}</a>
+    </aside>
+
+    <div class="doc-main">
+      <section class="panel doc-sec" id="sec-intro">
+        <h2>{{$.T "oauthdoc.secIntro"}}</h2>
+        <p>{{$.T "oauthdoc.intro" .SiteName}}</p>
+        <ol class="flow">
+          <li>{{$.T "oauthdoc.flow1"}}</li>
+          <li>{{$.T "oauthdoc.flow2"}}</li>
+          <li>{{$.T "oauthdoc.flow3"}}</li>
+          <li>{{$.T "oauthdoc.flow4"}}</li>
+          <li>{{$.T "oauthdoc.flow5"}}</li>
+        </ol>
+        <div class="doc-callout">Issuer: <code class="ep-path">{{.Issuer}}</code>
+          {{if not .issuerFromSetting}}<br><span class="muted" style="font-size:13px">{{$.T "oauthsrv.guideIssuerTip"}}</span>{{end}}</div>
+        <h3>{{$.T "oauthdoc.typesTitle"}}</h3>
+        <ul>
+          <li><b>{{$.T "oauthsrv.typeShortConfidential"}}</b> — {{$.T "oauthdoc.typeServer"}}</li>
+          <li><b>{{$.T "oauthsrv.typeShortPublic"}}</b> — {{$.T "oauthdoc.typePublic"}}</li>
+        </ul>
+      </section>
+
+      <section class="panel doc-sec" id="sec-steps">
+        <h2>{{$.T "oauthdoc.secSteps"}}</h2>
+        <ol class="doc-steps">
+          <li>{{$.T "oauthdoc.step1"}}</li>
+          <li>{{$.T "oauthdoc.step2"}}</li>
+          <li>{{$.T "oauthdoc.step3"}}</li>
+          <li>{{$.T "oauthdoc.step4"}}</li>
+        </ol>
+      </section>
+
+      <section class="panel doc-sec" id="sec-endpoints">
+        <h2>{{$.T "oauthdoc.secEndpoints"}}</h2>
+        <p>{{$.T "oauthdoc.endpointsLead"}}</p>
+        <table class="table">
+          <thead><tr><th>{{$.T "oauthdoc.colEndpoint"}}</th><th>{{$.T "oauthdoc.colURL"}}</th><th>{{$.T "common.desc"}}</th></tr></thead>
+          <tbody>
+            <tr><td>{{$.T "oauthsrv.epDiscovery"}}</td><td><code>GET {{.Issuer}}/.well-known/openid-configuration</code></td><td>{{$.T "oauthdoc.epDiscovery"}}</td></tr>
+            <tr><td>{{$.T "oauthsrv.epAuthorize"}}</td><td><code>GET {{.Issuer}}/oauth/authorize</code></td><td>{{$.T "oauthdoc.epAuthorize"}}</td></tr>
+            <tr><td>{{$.T "oauthsrv.epToken"}}</td><td><code>POST {{.Issuer}}/oauth/token</code></td><td>{{$.T "oauthdoc.epToken"}}</td></tr>
+            <tr><td>{{$.T "oauthsrv.epUserinfo"}}</td><td><code>GET {{.Issuer}}/oauth/userinfo</code></td><td>{{$.T "oauthdoc.epUserinfo"}}</td></tr>
+            <tr><td>{{$.T "oauthsrv.epRevoke"}}</td><td><code>POST {{.Issuer}}/oauth/revoke</code></td><td>{{$.T "oauthdoc.epRevoke"}}</td></tr>
+            <tr><td>{{$.T "oauthsrv.epJWKS"}}</td><td><code>GET {{.Issuer}}/oauth/jwks</code></td><td>{{$.T "oauthdoc.epJWKS"}}</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="panel doc-sec" id="sec-params">
+        <h2>{{$.T "oauthdoc.secParams"}}</h2>
+        <p>{{$.T "oauthdoc.paramsLead"}}</p>
+        <table class="table">
+          <thead><tr><th>{{$.T "oauthdoc.colParam"}}</th><th>{{$.T "oauthdoc.colRequired"}}</th><th>{{$.T "common.desc"}}</th></tr></thead>
+          <tbody>
+            <tr><td><code>response_type</code></td><td><span class="tag tag-req">{{$.T "oauthdoc.req"}}</span></td><td>{{$.T "oauthdoc.pResponseType"}}</td></tr>
+            <tr><td><code>client_id</code></td><td><span class="tag tag-req">{{$.T "oauthdoc.req"}}</span></td><td>{{$.T "oauthdoc.pClientID"}}</td></tr>
+            <tr><td><code>redirect_uri</code></td><td><span class="tag tag-req">{{$.T "oauthdoc.req"}}</span></td><td>{{$.T "oauthdoc.pRedirect"}}</td></tr>
+            <tr><td><code>scope</code></td><td><span class="tag">{{$.T "oauthdoc.opt"}}</span></td><td>{{$.T "oauthdoc.pScope"}}</td></tr>
+            <tr><td><code>state</code></td><td><span class="tag tag-req">{{$.T "oauthdoc.recommended"}}</span></td><td>{{$.T "oauthdoc.pState"}}</td></tr>
+            <tr><td><code>nonce</code></td><td><span class="tag">{{$.T "oauthdoc.opt"}}</span></td><td>{{$.T "oauthdoc.pNonce"}}</td></tr>
+            <tr><td><code>code_challenge</code></td><td><span class="tag">{{$.T "oauthdoc.reqPublic"}}</span></td><td>{{$.T "oauthdoc.pChallenge"}}</td></tr>
+            <tr><td><code>code_challenge_method</code></td><td><span class="tag">{{$.T "oauthdoc.reqPublic"}}</span></td><td>{{$.T "oauthdoc.pChallengeMethod"}}</td></tr>
+            <tr><td><code>prompt</code></td><td><span class="tag">{{$.T "oauthdoc.opt"}}</span></td><td>{{$.T "oauthdoc.pPrompt"}}</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="panel doc-sec" id="sec-scopes">
+        <h2>{{$.T "oauthdoc.secScopes"}}</h2>
+        <table class="table">
+          <thead><tr><th>Scope</th><th>{{$.T "common.desc"}}</th></tr></thead>
+          <tbody>
+            <tr><td><code>openid</code></td><td>{{$.T "oauthdoc.sOpenid"}}</td></tr>
+            <tr><td><code>profile</code> / <code>basic</code></td><td>{{$.T "oauthdoc.sProfile"}}</td></tr>
+            <tr><td><code>email</code></td><td>{{$.T "oauthdoc.sEmail"}}</td></tr>
+            <tr><td><code>offline_access</code></td><td>{{$.T "oauthdoc.sOffline"}}</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="panel doc-sec" id="sec-server">
+        <h2>{{$.T "oauthdoc.secServer"}}</h2>
+        <p>{{$.T "oauthdoc.serverLead"}}</p>
+        <div class="code-tabset">
+          <div class="code-tabs">
+            <button type="button" class="code-tab active" data-ct="curl">HTTP / cURL</button>
+            <button type="button" class="code-tab" data-ct="python">Python</button>
+            <button type="button" class="code-tab" data-ct="node">Node.js</button>
+          </div>
+          <div class="code-wrap" data-panel="curl">
+            <div class="code-bar"><span class="code-lang">cURL</span><button type="button" class="code-copy">{{$.T "common.copy"}}</button></div>
+            <pre class="api-code">{{.code.curl}}</pre>
+          </div>
+          <div class="code-wrap" data-panel="python" hidden>
+            <div class="code-bar"><span class="code-lang">Python</span><button type="button" class="code-copy">{{$.T "common.copy"}}</button></div>
+            <pre class="api-code">{{.code.python}}</pre>
+          </div>
+          <div class="code-wrap" data-panel="node" hidden>
+            <div class="code-bar"><span class="code-lang">Node.js</span><button type="button" class="code-copy">{{$.T "common.copy"}}</button></div>
+            <pre class="api-code">{{.code.node}}</pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel doc-sec" id="sec-pkce">
+        <h2>{{$.T "oauthdoc.secPKCE"}}</h2>
+        <p>{{$.T "oauthdoc.pkceLead"}}</p>
+        <div class="code-wrap">
+          <div class="code-bar"><span class="code-lang">JavaScript</span><button type="button" class="code-copy">{{$.T "common.copy"}}</button></div>
+          <pre class="api-code">{{.code.pkce}}</pre>
+        </div>
+        <div class="doc-callout">{{$.T "oauthdoc.pkceNote"}}</div>
+      </section>
+
+      <section class="panel doc-sec" id="sec-oidc">
+        <h2>{{$.T "oauthdoc.secOIDC"}}</h2>
+        <p>{{$.T "oauthdoc.oidcLead"}}</p>
+        <div class="code-tabset">
+          <div class="code-tabs">
+            <button type="button" class="code-tab active" data-ct="go">Go · go-oidc</button>
+            <button type="button" class="code-tab" data-ct="authlib">Python · Authlib</button>
+          </div>
+          <div class="code-wrap" data-panel="go">
+            <div class="code-bar"><span class="code-lang">Go</span><button type="button" class="code-copy">{{$.T "common.copy"}}</button></div>
+            <pre class="api-code">{{.code.go}}</pre>
+          </div>
+          <div class="code-wrap" data-panel="authlib" hidden>
+            <div class="code-bar"><span class="code-lang">Python</span><button type="button" class="code-copy">{{$.T "common.copy"}}</button></div>
+            <pre class="api-code">{{.code.authlib}}</pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel doc-sec" id="sec-resp">
+        <h2>{{$.T "oauthdoc.secResp"}}</h2>
+        <h3>{{$.T "oauthdoc.respToken"}}</h3>
+        <div class="code-wrap">
+          <div class="code-bar"><span class="code-lang">JSON</span><button type="button" class="code-copy">{{$.T "common.copy"}}</button></div>
+          <pre class="api-code">{{.code.tokenResp}}</pre>
+        </div>
+        <h3>{{$.T "oauthdoc.respUserinfo"}}</h3>
+        <div class="code-wrap">
+          <div class="code-bar"><span class="code-lang">JSON</span><button type="button" class="code-copy">{{$.T "common.copy"}}</button></div>
+          <pre class="api-code">{{.code.userinfo}}</pre>
+        </div>
+        <h3>{{$.T "oauthdoc.respIDToken"}}</h3>
+        <div class="code-wrap">
+          <div class="code-bar"><span class="code-lang">JSON</span><button type="button" class="code-copy">{{$.T "common.copy"}}</button></div>
+          <pre class="api-code">{{.code.idToken}}</pre>
+        </div>
+        <div class="doc-callout">{{$.T "oauthdoc.subNote"}}</div>
+      </section>
+
+      <section class="panel doc-sec" id="sec-refresh">
+        <h2>{{$.T "oauthdoc.secRefresh"}}</h2>
+        <p>{{$.T "oauthdoc.refreshLead"}}</p>
+        <div class="code-wrap">
+          <div class="code-bar"><span class="code-lang">cURL</span><button type="button" class="code-copy">{{$.T "common.copy"}}</button></div>
+          <pre class="api-code">{{.code.refresh}}</pre>
+        </div>
+        <p class="muted">{{$.T "oauthdoc.refreshNote"}}</p>
+      </section>
+
+      <section class="panel doc-sec" id="sec-errors">
+        <h2>{{$.T "oauthdoc.secErrors"}}</h2>
+        <h3>{{$.T "oauthdoc.errAuthorizeTitle"}}</h3>
+        <p>{{$.T "oauthdoc.errAuthorizeLead"}}</p>
+        <table class="table">
+          <thead><tr><th>error</th><th>{{$.T "common.desc"}}</th></tr></thead>
+          <tbody>
+            <tr><td><code>access_denied</code></td><td>{{$.T "oauthdoc.eAccessDenied"}}</td></tr>
+            <tr><td><code>invalid_request</code></td><td>{{$.T "oauthdoc.eAuthzInvalidRequest"}}</td></tr>
+            <tr><td><code>invalid_scope</code></td><td>{{$.T "oauthdoc.eAuthzInvalidScope"}}</td></tr>
+            <tr><td><code>unsupported_response_type</code></td><td>{{$.T "oauthdoc.eUnsupportedResponseType"}}</td></tr>
+            <tr><td><code>login_required</code></td><td>{{$.T "oauthdoc.eLoginRequired"}}</td></tr>
+            <tr><td><code>consent_required</code></td><td>{{$.T "oauthdoc.eConsentRequired"}}</td></tr>
+          </tbody>
+        </table>
+        <h3>{{$.T "oauthdoc.errTokenTitle"}}</h3>
+        <p>{{$.T "oauthdoc.errTokenLead"}}</p>
+        <div class="code-wrap">
+          <div class="code-bar"><span class="code-lang">JSON</span><button type="button" class="code-copy">{{$.T "common.copy"}}</button></div>
+          <pre class="api-code">{{.code.error}}</pre>
+        </div>
+        <table class="table">
+          <thead><tr><th>error</th><th>HTTP</th><th>{{$.T "common.desc"}}</th></tr></thead>
+          <tbody>
+            <tr><td><code>invalid_request</code></td><td>400</td><td>{{$.T "oauthdoc.eTokenInvalidRequest"}}</td></tr>
+            <tr><td><code>invalid_client</code></td><td>401</td><td>{{$.T "oauthdoc.eInvalidClient"}}</td></tr>
+            <tr><td><code>invalid_grant</code></td><td>400</td><td>{{$.T "oauthdoc.eInvalidGrant"}}</td></tr>
+            <tr><td><code>invalid_scope</code></td><td>400</td><td>{{$.T "oauthdoc.eTokenInvalidScope"}}</td></tr>
+            <tr><td><code>unsupported_grant_type</code></td><td>400</td><td>{{$.T "oauthdoc.eUnsupportedGrant"}}</td></tr>
+            <tr><td><code>temporarily_unavailable</code></td><td>429</td><td>{{$.T "oauthdoc.eRateLimited"}}</td></tr>
+          </tbody>
+        </table>
+        <h3>{{$.T "oauthdoc.errUserinfoTitle"}}</h3>
+        <p>{{$.T "oauthdoc.errUserinfoLead"}}</p>
+      </section>
+
+      <section class="panel doc-sec" id="sec-security">
+        <h2>{{$.T "oauthdoc.secSecurity"}}</h2>
+        <ul>
+          <li>{{$.T "oauthdoc.sec1"}}</li>
+          <li>{{$.T "oauthdoc.sec2"}}</li>
+          <li>{{$.T "oauthdoc.sec3"}}</li>
+          <li>{{$.T "oauthdoc.sec4"}}</li>
+          <li>{{$.T "oauthdoc.sec5"}}</li>
+          <li>{{$.T "oauthdoc.sec6"}}</li>
+        </ul>
+      </section>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.9.0/highlight.min.js"></script>
+<script>
+(function () {
+  /* JSON 自绘着色（与 API 文档一致）；其余语言交给 hljs，缺失时保持纯文本 */
+  function highlightJSON(src) {
+    var esc = src.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return esc.replace(/("(?:[^"\\]|\\.)*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
+      function (m, str, colon, lit, num) {
+        if (str) return colon ? '<span class="t-key">' + str + '</span>' + colon : '<span class="t-str">' + str + '</span>';
+        if (lit) return '<span class="t-lit">' + lit + '</span>';
+        if (num) return '<span class="t-num">' + num + '</span>';
+        return m;
+      });
+  }
+  var LANG = { json: 'json', curl: 'bash', python: 'python', 'node.js': 'javascript', javascript: 'javascript', go: 'go' };
+  document.querySelectorAll('.code-wrap').forEach(function (w) {
+    var label = w.querySelector('.code-lang'), pre = w.querySelector('pre');
+    if (!label || !pre) return;
+    var name = label.textContent.trim().toLowerCase();
+    try {
+      if (name === 'json') pre.innerHTML = highlightJSON(pre.textContent);
+      else if (LANG[name] && window.hljs && hljs.getLanguage(LANG[name])) {
+        pre.classList.add('language-' + LANG[name]);
+        hljs.highlightElement(pre);
+      }
+    } catch (e) {}
+  });
+  /* 多组标签页：只切换本组 */
+  document.querySelectorAll('.code-tabset').forEach(function (set) {
+    var tabs = set.querySelectorAll('.code-tab');
+    tabs.forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        tabs.forEach(function (t) { t.classList.toggle('active', t === tab); });
+        var k = tab.getAttribute('data-ct');
+        set.querySelectorAll('[data-panel]').forEach(function (p) { p.hidden = p.getAttribute('data-panel') !== k; });
+      });
+    });
+  });
+  /* 复制 */
+  document.querySelectorAll('.code-copy').forEach(function (btn) {
+    btn.addEventListener('click', async function () {
+      var pre = btn.closest('.code-wrap').querySelector('pre');
+      var text = pre.textContent;
+      try { await navigator.clipboard.writeText(text); }
+      catch (e) {
+        var ta = document.createElement('textarea');
+        ta.value = text; document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); ta.remove();
+      }
+      if (window.UI && UI.toast) UI.toast(UI.t('已复制到剪贴板'), 'success');
+    });
+  });
+  /* 侧边目录滚动高亮 */
+  var links = [].slice.call(document.querySelectorAll('.doc-side a')), map = {};
+  links.forEach(function (a) { var el = document.querySelector(a.getAttribute('href')); if (el) map[el.id] = a; });
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        links.forEach(function (l) { l.classList.remove('active'); });
+        if (map[en.target.id]) map[en.target.id].classList.add('active');
+      });
+    }, { rootMargin: '-15% 0px -70% 0px' });
+    Object.keys(map).forEach(function (id) { io.observe(document.getElementById(id)); });
+  }
+})();
+</script>
+</body>
+</html>
+{{end}}
