@@ -58,6 +58,12 @@
   /* accordion head 已显示分组标题，内部 .settings-section 子标题去重 */
   .set-sec .settings-section { display: none; }
 
+  /* 窄屏安全配置内的二级 Tab（GitHub / Google …）改为全部平铺，各自带标题 */
+  .set-subtabs { display: none; }
+  .share-body .set-sub:not([hidden]) { display: block; }
+  .share-body .set-sub .settings-section { display: block; margin-top: 16px; }
+  .share-body .set-sub:first-of-type .settings-section { margin-top: 0; }
+
   /* smtp-grid 两列在窄屏挤压，改单栏；
      用 .share-body 提升特异性，避免被 settings.html 内联 <style> 同特异性覆盖 */
   .share-body .smtp-grid { grid-template-columns: 1fr; }

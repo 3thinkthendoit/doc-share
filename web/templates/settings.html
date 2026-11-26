@@ -68,8 +68,31 @@
       </div>
       <label class="check"><input type="checkbox" name="totp_enabled" {{if .set.TOTPEnabled}}checked{{end}}> {{$.T "set.totpEnabled"}}</label>
       <p class="muted" style="font-size:12.5px;margin:-4px 0 10px">{{$.T "set.totpEnabledTip"}}</p>
-      <div class="settings-section" style="margin-top:18px">{{$.T "set.oauthTitle"}}</div>
-      <p class="muted" style="font-size:12.5px;margin:0 0 10px">{{$.T "set.oauthTip"}}</p>
+      </section>
+
+      <section id="sec-share" class="set-sec">
+      <div class="settings-section">{{$.T "set.shareTitle"}}</div>
+      <label class="check"><input type="checkbox" name="allow_share_apply" {{if .set.AllowShareApply}}checked{{end}}> {{$.T "set.allowShareApply"}}</label>
+      <p class="muted" style="font-size:12.5px;margin:-4px 0 10px">{{$.T "set.allowShareApplyTip"}}</p>
+      </section>
+
+      <section id="sec-reg" class="set-sec">
+      <div class="settings-section">{{$.T "set.regTitle"}}</div>
+      <label class="check"><input type="radio" name="reg_method" value="username" {{if eq .set.RegMethod "username"}}checked{{end}}> {{$.T "reg.methodUsername"}}</label>
+      <label class="check"><input type="radio" name="reg_method" value="email" {{if eq .set.RegMethod "email"}}checked{{end}}> {{$.T "reg.methodEmail"}}</label>
+      <label class="check"><input type="radio" name="reg_method" value="phone" {{if eq .set.RegMethod "phone"}}checked{{end}}> {{$.T "reg.methodPhone"}}</label>
+      <div class="doc-side set-subtabs" aria-label="{{$.T "set.oauthTitle"}}">
+        <a href="#sub-github" class="active">{{$.T "set.tabGitHub"}}</a>
+        <a href="#sub-google">{{$.T "set.tabGoogle"}}</a>
+        <a href="#sub-gitee">{{$.T "set.tabGitee"}}</a>
+        <a href="#sub-gitlab">{{$.T "set.tabGitLab"}}</a>
+        <a href="#sub-qq">{{$.T "set.tabQQ"}}</a>
+        <a href="#sub-tpad">{{$.T "set.tabTPad"}}</a>
+        <a href="#sub-proxy">{{$.T "set.tabProxy"}}</a>
+      </div>
+      <div class="set-sub active" id="sub-github">
+      <div class="settings-section">{{$.T "set.tabGitHub"}}</div>
+      <p class="set-info">{{$.T "set.oauthTip"}}</p>
       <label class="check"><input type="checkbox" name="oauth_github_enabled" {{if .set.OAuthGitHubEnabled}}checked{{end}}> {{$.T "set.oauthGitHub"}}</label>
       <div class="smtp-grid" style="margin:8px 0 12px">
         <label>{{$.T "set.oauthClientID"}}
@@ -84,6 +107,10 @@
         <span class="muted" style="font-size:12px">{{$.T "set.oauthRedirectTip"}}</span>
         <span class="muted" style="font-size:12px;display:block;margin-top:4px">{{$.T "set.oauthRedirectEffective"}} <code style="word-break:break-all">{{.oauthGitHubCallback}}</code></span>
       </label>
+      </div>
+      <div class="set-sub" id="sub-google">
+      <div class="settings-section">{{$.T "set.tabGoogle"}}</div>
+      <p class="set-info">{{$.T "set.oauthTip"}}</p>
       <label class="check"><input type="checkbox" name="oauth_google_enabled" {{if .set.OAuthGoogleEnabled}}checked{{end}}> {{$.T "set.oauthGoogle"}}</label>
       <div class="smtp-grid" style="margin:8px 0 12px">
         <label>{{$.T "set.oauthClientID"}}
@@ -98,7 +125,11 @@
         <span class="muted" style="font-size:12px">{{$.T "set.oauthRedirectTip"}}</span>
         <span class="muted" style="font-size:12px;display:block;margin-top:4px">{{$.T "set.oauthRedirectEffective"}} <code style="word-break:break-all">{{.oauthGoogleCallback}}</code></span>
       </label>
-      <label class="check" style="margin-top:14px"><input type="checkbox" name="oauth_gitee_enabled" {{if .set.OAuthGiteeEnabled}}checked{{end}}> {{$.T "set.oauthGitee"}}</label>
+      </div>
+      <div class="set-sub" id="sub-gitee">
+      <div class="settings-section">{{$.T "set.tabGitee"}}</div>
+      <p class="set-info">{{$.T "set.oauthTip"}}</p>
+      <label class="check"><input type="checkbox" name="oauth_gitee_enabled" {{if .set.OAuthGiteeEnabled}}checked{{end}}> {{$.T "set.oauthGitee"}}</label>
       <div class="smtp-grid" style="margin:8px 0 12px">
         <label>{{$.T "set.oauthClientID"}}
           <input type="text" name="oauth_gitee_client_id" value="{{.set.OAuthGiteeClientID}}" autocomplete="off" placeholder="Gitee Client ID">
@@ -112,7 +143,11 @@
         <span class="muted" style="font-size:12px">{{$.T "set.oauthRedirectTip"}}</span>
         <span class="muted" style="font-size:12px;display:block;margin-top:4px">{{$.T "set.oauthRedirectEffective"}} <code style="word-break:break-all">{{.oauthGiteeCallback}}</code></span>
       </label>
-      <label class="check" style="margin-top:14px"><input type="checkbox" name="oauth_gitlab_enabled" {{if .set.OAuthGitLabEnabled}}checked{{end}}> {{$.T "set.oauthGitLab"}}</label>
+      </div>
+      <div class="set-sub" id="sub-gitlab">
+      <div class="settings-section">{{$.T "set.tabGitLab"}}</div>
+      <p class="set-info">{{$.T "set.oauthTip"}}</p>
+      <label class="check"><input type="checkbox" name="oauth_gitlab_enabled" {{if .set.OAuthGitLabEnabled}}checked{{end}}> {{$.T "set.oauthGitLab"}}</label>
       <div class="smtp-grid" style="margin:8px 0 12px">
         <label>{{$.T "set.oauthClientID"}}
           <input type="text" name="oauth_gitlab_client_id" value="{{.set.OAuthGitLabClientID}}" autocomplete="off" placeholder="GitLab Application ID">
@@ -130,7 +165,11 @@
         <span class="muted" style="font-size:12px">{{$.T "set.oauthRedirectTip"}}</span>
         <span class="muted" style="font-size:12px;display:block;margin-top:4px">{{$.T "set.oauthRedirectEffective"}} <code style="word-break:break-all">{{.oauthGitLabCallback}}</code></span>
       </label>
-      <label class="check" style="margin-top:14px"><input type="checkbox" name="oauth_qq_enabled" {{if .set.OAuthQQEnabled}}checked{{end}}> {{$.T "set.oauthQQ"}}</label>
+      </div>
+      <div class="set-sub" id="sub-qq">
+      <div class="settings-section">{{$.T "set.tabQQ"}}</div>
+      <p class="set-info">{{$.T "set.oauthTip"}}</p>
+      <label class="check"><input type="checkbox" name="oauth_qq_enabled" {{if .set.OAuthQQEnabled}}checked{{end}}> {{$.T "set.oauthQQ"}}</label>
       <p class="muted" style="font-size:12px;margin:2px 0 0">{{$.T "set.oauthQQTip"}}</p>
       <div class="smtp-grid" style="margin:8px 0 12px">
         <label>APP ID
@@ -145,7 +184,11 @@
         <span class="muted" style="font-size:12px">{{$.T "set.oauthRedirectTip"}}</span>
         <span class="muted" style="font-size:12px;display:block;margin-top:4px">{{$.T "set.oauthRedirectEffective"}} <code style="word-break:break-all">{{.oauthQQCallback}}</code></span>
       </label>
-      <label class="check" style="margin-top:14px"><input type="checkbox" name="oauth_tpad_enabled" {{if .set.OAuthTPadEnabled}}checked{{end}}> {{$.T "set.oauthTPad"}}</label>
+      </div>
+      <div class="set-sub" id="sub-tpad">
+      <div class="settings-section">{{$.T "set.tabTPad"}}</div>
+      <p class="set-info">{{$.T "set.oauthTip"}}</p>
+      <label class="check"><input type="checkbox" name="oauth_tpad_enabled" {{if .set.OAuthTPadEnabled}}checked{{end}}> {{$.T "set.oauthTPad"}}</label>
       <p class="muted" style="font-size:12px;margin:2px 0 0">{{$.T "set.oauthTPadTip"}}</p>
       <label style="margin:8px 0 12px">{{$.T "set.oauthTPadBaseURL"}}
         <input type="text" name="oauth_tpad_base_url" value="{{.set.OAuthTPadBaseURL}}" placeholder="https://tpad.example.com" autocomplete="off">
@@ -164,9 +207,10 @@
         <span class="muted" style="font-size:12px">{{$.T "set.oauthRedirectTip"}}</span>
         <span class="muted" style="font-size:12px;display:block;margin-top:4px">{{$.T "set.oauthRedirectEffective"}} <code style="word-break:break-all">{{.oauthTPadCallback}}</code></span>
       </label>
-
-      <div class="settings-section" style="margin-top:18px">{{$.T "set.oauthProxyTitle"}}</div>
-      <p class="muted" style="font-size:12.5px;margin:0 0 10px">{{$.T "set.oauthProxyTip"}}</p>
+      </div>
+      <div class="set-sub" id="sub-proxy">
+      <div class="settings-section">{{$.T "set.tabProxy"}}</div>
+      <p class="set-info">{{$.T "set.oauthProxyTip"}}</p>
       <label class="check"><input type="checkbox" name="oauth_proxy_enabled" {{if .set.OAuthProxyEnabled}}checked{{end}}> {{$.T "set.oauthProxyEnabled"}}</label>
       <label style="margin-top:8px">{{$.T "set.oauthProxyURL"}}
         <input type="password" name="oauth_proxy_url" value="" autocomplete="new-password"
@@ -177,19 +221,8 @@
         {{if .oauthProxyPreview}}<label class="check" style="margin:0"><input type="checkbox" name="oauth_proxy_clear"> {{$.T "set.oauthProxyClear"}}</label>{{end}}
         <button type="button" class="btn btn-sm" id="testOAuthProxyBtn">{{$.T "set.oauthProxyTest"}}</button>
       </div>
-      </section>
+      </div>
 
-      <section id="sec-share" class="set-sec">
-      <div class="settings-section">{{$.T "set.shareTitle"}}</div>
-      <label class="check"><input type="checkbox" name="allow_share_apply" {{if .set.AllowShareApply}}checked{{end}}> {{$.T "set.allowShareApply"}}</label>
-      <p class="muted" style="font-size:12.5px;margin:-4px 0 10px">{{$.T "set.allowShareApplyTip"}}</p>
-      </section>
-
-      <section id="sec-reg" class="set-sec">
-      <div class="settings-section">{{$.T "set.regTitle"}}</div>
-      <label class="check"><input type="radio" name="reg_method" value="username" {{if eq .set.RegMethod "username"}}checked{{end}}> {{$.T "reg.methodUsername"}}</label>
-      <label class="check"><input type="radio" name="reg_method" value="email" {{if eq .set.RegMethod "email"}}checked{{end}}> {{$.T "reg.methodEmail"}}</label>
-      <label class="check"><input type="radio" name="reg_method" value="phone" {{if eq .set.RegMethod "phone"}}checked{{end}}> {{$.T "reg.methodPhone"}}</label>
       </section>
 
       <section id="sec-mail" class="set-sec" {{if ne .set.RegMethod "email"}}hidden{{end}}>
@@ -418,6 +451,14 @@
 .set-sec{display:none}
 .set-sec.active{display:block}
 .set-sec[hidden]{display:none!important}
+/* 安全配置内：第三方登录各提供方横向 Tab 切换 */
+.doc-side.set-subtabs{position:static;flex-direction:row;flex-wrap:wrap;gap:2px;width:auto;max-height:none;overflow:visible;margin:18px 0 16px;padding:0;border-bottom:1px solid var(--border)}
+.doc-side.set-subtabs a{padding:8px 12px;border-radius:6px 6px 0 0;font-size:13px;border-bottom:2px solid transparent;margin-bottom:-1px}
+.doc-side.set-subtabs a.active{background:none;color:var(--primary);border-bottom-color:var(--primary);font-weight:600}
+.set-sub{display:none}
+.set-sub.active{display:block}
+.set-sub>.settings-section{display:none}
+.set-info{margin:0 0 16px;padding:10px 14px;border-radius:var(--radius-sm,6px);background:var(--primary-soft);color:var(--primary-dark);font-size:12.5px;line-height:1.6}
 /* 桌面端（≥961px）：隐藏手风琴头部，保留原 showSec() Tab 切换逻辑；
    移动端（≤960px）由 mobile.css 接管，.set-sec 全部展开为折叠面板 */
 .llm-toolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:0 0 12px}
@@ -541,9 +582,20 @@
 
   // 左侧菜单：Tab 式切换，点击只显示对应分组（所有字段仍在同一表单内，保存不受影响）
   var menuLinks = Array.prototype.slice.call(document.querySelectorAll('.doc-side a[href^="#sec-"]'));
+  var subLinks = Array.prototype.slice.call(document.querySelectorAll('.set-subtabs a[href^="#sub-"]'));
+  function showSub(id) {
+    form.querySelectorAll('.set-sub').forEach(function (s) { s.classList.toggle('active', s.id === id); });
+    subLinks.forEach(function (a) { a.classList.toggle('active', a.getAttribute('href') === '#' + id); });
+  }
   function showSec(id) {
+    var target = document.getElementById(id);
+    var sub = target && target.classList.contains('set-sub') ? target : null;
+    // 指向登录方式 Tab（#sub-github）时，先切到所属的左侧分组
+    if (sub) { target = sub.closest('.set-sec'); id = target ? target.id : id; }
+    if (!target) id = 'sec-basic';
     menuLinks.forEach(function (a) { a.classList.toggle('active', a.getAttribute('href') === '#' + id); });
     form.querySelectorAll('.set-sec').forEach(function (s) { s.classList.toggle('active', s.id === id); });
+    if (sub) showSub(sub.id);
   }
   menuLinks.forEach(function (a) {
     a.addEventListener('click', function (e) {
@@ -551,7 +603,13 @@
       showSec(a.getAttribute('href').slice(1));
     });
   });
-  showSec(/^#sec-/.test(location.hash) ? location.hash.slice(1) : 'sec-basic');
+  subLinks.forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      e.preventDefault();
+      showSec(a.getAttribute('href').slice(1));
+    });
+  });
+  showSec(/^#(sec|sub)-/.test(location.hash) ? location.hash.slice(1) : 'sec-basic');
 
   var testOAuthProxyBtn = document.getElementById('testOAuthProxyBtn');
   if (testOAuthProxyBtn) testOAuthProxyBtn.addEventListener('click', async function () {
