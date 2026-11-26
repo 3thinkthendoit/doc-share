@@ -145,6 +145,25 @@
         <span class="muted" style="font-size:12px">{{$.T "set.oauthRedirectTip"}}</span>
         <span class="muted" style="font-size:12px;display:block;margin-top:4px">{{$.T "set.oauthRedirectEffective"}} <code style="word-break:break-all">{{.oauthQQCallback}}</code></span>
       </label>
+      <label class="check" style="margin-top:14px"><input type="checkbox" name="oauth_tpad_enabled" {{if .set.OAuthTPadEnabled}}checked{{end}}> {{$.T "set.oauthTPad"}}</label>
+      <p class="muted" style="font-size:12px;margin:2px 0 0">{{$.T "set.oauthTPadTip"}}</p>
+      <label style="margin:8px 0 12px">{{$.T "set.oauthTPadBaseURL"}}
+        <input type="text" name="oauth_tpad_base_url" value="{{.set.OAuthTPadBaseURL}}" placeholder="https://tpad.example.com" autocomplete="off">
+        <span class="muted" style="font-size:12px">{{$.T "set.oauthTPadBaseTip"}}</span>
+      </label>
+      <div class="smtp-grid" style="margin:0 0 12px">
+        <label>{{$.T "set.oauthClientID"}}
+          <input type="text" name="oauth_tpad_client_id" value="{{.set.OAuthTPadClientID}}" autocomplete="off" placeholder="tpad_oauth_…">
+        </label>
+        <label>{{$.T "set.oauthClientSecret"}}
+          <input type="password" name="oauth_tpad_client_secret" value="" placeholder="{{if .set.OAuthTPadClientSecret}}{{$.T "set.oauthSecretKeep"}}{{else}}Client Secret{{end}}" autocomplete="new-password">
+        </label>
+      </div>
+      <label>{{$.T "set.oauthRedirectURL"}}
+        <input type="text" name="oauth_tpad_redirect_url" value="{{.set.OAuthTPadRedirectURL}}" placeholder="https://docs.example.com/auth/tpad/callback" autocomplete="off">
+        <span class="muted" style="font-size:12px">{{$.T "set.oauthRedirectTip"}}</span>
+        <span class="muted" style="font-size:12px;display:block;margin-top:4px">{{$.T "set.oauthRedirectEffective"}} <code style="word-break:break-all">{{.oauthTPadCallback}}</code></span>
+      </label>
 
       <div class="settings-section" style="margin-top:18px">{{$.T "set.oauthProxyTitle"}}</div>
       <p class="muted" style="font-size:12.5px;margin:0 0 10px">{{$.T "set.oauthProxyTip"}}</p>
@@ -984,6 +1003,11 @@
       oauth_qq_client_id: form.oauth_qq_client_id ? form.oauth_qq_client_id.value.trim() : '',
       oauth_qq_client_secret: form.oauth_qq_client_secret ? form.oauth_qq_client_secret.value : '',
       oauth_qq_redirect_url: form.oauth_qq_redirect_url ? form.oauth_qq_redirect_url.value.trim() : '',
+      oauth_tpad_enabled: !!(form.oauth_tpad_enabled && form.oauth_tpad_enabled.checked),
+      oauth_tpad_base_url: form.oauth_tpad_base_url ? form.oauth_tpad_base_url.value.trim() : '',
+      oauth_tpad_client_id: form.oauth_tpad_client_id ? form.oauth_tpad_client_id.value.trim() : '',
+      oauth_tpad_client_secret: form.oauth_tpad_client_secret ? form.oauth_tpad_client_secret.value : '',
+      oauth_tpad_redirect_url: form.oauth_tpad_redirect_url ? form.oauth_tpad_redirect_url.value.trim() : '',
       oauth_proxy_enabled: !!(form.oauth_proxy_enabled && form.oauth_proxy_enabled.checked),
       oauth_proxy_url: form.oauth_proxy_url ? form.oauth_proxy_url.value.trim() : '',
       oauth_proxy_clear: !!(form.oauth_proxy_clear && form.oauth_proxy_clear.checked),

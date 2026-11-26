@@ -308,7 +308,7 @@
   "set.oauthSecretKeep": "已保存，留空则不修改",
   "set.oauthRedirectURL": "回调 URL（可选）",
   "set.oauthRedirectTip": "须与 OAuth 应用里的 Authorization callback URL 逐字一致。留空则用当前访问地址 + /auth/{provider}/callback。若填写的回调与当前访问同主机但 http/https 不一致，会自动按浏览器协议纠正。",
-  "set.oauthRedirectEffective": "当前实际会发给提供方的回调（请原样填到 GitHub/Google/Gitee/GitLab/QQ 互联；本地请用 http 打开本站）：",
+  "set.oauthRedirectEffective": "当前实际会发给提供方的回调（请原样填到 GitHub/Google/Gitee/GitLab/QQ 互联/Think-TPAD；本地请用 http 打开本站）：",
   "set.oauthRedirectInvalid": "OAuth 回调 URL 须为带主机的 http(s) 绝对地址",
   "set.oauthGitHubNeedCfg": "请先填写 Client ID 与 Secret。",
   "set.oauthGoogleNeedCfg": "请先填写 Client ID 与 Secret。",
@@ -320,7 +320,7 @@
   "set.oauthQQ": "启用 QQ 登录",
   "set.oauthQQTip": "在 QQ 互联创建网站应用，回调地址须与下方实际回调一致；QQ 不提供邮箱，首次登录会新建账号。",
   "set.oauthProxyTitle": "第三方登录代理（GitHub / Google / GitLab）",
-  "set.oauthProxyTip": "服务器换取令牌、拉取用户信息时经此代理访问 GitHub / Google / gitlab.com（Gitee、QQ 与自建 GitLab 始终直连）。支持 vless://（内嵌 xray，仅 tcp + none/tls/reality）、http://host:port、socks5://host:port。启用后代理不可用会直接报错，不会静默直连。",
+  "set.oauthProxyTip": "服务器换取令牌、拉取用户信息时经此代理访问 GitHub / Google / gitlab.com（Gitee、QQ、自建 GitLab 与 Think-TPAD 始终直连）。支持 vless://（内嵌 xray，仅 tcp + none/tls/reality）、http://host:port、socks5://host:port。启用后代理不可用会直接报错，不会静默直连。",
   "set.oauthProxyEnabled": "启用代理",
   "set.oauthProxyURL": "代理地址",
   "set.oauthProxyFromCfg": "当前未在此处填写，正在使用 config.yaml / DOC_SHARE_OAUTH_PROXY 中的代理（始终启用）。",
@@ -1625,5 +1625,14 @@
   "oauthdoc.sec3": "服务端应用同样建议使用 PKCE；使用 id_token 前务必校验签名、iss、aud、exp 和 nonce。",
   "oauthdoc.sec4": "用 sub 关联用户，不要用用户名或邮箱；邮箱只有 email_verified 为 true 时才可信。",
   "oauthdoc.sec5": "access_token 2 小时内有效；用户撤销授权或应用被停用后，读取用户资料会立即失败。不要把 access_token 当成你自己系统的登录凭证，应建立你自己的会话。",
-  "oauthdoc.sec6": "回调地址精确匹配，不支持通配符；本机调试请单独登记带端口的 http://localhost 地址。"
+  "oauthdoc.sec6": "回调地址精确匹配，不支持通配符；本机调试请单独登记带端口的 http://localhost 地址。",
+  "login.oauthTPad": "使用 Think-TPAD 登录",
+  "user.authTPad": "Think-TPAD",
+  "set.oauthTPad": "启用 Think-TPAD 登录",
+  "set.oauthTPadTip": "在 Think-TPAD「OAuth 应用」中注册应用（回调地址填下方实际回调），经 Think-TPAD 管理员审核通过后，把 Client ID / Secret 填到这里。Think-TPAD 不提供邮箱验证状态，首次登录会新建账号，不按邮箱合并。",
+  "set.oauthTPadBaseURL": "Think-TPAD 地址",
+  "set.oauthTPadBaseTip": "必填。浏览器访问 Think-TPAD 的地址（如 https://tpad.example.com），授权页和换取令牌接口都基于它；前后端分开部署时填前端地址（前端需反向代理 /api）。",
+  "set.oauthTPadBaseInvalid": "Think-TPAD 地址须为带主机的 http(s) 绝对地址，且不含查询参数、# 片段和账号密码",
+  "set.oauthTPadBaseRequired": "启用 Think-TPAD 登录前请先填写 Think-TPAD 地址",
+  "Think-TPAD 用户信息获取失败，请检查 Think-TPAD 地址或稍后重试": "Think-TPAD 用户信息获取失败，请检查 Think-TPAD 地址或稍后重试"
 }

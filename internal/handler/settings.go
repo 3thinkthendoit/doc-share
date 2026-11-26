@@ -89,18 +89,18 @@ type SiteSettings struct {
 	TOTPEnabled bool
 
 	// 第三方登录：密钥可写在系统设置（优先），也可走 config.yaml / 环境变量兜底
-	OAuthGitHubEnabled     bool
-	OAuthGoogleEnabled     bool
-	OAuthGitHubClientID    string
+	OAuthGitHubEnabled      bool
+	OAuthGoogleEnabled      bool
+	OAuthGitHubClientID     string
 	OAuthGitHubClientSecret string
-	OAuthGitHubRedirectURL string
-	OAuthGoogleClientID    string
+	OAuthGitHubRedirectURL  string
+	OAuthGoogleClientID     string
 	OAuthGoogleClientSecret string
-	OAuthGoogleRedirectURL string
-	OAuthGiteeEnabled      bool
-	OAuthGiteeClientID     string
-	OAuthGiteeClientSecret string
-	OAuthGiteeRedirectURL  string
+	OAuthGoogleRedirectURL  string
+	OAuthGiteeEnabled       bool
+	OAuthGiteeClientID      string
+	OAuthGiteeClientSecret  string
+	OAuthGiteeRedirectURL   string
 	OAuthGitLabEnabled      bool
 	OAuthGitLabClientID     string
 	OAuthGitLabClientSecret string
@@ -110,7 +110,12 @@ type SiteSettings struct {
 	OAuthQQClientID         string // APP ID
 	OAuthQQClientSecret     string // APP Key
 	OAuthQQRedirectURL      string
-	// GitHub / Google / gitlab.com 服务端出站代理（vless:// / http:// / socks5://）；Gitee、QQ、自建 GitLab 始终直连
+	OAuthTPadEnabled        bool
+	OAuthTPadClientID       string
+	OAuthTPadClientSecret   string
+	OAuthTPadRedirectURL    string
+	OAuthTPadBaseURL        string // Think-TPAD 实例地址（浏览器访问地址），必填
+	// GitHub / Google / gitlab.com 服务端出站代理（vless:// / http:// / socks5://）；Gitee、QQ、自建 GitLab、Think-TPAD 始终直连
 	OAuthProxyEnabled bool
 	OAuthProxyURL     string
 
@@ -160,9 +165,9 @@ const (
 
 	keyAllowShareApply = "allow_share_apply" // 有密码分享是否开放「申请查看」
 
-	keyLoginMaxFails    = "login_max_fails"    // 0 = 不锁定
-	keyLoginLockMinutes = "login_lock_minutes" // 锁定持续分钟，到期自动解除
-	keyTOTPEnabled      = "totp_enabled"
+	keyLoginMaxFails           = "login_max_fails"    // 0 = 不锁定
+	keyLoginLockMinutes        = "login_lock_minutes" // 锁定持续分钟，到期自动解除
+	keyTOTPEnabled             = "totp_enabled"
 	keyOAuthGitHubEnabled      = "oauth_github_enabled"
 	keyOAuthGoogleEnabled      = "oauth_google_enabled"
 	keyOAuthGitHubClientID     = "oauth_github_client_id"
@@ -184,6 +189,11 @@ const (
 	keyOAuthQQClientID         = "oauth_qq_client_id"
 	keyOAuthQQClientSecret     = "oauth_qq_client_secret"
 	keyOAuthQQRedirectURL      = "oauth_qq_redirect_url"
+	keyOAuthTPadEnabled        = "oauth_tpad_enabled"
+	keyOAuthTPadClientID       = "oauth_tpad_client_id"
+	keyOAuthTPadClientSecret   = "oauth_tpad_client_secret"
+	keyOAuthTPadRedirectURL    = "oauth_tpad_redirect_url"
+	keyOAuthTPadBaseURL        = "oauth_tpad_base_url"
 	keyOAuthProxyEnabled       = "oauth_proxy_enabled"
 	keyOAuthProxyURL           = "oauth_proxy_url"
 
@@ -343,6 +353,16 @@ func (a *App) Settings() SiteSettings {
 			s.OAuthQQClientSecret = r.Value
 		case keyOAuthQQRedirectURL:
 			s.OAuthQQRedirectURL = r.Value
+		case keyOAuthTPadEnabled:
+			s.OAuthTPadEnabled = boolVal(r.Value)
+		case keyOAuthTPadClientID:
+			s.OAuthTPadClientID = r.Value
+		case keyOAuthTPadClientSecret:
+			s.OAuthTPadClientSecret = r.Value
+		case keyOAuthTPadRedirectURL:
+			s.OAuthTPadRedirectURL = r.Value
+		case keyOAuthTPadBaseURL:
+			s.OAuthTPadBaseURL = strings.TrimSpace(r.Value)
 		case keyOAuthProxyEnabled:
 			s.OAuthProxyEnabled = boolVal(r.Value)
 		case keyOAuthProxyURL:
@@ -391,9 +411,10 @@ func (a *App) SettingsPage(c *gin.Context) {
 		"oauthGiteeCallback":  a.oauthEffectiveRedirect(c, model.OAuthProviderGitee),
 		"oauthGitLabCallback": a.oauthEffectiveRedirect(c, model.OAuthProviderGitLab),
 		"oauthQQCallback":     a.oauthEffectiveRedirect(c, model.OAuthProviderQQ),
+		"oauthTPadCallback":   a.oauthEffectiveRedirect(c, model.OAuthProviderTPad),
 		// 代理地址含凭据，只回显协议 + host:port
-		"oauthProxyPreview":   a.oauthProxyPreview(),
-		"oauthProxyFromCfg":   a.Cfg != nil && strings.TrimSpace(a.Cfg.Auth.OAuthProxy) != "" && strings.TrimSpace(s.OAuthProxyURL) == "",
+		"oauthProxyPreview": a.oauthProxyPreview(),
+		"oauthProxyFromCfg": a.Cfg != nil && strings.TrimSpace(a.Cfg.Auth.OAuthProxy) != "" && strings.TrimSpace(s.OAuthProxyURL) == "",
 	})
 }
 
@@ -422,20 +443,20 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		SMTPFromName string `json:"smtp_from_name"`
 		SMTPSSL      bool   `json:"smtp_ssl"`
 		// 存储
-		StorageDriver      string `json:"storage_driver"`
-		RustFSEndpoint     string `json:"rustfs_endpoint"`
-		RustFSRegion       string `json:"rustfs_region"`
-		RustFSAccessKey    string `json:"rustfs_access_key"`
-		RustFSSecretKey    string `json:"rustfs_secret_key"`
-		RustFSBucket       string `json:"rustfs_bucket"`
-		COSEndpoint        string `json:"cos_endpoint"`
-		COSRegion          string `json:"cos_region"`
-		COSSecretID        string `json:"cos_secret_id"`
-		COSSecretKey       string `json:"cos_secret_key"`
-		COSBucket          string `json:"cos_bucket"`
-		AllowShareApply    bool   `json:"allow_share_apply"`
-		LoginMaxFails      int    `json:"login_max_fails"`
-		LoginLockMinutes   int    `json:"login_lock_minutes"`
+		StorageDriver           string `json:"storage_driver"`
+		RustFSEndpoint          string `json:"rustfs_endpoint"`
+		RustFSRegion            string `json:"rustfs_region"`
+		RustFSAccessKey         string `json:"rustfs_access_key"`
+		RustFSSecretKey         string `json:"rustfs_secret_key"`
+		RustFSBucket            string `json:"rustfs_bucket"`
+		COSEndpoint             string `json:"cos_endpoint"`
+		COSRegion               string `json:"cos_region"`
+		COSSecretID             string `json:"cos_secret_id"`
+		COSSecretKey            string `json:"cos_secret_key"`
+		COSBucket               string `json:"cos_bucket"`
+		AllowShareApply         bool   `json:"allow_share_apply"`
+		LoginMaxFails           int    `json:"login_max_fails"`
+		LoginLockMinutes        int    `json:"login_lock_minutes"`
 		TOTPEnabled             bool   `json:"totp_enabled"`
 		OAuthGitHubEnabled      bool   `json:"oauth_github_enabled"`
 		OAuthGoogleEnabled      bool   `json:"oauth_google_enabled"`
@@ -458,6 +479,11 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		OAuthQQClientID         string `json:"oauth_qq_client_id"`
 		OAuthQQClientSecret     string `json:"oauth_qq_client_secret"`
 		OAuthQQRedirectURL      string `json:"oauth_qq_redirect_url"`
+		OAuthTPadEnabled        bool   `json:"oauth_tpad_enabled"`
+		OAuthTPadClientID       string `json:"oauth_tpad_client_id"`
+		OAuthTPadClientSecret   string `json:"oauth_tpad_client_secret"`
+		OAuthTPadRedirectURL    string `json:"oauth_tpad_redirect_url"`
+		OAuthTPadBaseURL        string `json:"oauth_tpad_base_url"`
 		OAuthProxyEnabled       bool   `json:"oauth_proxy_enabled"`
 		OAuthProxyURL           string `json:"oauth_proxy_url"`   // 留空 = 保留原值
 		OAuthProxyClear         bool   `json:"oauth_proxy_clear"` // 显式清除已保存的代理地址
@@ -632,6 +658,21 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "set.oauthRedirectInvalid")})
 		return
 	}
+	tpRedirect, err := normalizeOAuthRedirectURL(req.OAuthTPadRedirectURL)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "set.oauthRedirectInvalid")})
+		return
+	}
+	// Think-TPAD 实例地址：规则同自建 GitLab；启用时必须有地址（系统设置或 config.yaml 任一处）
+	tpBaseURL, err := normalizeGitLabBaseURL(req.OAuthTPadBaseURL)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "set.oauthTPadBaseInvalid")})
+		return
+	}
+	if req.OAuthTPadEnabled && tpBaseURL == "" && (a.Cfg == nil || strings.TrimSpace(a.Cfg.Auth.TPad.BaseURL) == "") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": a.tr(c, "set.oauthTPadBaseRequired")})
+		return
+	}
 	// 出站代理：留空保留原值；勾选清除则置空；新填写的地址先校验格式
 	proxyURL := strings.TrimSpace(req.OAuthProxyURL)
 	switch {
@@ -655,38 +696,38 @@ func (a *App) UpdateSettings(c *gin.Context) {
 	}
 
 	values := map[string]string{
-		model.SettingSiteName:   name,
-		model.SettingSiteLogo:   logo,
-		model.SettingSiteDomain: domain,
-		model.SettingDrawioURL:  drawioURL,
-		keyRegMethod:            req.RegMethod,
-		keySMTPHost:             strings.TrimSpace(req.SMTPHost),
-		keySMTPPort:             strconv.Itoa(port),
-		keySMTPUser:             strings.TrimSpace(req.SMTPUser),
-		keySMTPPass:             req.SMTPPass,
-		keySMTPFrom:             strings.TrimSpace(req.SMTPFrom),
-		keySMTPFromName:         strings.TrimSpace(req.SMTPFromName),
-		keySMTPSSL:              boolStr(req.SMTPSSL),
-		keyStorageDriver:        driver,
-		keyRustFSEndpoint:       endpoint,
-		keyRustFSRegion:         region,
-		keyRustFSAccessKey:      accessKey,
-		keyRustFSSecretKey:      secretKey,
-		keyRustFSBucket:         bucket,
-		keyCOSEndpoint:          cosEndpoint,
-		keyCOSRegion:            cosRegion,
-		keyCOSSecretID:          cosSecretID,
-		keyCOSSecretKey:         cosSecretKey,
-		keyCOSBucket:            cosBucket,
-		keyAllowShareApply:      boolStr(req.AllowShareApply),
-		keyLoginMaxFails:        strconv.Itoa(maxFails),
-		keyLoginLockMinutes:     strconv.Itoa(lockMinutes),
-		keyTOTPEnabled:          boolStr(req.TOTPEnabled),
-		keyOAuthGitHubEnabled:   boolStr(req.OAuthGitHubEnabled),
-		keyOAuthGoogleEnabled:   boolStr(req.OAuthGoogleEnabled),
-		keyOAuthGitHubClientID:  strings.TrimSpace(req.OAuthGitHubClientID),
+		model.SettingSiteName:     name,
+		model.SettingSiteLogo:     logo,
+		model.SettingSiteDomain:   domain,
+		model.SettingDrawioURL:    drawioURL,
+		keyRegMethod:              req.RegMethod,
+		keySMTPHost:               strings.TrimSpace(req.SMTPHost),
+		keySMTPPort:               strconv.Itoa(port),
+		keySMTPUser:               strings.TrimSpace(req.SMTPUser),
+		keySMTPPass:               req.SMTPPass,
+		keySMTPFrom:               strings.TrimSpace(req.SMTPFrom),
+		keySMTPFromName:           strings.TrimSpace(req.SMTPFromName),
+		keySMTPSSL:                boolStr(req.SMTPSSL),
+		keyStorageDriver:          driver,
+		keyRustFSEndpoint:         endpoint,
+		keyRustFSRegion:           region,
+		keyRustFSAccessKey:        accessKey,
+		keyRustFSSecretKey:        secretKey,
+		keyRustFSBucket:           bucket,
+		keyCOSEndpoint:            cosEndpoint,
+		keyCOSRegion:              cosRegion,
+		keyCOSSecretID:            cosSecretID,
+		keyCOSSecretKey:           cosSecretKey,
+		keyCOSBucket:              cosBucket,
+		keyAllowShareApply:        boolStr(req.AllowShareApply),
+		keyLoginMaxFails:          strconv.Itoa(maxFails),
+		keyLoginLockMinutes:       strconv.Itoa(lockMinutes),
+		keyTOTPEnabled:            boolStr(req.TOTPEnabled),
+		keyOAuthGitHubEnabled:     boolStr(req.OAuthGitHubEnabled),
+		keyOAuthGoogleEnabled:     boolStr(req.OAuthGoogleEnabled),
+		keyOAuthGitHubClientID:    strings.TrimSpace(req.OAuthGitHubClientID),
 		keyOAuthGitHubRedirectURL: ghRedirect,
-		keyOAuthGoogleClientID:  strings.TrimSpace(req.OAuthGoogleClientID),
+		keyOAuthGoogleClientID:    strings.TrimSpace(req.OAuthGoogleClientID),
 		keyOAuthGoogleRedirectURL: ggRedirect,
 		keyOAuthGiteeEnabled:      boolStr(req.OAuthGiteeEnabled),
 		keyOAuthGiteeClientID:     strings.TrimSpace(req.OAuthGiteeClientID),
@@ -698,11 +739,15 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		keyOAuthQQEnabled:         boolStr(req.OAuthQQEnabled),
 		keyOAuthQQClientID:        strings.TrimSpace(req.OAuthQQClientID),
 		keyOAuthQQRedirectURL:     qqRedirect,
+		keyOAuthTPadEnabled:       boolStr(req.OAuthTPadEnabled),
+		keyOAuthTPadClientID:      strings.TrimSpace(req.OAuthTPadClientID),
+		keyOAuthTPadRedirectURL:   tpRedirect,
+		keyOAuthTPadBaseURL:       tpBaseURL,
 		keyOAuthProxyEnabled:      boolStr(req.OAuthProxyEnabled),
 		keyOAuthProxyURL:          proxyURL,
-		keyAIMaxCreatesPerReq:   strconv.Itoa(createsPerReq),
-		keyAIMaxCreatesPerDay:   strconv.Itoa(createsPerDay),
-		keyAIStreamTimeoutMin:   strconv.Itoa(streamTimeoutMin),
+		keyAIMaxCreatesPerReq:     strconv.Itoa(createsPerReq),
+		keyAIMaxCreatesPerDay:     strconv.Itoa(createsPerDay),
+		keyAIStreamTimeoutMin:     strconv.Itoa(streamTimeoutMin),
 	}
 	// Client Secret 留空 = 保留原值（与 RustFS/COS 一致，避免每次保存被清空）
 	prev := a.Settings()
@@ -731,6 +776,11 @@ func (a *App) UpdateSettings(c *gin.Context) {
 		qqSecret = prev.OAuthQQClientSecret
 	}
 	values[keyOAuthQQClientSecret] = qqSecret
+	tpSecret := strings.TrimSpace(req.OAuthTPadClientSecret)
+	if tpSecret == "" {
+		tpSecret = prev.OAuthTPadClientSecret
+	}
+	values[keyOAuthTPadClientSecret] = tpSecret
 	// 单条批量 upsert（INSERT ... ON DUPLICATE KEY UPDATE）：
 	// 一次网络往返写完全部设置。逐条 SELECT+UPDATE 在远程 MySQL 上要 2N 次往返，保存明显变慢
 	rows := make([]model.SystemSetting, 0, len(values))

@@ -52,6 +52,13 @@ auth:
     client_id: "${DOC_SHARE_QQ_CLIENT_ID:-}"
     client_secret: "${DOC_SHARE_QQ_CLIENT_SECRET:-}"
     redirect_url: "${DOC_SHARE_QQ_REDIRECT_URL:-}"
+  # Think-TPAD：在 Think-TPAD「OAuth 应用」中注册并审核通过，回调填 {本站}/auth/tpad/callback
+  tpad:
+    client_id: "${DOC_SHARE_TPAD_CLIENT_ID:-}"
+    client_secret: "${DOC_SHARE_TPAD_CLIENT_SECRET:-}"
+    redirect_url: "${DOC_SHARE_TPAD_REDIRECT_URL:-}"
+    # 必填：浏览器访问 Think-TPAD 的地址（如 https://tpad.example.com），授权页与换票接口都基于它
+    base_url: "${DOC_SHARE_TPAD_BASE_URL:-}"
   # GitHub / Google / gitlab.com 服务端换票与拉取资料的出站代理（Gitee、QQ、自建 GitLab 始终直连）。支持：
   #   vless://...（进程内嵌 xray，仅 tcp + none/tls/reality）、http://host:port、socks5://host:port
   # 系统设置「第三方登录代理」未填写地址时使用此值（视为启用）

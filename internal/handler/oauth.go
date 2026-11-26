@@ -59,6 +59,7 @@ var (
 	fetchGiteeUser  = defaultFetchGiteeUser
 	fetchGitLabUser = defaultFetchGitLabUser
 	fetchQQUser     = defaultFetchQQUser
+	fetchTPadUser   = defaultFetchTPadUser
 )
 
 // mintOAuthState 签发带过期时间的 state（HMAC，多实例可用）；配合 Cookie 双提交防 CSRF。
@@ -99,10 +100,13 @@ func (a *App) parseOAuthState(state string) (provider string, ok bool) {
 	return p, true
 }
 
-// OAuthConfigured 系统设置或 config 中是否齐备 ClientID + Secret
+// OAuthConfigured 系统设置或 config 中是否齐备 ClientID + Secret（Think-TPAD 还须配置实例地址）
 func (a *App) OAuthConfigured(provider string) bool {
 	pcfg, ok := a.oauthProviderCfg(provider)
 	if !ok {
+		return false
+	}
+	if provider == model.OAuthProviderTPad && strings.TrimSpace(pcfg.BaseURL) == "" {
 		return false
 	}
 	return strings.TrimSpace(pcfg.ClientID) != "" && strings.TrimSpace(pcfg.ClientSecret) != ""
@@ -125,6 +129,8 @@ func (a *App) OAuthEnabled(provider string) bool {
 		return s.OAuthGitLabEnabled
 	case model.OAuthProviderQQ:
 		return s.OAuthQQEnabled
+	case model.OAuthProviderTPad:
+		return s.OAuthTPadEnabled
 	default:
 		return false
 	}
@@ -148,6 +154,8 @@ func (a *App) oauthProviderCfg(provider string) (config.OAuthProviderConfig, boo
 			out = a.Cfg.Auth.GitLab
 		case model.OAuthProviderQQ:
 			out = a.Cfg.Auth.QQ
+		case model.OAuthProviderTPad:
+			out = a.Cfg.Auth.TPad
 		default:
 			return config.OAuthProviderConfig{}, false
 		}
@@ -208,6 +216,19 @@ func (a *App) oauthProviderCfg(provider string) (config.OAuthProviderConfig, boo
 		}
 		if v := strings.TrimSpace(s.OAuthQQRedirectURL); v != "" {
 			out.RedirectURL = v
+		}
+	case model.OAuthProviderTPad:
+		if v := strings.TrimSpace(s.OAuthTPadClientID); v != "" {
+			out.ClientID = v
+		}
+		if v := strings.TrimSpace(s.OAuthTPadClientSecret); v != "" {
+			out.ClientSecret = v
+		}
+		if v := strings.TrimSpace(s.OAuthTPadRedirectURL); v != "" {
+			out.RedirectURL = v
+		}
+		if v := strings.TrimSpace(s.OAuthTPadBaseURL); v != "" {
+			out.BaseURL = v
 		}
 	}
 	return out, true
@@ -291,6 +312,18 @@ func (a *App) oauth2Config(c *gin.Context, provider string) (*oauth2.Config, err
 			RedirectURL:  redirect,
 			Scopes:       []string{"get_user_info"},
 			Endpoint:     qqEndpoint,
+		}, nil
+	case model.OAuthProviderTPad:
+		ep := tpadEndpoint(pcfg.BaseURL)
+		if ep.AuthURL == "" {
+			return nil, fmt.Errorf("think-tpad base url not configured")
+		}
+		return &oauth2.Config{
+			ClientID:     strings.TrimSpace(pcfg.ClientID),
+			ClientSecret: strings.TrimSpace(pcfg.ClientSecret),
+			RedirectURL:  redirect,
+			Scopes:       []string{"basic", "email"},
+			Endpoint:     ep,
 		}, nil
 	default:
 		return nil, fmt.Errorf("unknown provider")
@@ -380,6 +413,8 @@ func (a *App) OAuthCallback(c *gin.Context) {
 		profile, err = fetchGitLabUser(ctx, cfg, code)
 	case model.OAuthProviderQQ:
 		profile, err = fetchQQUser(ctx, cfg, code)
+	case model.OAuthProviderTPad:
+		profile, err = fetchTPadUser(ctx, cfg, code)
 	}
 	if err != nil || strings.TrimSpace(profile.Subject) == "" {
 		log.Printf("[oauth] %s fetch profile failed: err=%v subject=%q redirect=%q", provider, err, profile.Subject, cfg.RedirectURL)
@@ -401,6 +436,8 @@ func (a *App) OAuthCallback(c *gin.Context) {
 				msg = "GitLab 用户信息获取失败，请检查网络或稍后重试"
 			case strings.Contains(es, "qq openid") || strings.Contains(es, "qq user"):
 				msg = "QQ 用户信息获取失败，请检查网络或稍后重试"
+			case strings.Contains(es, "tpad user"):
+				msg = "Think-TPAD 用户信息获取失败，请检查 Think-TPAD 地址或稍后重试"
 			}
 		}
 		a.oauthFail(c, msg)
@@ -636,7 +673,7 @@ func (a *App) allocOAuthUsernameTx(db *gorm.DB, base string) (string, error) {
 	if err != nil {
 		return "", errors.New("创建账号失败")
 	}
-	return sanitizeOAuthUsername(base+"_"+suf), nil
+	return sanitizeOAuthUsername(base + "_" + suf), nil
 }
 
 func randomHex(n int) (string, error) {
@@ -1045,6 +1082,7 @@ func (a *App) oauthViewFlags() gin.H {
 		"oauthGitee":  a.OAuthEnabled(model.OAuthProviderGitee),
 		"oauthGitLab": a.OAuthEnabled(model.OAuthProviderGitLab),
 		"oauthQQ":     a.OAuthEnabled(model.OAuthProviderQQ),
+		"oauthTPad":   a.OAuthEnabled(model.OAuthProviderTPad),
 	}
 }
 

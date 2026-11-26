@@ -9,10 +9,11 @@ const (
 	OAuthProviderGitee  = "gitee"
 	OAuthProviderGitLab = "gitlab"
 	OAuthProviderQQ     = "qq"
+	OAuthProviderTPad   = "tpad" // Think-TPAD（自建实例的 OAuth2 授权服务器）
 )
 
 // OAuthProviders 全部支持的提供方（展示顺序）
-var OAuthProviders = []string{OAuthProviderGitHub, OAuthProviderGoogle, OAuthProviderGitee, OAuthProviderGitLab, OAuthProviderQQ}
+var OAuthProviders = []string{OAuthProviderGitHub, OAuthProviderGoogle, OAuthProviderGitee, OAuthProviderGitLab, OAuthProviderQQ, OAuthProviderTPad}
 
 // IsOAuthProvider 是否为受支持的 OAuth 提供方
 func IsOAuthProvider(p string) bool {

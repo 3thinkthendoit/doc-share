@@ -308,7 +308,7 @@
   "set.oauthSecretKeep": "Saved — leave blank to keep",
   "set.oauthRedirectURL": "Callback URL (optional)",
   "set.oauthRedirectTip": "Must match the OAuth app callback exactly. Empty = current origin + /auth/{provider}/callback. Same-host http/https mismatch is auto-corrected to the browser scheme.",
-  "set.oauthRedirectEffective": "Callback actually sent to the provider (paste into GitHub/Google/Gitee/GitLab/QQ Connect; use http for local):",
+  "set.oauthRedirectEffective": "Callback actually sent to the provider (paste into GitHub/Google/Gitee/GitLab/QQ Connect/Think-TPAD; use http for local):",
   "set.oauthRedirectInvalid": "OAuth callback URL must be an absolute http(s) URL with a host",
   "set.oauthGitHubNeedCfg": "Enter Client ID and Secret first.",
   "set.oauthGoogleNeedCfg": "Enter Client ID and Secret first.",
@@ -320,7 +320,7 @@
   "set.oauthQQ": "Enable QQ login",
   "set.oauthQQTip": "Create a website app on QQ Connect; its callback must match the effective callback below. QQ provides no email, so first login creates a new account.",
   "set.oauthProxyTitle": "Social login proxy (GitHub / Google / GitLab)",
-  "set.oauthProxyTip": "Server-side token exchange and profile fetch for GitHub / Google / gitlab.com go through this proxy (Gitee, QQ and self-hosted GitLab always connect directly). Supports vless:// (embedded xray, tcp + none/tls/reality only), http://host:port and socks5://host:port. When enabled, an unusable proxy fails the login instead of silently connecting directly.",
+  "set.oauthProxyTip": "Server-side token exchange and profile fetch for GitHub / Google / gitlab.com go through this proxy (Gitee, QQ, self-hosted GitLab and Think-TPAD always connect directly). Supports vless:// (embedded xray, tcp + none/tls/reality only), http://host:port and socks5://host:port. When enabled, an unusable proxy fails the login instead of silently connecting directly.",
   "set.oauthProxyEnabled": "Enable proxy",
   "set.oauthProxyURL": "Proxy URL",
   "set.oauthProxyFromCfg": "Nothing saved here; using the proxy from config.yaml / DOC_SHARE_OAUTH_PROXY (always on).",
@@ -1624,5 +1624,14 @@
   "oauthdoc.sec3": "Use PKCE for server-side apps too, and always verify the id_token's signature, iss, aud, exp and nonce before using it.",
   "oauthdoc.sec4": "Link users by sub, not by username or email; only trust an email when email_verified is true.",
   "oauthdoc.sec5": "Access tokens are valid for 2 hours; userinfo fails immediately once the user revokes access or the app is disabled. Don't use the access token as your own session — create your own session after sign-in.",
-  "oauthdoc.sec6": "Redirect URIs match exactly with no wildcards; register a separate http://localhost URL (with port) for local testing."
+  "oauthdoc.sec6": "Redirect URIs match exactly with no wildcards; register a separate http://localhost URL (with port) for local testing.",
+  "login.oauthTPad": "Continue with Think-TPAD",
+  "user.authTPad": "Think-TPAD",
+  "set.oauthTPad": "Enable Think-TPAD login",
+  "set.oauthTPadTip": "Register an app under OAuth apps in Think-TPAD (use the effective callback below), get it approved by a Think-TPAD admin, then enter its client ID / secret here. Think-TPAD doesn't report whether emails are verified, so first sign-in creates a new account instead of merging by email.",
+  "set.oauthTPadBaseURL": "Think-TPAD URL",
+  "set.oauthTPadBaseTip": "Required. The address you open Think-TPAD at in a browser (e.g. https://tpad.example.com); both the consent page and the token API are based on it. If the frontend is deployed separately, use the frontend address (it must proxy /api).",
+  "set.oauthTPadBaseInvalid": "Think-TPAD URL must be an absolute http(s) URL with a host, without query, fragment or credentials",
+  "set.oauthTPadBaseRequired": "Enter the Think-TPAD URL before enabling Think-TPAD login",
+  "Think-TPAD 用户信息获取失败，请检查 Think-TPAD 地址或稍后重试": "Failed to fetch Think-TPAD profile. Check the Think-TPAD URL and try again."
 }

@@ -72,6 +72,7 @@ type AuthConfig struct {
 	Gitee  OAuthProviderConfig `yaml:"gitee"`
 	GitLab OAuthProviderConfig `yaml:"gitlab"` // BaseURL 可填自建 GitLab，空 = https://gitlab.com
 	QQ     OAuthProviderConfig `yaml:"qq"`     // QQ 互联：ClientID = APP ID，ClientSecret = APP Key
+	TPad   OAuthProviderConfig `yaml:"tpad"`   // Think-TPAD：BaseURL 必填（浏览器访问 Think-TPAD 的地址）
 	// OAuthProxy GitHub / Google / gitlab.com 出站代理兜底（vless:// / http:// / socks5://）；
 	// 系统设置未填写代理地址时使用，且视为始终启用。Gitee、QQ、自建 GitLab 始终直连。
 	OAuthProxy string `yaml:"oauth_proxy"`
