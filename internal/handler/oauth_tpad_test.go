@@ -83,7 +83,7 @@ func TestTPadLoginEndToEnd(t *testing.T) {
 		t.Fatalf("start = %d %s", w.Code, w.Header().Get("Location"))
 	}
 	q := loc.Query()
-	if loc.Scheme+"://"+loc.Host+loc.Path != srv.URL+"/oauth/authorize" || q.Get("client_id") != "tpad_oauth_1" ||
+	if loc.Scheme+"://"+loc.Host+loc.Path != srv.URL+"/tpad/oauth/authorize" || q.Get("client_id") != "tpad_oauth_1" ||
 		q.Get("scope") != "basic email" || q.Get("redirect_uri") != "http://docs.local/auth/tpad/callback" ||
 		q.Get("state") == "" || q.Get("access_type") != "" {
 		t.Fatalf("authorize url = %s", loc)

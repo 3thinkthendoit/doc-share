@@ -14,14 +14,15 @@ import (
 
 // Think-TPAD 登录：对接 think-tpad 的 OAuth2 授权服务器（think-tpad app/tpad/service/oauth_server*.go）。
 //
-//	授权页   {base}/oauth/authorize               前端路由（未登录先登录再回来）
+//	授权页   {base}/tpad/oauth/authorize       前端路由（未登录先登录再回来）
 //	换票     POST {base}/api/v1/tpad/oauth/token  表单携带 client_id / client_secret（不支持 HTTP Basic）
 //	取资料   GET  {base}/api/v1/tpad/oauth/userinfo  Bearer
 //
 // base 为浏览器访问 Think-TPAD 的地址：生产环境前端由后端同源托管；前后端分开部署时前端反向代理 /api，
 // 因此一个地址即可覆盖授权页与服务端接口。Think-TPAD 通常为自建内网服务，始终直连、不走出站代理。
 const (
-	tpadAuthorizePath = "/oauth/authorize"
+	// 前端由 vite base /tpad/ 挂载，页面路由都带该前缀；/api 仍是根路径，不带前缀。
+	tpadAuthorizePath = "/tpad/oauth/authorize"
 	tpadTokenPath     = "/api/v1/tpad/oauth/token"
 	tpadUserinfoPath  = "/api/v1/tpad/oauth/userinfo"
 )
